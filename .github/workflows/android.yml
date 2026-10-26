@@ -1,0 +1,78 @@
+name: Build Mianboor APK
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'android/**'
+      - '.github/workflows/android.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Build hev-socks5-tunnel (native TUN -> SOCKS5 bridge)
+        run: |
+          NDK_DIR=$(ls -d ${ANDROID_HOME}/ndk/* | head -1)
+          echo "Using NDK: ${NDK_DIR}"
+          git clone --recursive --depth 1 https://github.com/heiher/hev-socks5-tunnel /tmp/hev
+          cd /tmp/hev
+          ${NDK_DIR}/ndk-build \
+            NDK_PROJECT_PATH=. NDK_OUT=./out NDK_LIBS_OUT=./libs \
+            APP_ABI=arm64-v8a APP_PLATFORM=android-26 \
+            APP_CFLAGS="-O3 -DPKGNAME=com/mianboor/vpn -DCLSNAME=TProxyService"
+          mkdir -p "${GITHUB_WORKSPACE}/android/app/src/main/jniLibs/arm64-v8a"
+          cp libs/arm64-v8a/libhev-socks5-tunnel.so \
+             "${GITHUB_WORKSPACE}/android/app/src/main/jniLibs/arm64-v8a/"
+          file libs/arm64-v8a/libhev-socks5-tunnel.so
+
+      - name: Download Xray core (Android arm64)
+        run: |
+          mkdir -p android/app/src/main/jniLibs/arm64-v8a
+          curl -sSL -o /tmp/xray.zip \
+            https://github.com/XTLS/Xray-core/releases/latest/download/Xray-android-arm64-v8a.zip
+          unzip -o /tmp/xray.zip -d /tmp/xraybin
+          cp /tmp/xraybin/xray android/app/src/main/jniLibs/arm64-v8a/libxray.so
+          file android/app/src/main/jniLibs/arm64-v8a/libxray.so
+
+      - name: Build release APK
+        working-directory: android
+        env:
+          MIANOOR_SERVER_URL: ${{ secrets.MIANOOR_SERVER_URL }}
+          MIANOOR_CLIENT_TOKEN: ${{ secrets.MIANOOR_CLIENT_TOKEN }}
+        run: |
+          chmod +x gradlew
+          ./gradlew :app:assembleRelease --no-daemon --stacktrace \
+            -PMIANOOR_SERVER_URL="$MIANOOR_SERVER_URL" \
+            -PMIANOOR_CLIENT_TOKEN="$MIANOOR_CLIENT_TOKEN"
+
+      - name: Prepare APK artifact
+        run: |
+          cp android/app/build/outputs/apk/release/app-release.apk Mianboor-v1.0.0.apk
+          ls -la Mianboor-v1.0.0.apk
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Mianboor-APK
+          path: Mianboor-v1.0.0.apk
+
+      - name: Create GitHub Release (on v* tags)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: Mianboor-v1.0.0.apk
