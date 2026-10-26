@@ -63,17 +63,21 @@ jobs:
 
       - name: Prepare APK artifact
         run: |
-          cp android/app/build/outputs/apk/release/app-release.apk Mianboor-v1.0.0.apk
-          ls -la Mianboor-v1.0.0.apk
+          VER="${GITHUB_REF_NAME#v}"
+          if [ "$VER" = "$GITHUB_REF_NAME" ]; then VER="1.0.1"; fi
+          APK_NAME="Mianboor-v${VER}.apk"
+          echo "APK_NAME=$APK_NAME" >> "$GITHUB_ENV"
+          cp android/app/build/outputs/apk/release/app-release.apk "$APK_NAME"
+          ls -la "$APK_NAME"
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: Mianboor-APK
-          path: Mianboor-v1.0.0.apk
+          path: ${{ env.APK_NAME }}
 
       - name: Create GitHub Release (on v* tags)
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: Mianboor-v1.0.0.apk
+          files: ${{ env.APK_NAME }}
