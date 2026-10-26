@@ -1,6 +1,7 @@
 package com.mianboor.vpn
 
 import org.json.JSONArray
+import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
@@ -40,7 +41,12 @@ object MianboorApi {
                 else -> throw IllegalStateException("سرور پاسخ ${conn.responseCode} داد")
             }
             val body = conn.inputStream.bufferedReader().use { it.readText() }
-            val arr = JSONArray(body)
+            val trimmed = body.trim()
+            // سازگاری کامل: هم آرایه‌ی خام و هم شیء { ok, configs } پشتیبانی می‌شود
+            val arr = if (trimmed.startsWith("["))
+                JSONArray(trimmed)
+            else
+                JSONObject(trimmed).optJSONArray("configs") ?: JSONArray()
             return (0 until arr.length()).mapNotNull { i ->
                 val o = arr.getJSONObject(i)
                 val link = o.optString("link")

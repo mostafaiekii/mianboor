@@ -25,8 +25,8 @@ export async function GET(req: Request) {
     orderBy: { createdAt: "desc" },
   });
 
-  return NextResponse.json(
-    { ok: true, count: configs.length, configs },
-    { headers: { "Cache-Control": "no-store" } }
-  );
+  // پاسخ به‌صورت آرایه‌ی خام برمی‌گردد تا با نسخه‌های فعلی اپ اندروید سازگار باشد
+  return NextResponse.json(configs, {
+    headers: { "Cache-Control": "no-store" },
+  });
 }
