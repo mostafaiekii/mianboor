@@ -3,6 +3,7 @@ name: Build Mianboor APK
 on:
   push:
     branches: [ main ]
+    tags: [ 'v*' ]
     paths:
       - 'android/**'
       - '.github/workflows/android.yml'
