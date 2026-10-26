@@ -1,0 +1,18 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// کانفیگ‌های وی‌پی‌ان — فقط مدیر آن‌ها را وارد می‌کند و کاربران هرگز لینک خام را نمی‌بینند
+model VpnConfig {
+  id        String   @id @default(cuid())
+  name      String
+  link      String
+  country   String   @default("نامشخص")
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+}
