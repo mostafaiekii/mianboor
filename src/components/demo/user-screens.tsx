@@ -4,26 +4,30 @@ import { useState } from "react";
 import {
   ArrowDown,
   ArrowUp,
+  BadgeCheck,
   Check,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
+  Copy,
   Crown,
+  Fingerprint,
   GitBranch,
+  Info,
   Lock,
   Power,
   Search,
   Send,
   Settings,
+  ShieldAlert,
   ShieldCheck,
   User,
-  Wifi,
   Zap,
 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { Flag } from "./flag";
 import { TG_SUPPORT, tr, type Lang } from "./i18n";
-import { PlansSheet } from "./plans-sheet";
-import type { ConfigItem, VpnState } from "./types";
+import { FREE_QUOTA_GB, type ConfigItem, type Entitlement, type SplitState, type VpnState } from "./types";
 
 export function pingTone(p: number): string {
   return p < 60 ? "text-glow" : p < 100 ? "text-gold" : "text-danger";
@@ -80,6 +84,7 @@ export function HomeScreen({
   onToggle,
   seconds,
   server,
+  warn,
   onPickServer,
   onOpenSettings,
 }: {
@@ -88,6 +93,7 @@ export function HomeScreen({
   onToggle: () => void;
   seconds: number;
   server: ConfigItem | null;
+  warn?: string | null;
   onPickServer: () => void;
   onOpenSettings: () => void;
 }) {
@@ -127,7 +133,7 @@ export function HomeScreen({
         </div>
       </div>
 
-      <div className="relative mt-8 flex h-52 items-center justify-center">
+      <div className="relative mt-7 flex h-48 items-center justify-center">
         <div className={on ? "breathe absolute size-56 rounded-full bg-glow/30 blur-3xl" : "absolute size-56 rounded-full bg-transparent"} />
         <button
           type="button"
@@ -135,27 +141,32 @@ export function HomeScreen({
           aria-label={on ? "Disconnect" : "Connect"}
           className={
             on
-              ? "relative grid size-48 place-items-center rounded-full border-4 border-glow bg-night shadow-[0_0_40px_oklch(0.84_0.15_168/0.55)] transition-all"
+              ? "relative grid size-44 place-items-center rounded-full border-4 border-glow bg-night shadow-[0_0_40px_var(--mb-glow)] transition-all"
               : busy
-                ? "spin-ring relative grid size-48 place-items-center rounded-full border-4 border-glow/30 border-t-glow bg-night transition-all"
-                : "relative grid size-48 place-items-center rounded-full border-4 border-panel-edge bg-night transition-all hover:border-glow/50"
+                ? "spin-ring relative grid size-44 place-items-center rounded-full border-4 border-glow/30 border-t-glow bg-night transition-all"
+                : "relative grid size-44 place-items-center rounded-full border-4 border-panel-edge bg-night transition-all hover:border-glow/50"
           }
         >
-          <span className={busy ? "unspin grid size-36 place-items-center rounded-full bg-panel" : "grid size-36 place-items-center rounded-full bg-panel"}>
-            <Power className={on ? "size-14 text-glow" : "size-14 text-dim"} strokeWidth={2.4} />
+          <span className={busy ? "unspin grid size-32 place-items-center rounded-full bg-panel" : "grid size-32 place-items-center rounded-full bg-panel"}>
+            <Power className={on ? "size-12 text-glow" : "size-12 text-dim"} strokeWidth={2.4} />
           </span>
         </button>
       </div>
 
-      <div className="mt-6 text-center">
+      <div className="mt-4 text-center">
         <div className={on ? "font-display text-2xl font-bold text-glow" : "font-display text-2xl font-bold text-ink"}>{label}</div>
         <div className="mt-1 font-display text-base tabular-nums text-dim">{on ? fmt(seconds) : t.tapProtect}</div>
+        {warn && !on && (
+          <div className="mx-auto mt-2 flex max-w-[280px] items-center justify-center gap-1.5 rounded-full border border-danger/40 bg-danger/10 px-3 py-1.5 text-xs font-medium text-danger">
+            <ShieldAlert className="size-3.5 shrink-0" /> {warn}
+          </div>
+        )}
       </div>
 
       <button
         type="button"
         onClick={onPickServer}
-        className="mt-6 flex items-center gap-4 rounded-2xl border border-panel-edge bg-panel p-4 text-start transition-colors hover:border-glow/40"
+        className="mt-5 flex items-center gap-4 rounded-2xl border border-panel-edge bg-panel p-4 text-start transition-colors hover:border-glow/40"
       >
         {server ? <Flag code={server.country} size={40} /> : <span className="size-10 rounded-full bg-ink/10" />}
         <span className="flex-1">
@@ -195,6 +206,7 @@ export function ServersScreen({
   lang,
   configs,
   selectedId,
+  premiumUser,
   onSelect,
   onPremiumTap,
   onBack,
@@ -202,6 +214,7 @@ export function ServersScreen({
   lang: Lang;
   configs: ConfigItem[];
   selectedId: number | null;
+  premiumUser: boolean;
   onSelect: (id: number) => void;
   onPremiumTap: () => void;
   onBack: () => void;
@@ -214,8 +227,9 @@ export function ServersScreen({
   const list = configs.filter((c) => c.enabled && c.name.toLowerCase().includes(q.toLowerCase()));
   const enabled = configs.filter((c) => c.enabled);
   const freeEnabled = enabled.filter((c) => !c.premium);
-  // Smart Connect really measures: lowest live ping among unlocked servers.
-  const best = [...(freeEnabled.length ? freeEnabled : enabled)].sort((a, b) => a.ping - b.ping)[0];
+  // Smart Connect really measures: lowest live ping among the servers this user can join.
+  const pool = premiumUser ? enabled : freeEnabled.length ? freeEnabled : enabled;
+  const best = [...pool].sort((a, b) => a.ping - b.ping)[0];
 
   return (
     <div dir={rtl ? "rtl" : "ltr"} className="flex min-h-0 flex-1 flex-col px-5 pt-2">
@@ -240,7 +254,10 @@ export function ServersScreen({
       >
         <Zap className="size-5 shrink-0 fill-glow text-glow" />
         <span className="flex-1">
-          <span className="block text-sm font-semibold text-ink">{t.smart}</span>
+          <span className="block text-sm font-semibold text-ink">
+            {t.smart}
+            {best && <span className="ms-2 text-dim">→ {best.name} · {best.ping} ms</span>}
+          </span>
           <span className="block text-sm text-dim">{t.smartSub}</span>
         </span>
         <Fwd className="size-4 text-dim" />
@@ -260,7 +277,7 @@ export function ServersScreen({
       <div className="scroll-hide mt-2 flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto pb-3">
         {list.map((c) => {
           const sel = c.id === selectedId;
-          const locked = c.premium;
+          const locked = c.premium && !premiumUser;
           const isBest = best?.id === c.id;
           return (
             <button
@@ -308,20 +325,78 @@ export function ServersScreen({
   );
 }
 
-export function AccountScreen({ lang }: { lang: Lang }) {
+/* ── Account ── */
+
+function usageRing(pct: number, stroke: string, big: string, small: string) {
+  const r = 44;
+  const circ = 2 * Math.PI * r;
+  return (
+    <svg viewBox="0 0 110 110" className="size-28 shrink-0">
+      <circle cx="55" cy="55" r={r} fill="none" stroke="oklch(1 0 0 / 0.08)" strokeWidth="9" />
+      <circle
+        cx="55"
+        cy="55"
+        r={r}
+        fill="none"
+        stroke={stroke}
+        strokeWidth="9"
+        strokeLinecap="round"
+        strokeDasharray={`${Math.min(1, Math.max(0, pct)) * circ} ${circ}`}
+        transform="rotate(-90 55 55)"
+      />
+      <text x="55" y="54" textAnchor="middle" className="fill-ink font-display" style={{ fontSize: big.length > 6 ? 14 : 17, fontWeight: 800 }}>
+        {big}
+      </text>
+      <text x="55" y="71" textAnchor="middle" className="fill-dim" style={{ fontSize: 10 }}>
+        {small}
+      </text>
+    </svg>
+  );
+}
+
+export function AccountScreen({
+  lang,
+  entitlement,
+  trialLocked,
+  usedGb,
+  split,
+  deviceId,
+  onOpenSplit,
+  onUpgrade,
+  onCopyDevice,
+}: {
+  lang: Lang;
+  entitlement: Entitlement;
+  trialLocked: boolean;
+  usedGb: number;
+  split: SplitState;
+  deviceId: string;
+  onOpenSplit: () => void;
+  onUpgrade: () => void;
+  onCopyDevice: () => void;
+}) {
   const t = tr(lang);
   const rtl = lang === "fa";
   const Fwd = rtl ? ChevronLeft : ChevronRight;
   const [kill, setKill] = useState(true);
   const [auto, setAuto] = useState(true);
-  const [plans, setPlans] = useState(false);
-  const used = 18.4;
-  const total = 50;
-  const r = 44;
-  const circ = 2 * Math.PI * r;
+  const [renewOpen, setRenewOpen] = useState(false);
+  const premium = entitlement.plan !== "free";
+  const pct = premium ? 1 : trialLocked ? 1 : usedGb / FREE_QUOTA_GB;
+  const usedStr = premium ? "∞" : `${usedGb.toFixed(1)}`;
+  const totalStr = premium ? t.unlimited : `${FREE_QUOTA_GB} GB`;
+  const until = entitlement.expiresAt
+    ? new Date(entitlement.expiresAt).toLocaleDateString(lang === "fa" ? "fa-IR" : "en-US", { month: "short", day: "numeric", year: "numeric" })
+    : "";
+  const splitN = split.apps.length;
+  const splitSub =
+    splitN === 0
+      ? t.splitSubOff
+      : tpl2(t.splitSubOn, splitN, split.mode === "exclude" ? t.modeExcl : t.modeIncl);
+
   const rows = [
     { icon: ShieldCheck, t: t.killSwitch, d: t.killSwitchSub, v: kill, set: setKill },
-    { icon: Wifi, t: t.autoConnect, d: t.autoConnectSub, v: auto, set: setAuto },
+    { icon: WifiIcon, t: t.autoConnect, d: t.autoConnectSub, v: auto, set: setAuto },
   ];
 
   return (
@@ -330,42 +405,59 @@ export function AccountScreen({ lang }: { lang: Lang }) {
       className="scroll-hide flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-5 pt-2 pb-3"
     >
       <h2 className="font-display text-2xl font-bold text-ink">{t.account}</h2>
-      <div className="flex items-center gap-4 rounded-2xl border border-panel-edge bg-panel p-4">
-        <span className="grid size-12 shrink-0 place-items-center rounded-full bg-ink/10">
-          <User className="size-6 text-ink" />
-        </span>
-        <span className="flex-1">
-          <span className="block text-base font-semibold text-ink">{t.planFree}</span>
-          <span className="block text-sm text-dim">{t.planFreeSub}</span>
-        </span>
-        <Fwd className="size-5 shrink-0 text-dim" />
-      </div>
-      <div className="flex items-center justify-between rounded-2xl border border-panel-edge bg-panel p-4">
-        <div>
-          <div className="text-sm text-dim">{t.dataUsage}</div>
-          <div className="mt-1 text-sm text-dim">{t.resetsOn}</div>
+
+      {/* plan card */}
+      {premium ? (
+        <div className="flex items-center gap-4 rounded-2xl border border-gold/40 bg-gold/10 p-4">
+          <span className="grid size-12 shrink-0 place-items-center rounded-full bg-gold/20">
+            <Crown className="size-6 fill-gold text-gold" />
+          </span>
+          <span className="flex-1">
+            <span className="flex items-center gap-1.5 text-base font-bold text-ink">
+              {t.planPremium} <BadgeCheck className="size-4 fill-gold text-gold" />
+            </span>
+            <span className="block text-sm text-dim">{t.planPremiumSub}</span>
+            <span dir="ltr" className="mt-0.5 block text-sm font-medium text-gold">
+              {t.validUntil} {until}
+            </span>
+          </span>
         </div>
-        <svg viewBox="0 0 110 110" className="size-28 shrink-0">
-          <circle cx="55" cy="55" r={r} fill="none" stroke="oklch(1 0 0 / 0.08)" strokeWidth="9" />
-          <circle
-            cx="55"
-            cy="55"
-            r={r}
-            fill="none"
-            stroke="oklch(0.84 0.15 168)"
-            strokeWidth="9"
-            strokeLinecap="round"
-            strokeDasharray={`${(used / total) * circ} ${circ}`}
-            transform="rotate(-90 55 55)"
-          />
-          <text x="55" y="54" textAnchor="middle" className="fill-ink font-display" style={{ fontSize: 17, fontWeight: 800 }}>
-            18.4 GB
-          </text>
-          <text x="55" y="71" textAnchor="middle" className="fill-dim" style={{ fontSize: 10 }}>
-            of 50 GB
-          </text>
-        </svg>
+      ) : (
+        <div className="flex items-center gap-4 rounded-2xl border border-panel-edge bg-panel p-4">
+          <span className="grid size-12 shrink-0 place-items-center rounded-full bg-ink/10">
+            <User className="size-6 text-ink" />
+          </span>
+          <span className="flex-1">
+            <span className="block text-base font-semibold text-ink">{t.planFree}</span>
+            <span className="block text-sm text-dim">{t.planFreeSub}</span>
+          </span>
+          <Fwd className="size-5 shrink-0 text-dim" />
+        </div>
+      )}
+
+      {/* usage */}
+      <div className="flex items-center justify-between rounded-2xl border border-panel-edge bg-panel p-4">
+        <div className="min-w-0">
+          <div className="text-sm text-dim">{t.dataUsage}</div>
+          {premium ? (
+            <div className="mt-2 flex items-center gap-1.5 text-sm font-medium text-gold">
+              <Crown className="size-4 shrink-0 fill-gold text-gold" /> {t.unlimited}
+            </div>
+          ) : trialLocked ? (
+            <div className="mt-2 text-sm font-medium leading-5 text-danger">{t.trialUsedTitle}</div>
+          ) : (
+            <div className="mt-2 text-sm text-dim">{t.resetsOn}</div>
+          )}
+        </div>
+        {usageRing(
+          pct,
+          premium ? "var(--mb-gold)" : trialLocked ? "var(--mb-danger)" : "var(--mb-glow)",
+          premium ? "∞" : `${usedStr} GB`,
+          premium ? t.unlimited : totalStr,
+        )}
       </div>
+      {trialLocked && !premium && <div className="-mt-1 rounded-xl border border-danger/30 bg-danger/10 px-3 py-2 text-xs leading-5 text-danger">{t.trialUsedSub}</div>}
+
       {rows.map(({ icon: I, t: title, d, v, set }) => (
         <div key={title} className="flex items-center gap-3 rounded-2xl border border-panel-edge bg-panel p-4">
           <I className="size-5 shrink-0 text-dim" />
@@ -376,14 +468,34 @@ export function AccountScreen({ lang }: { lang: Lang }) {
           <Switch checked={v} onCheckedChange={set} aria-label={title} />
         </div>
       ))}
-      <div className="flex items-center gap-3 rounded-2xl border border-panel-edge bg-panel p-4">
+
+      {/* split tunneling — really works */}
+      <button
+        type="button"
+        onClick={onOpenSplit}
+        className="flex items-center gap-3 rounded-2xl border border-panel-edge bg-panel p-4 text-start transition-colors hover:border-glow/40"
+      >
         <GitBranch className="size-5 shrink-0 text-dim" />
         <span className="flex-1">
           <span className="block text-sm font-semibold text-ink">{t.split}</span>
-          <span className="block text-sm text-dim">{t.splitSub}</span>
+          <span className="block text-sm text-dim">{splitSub}</span>
         </span>
         <Fwd className="size-5 shrink-0 text-dim" />
+      </button>
+
+      {/* renew subscription + explainer */}
+      <div className="rounded-2xl border border-panel-edge bg-panel">
+        <button type="button" onClick={() => setRenewOpen((o) => !o)} className="flex w-full items-center gap-3 p-4 text-start" aria-expanded={renewOpen}>
+          <Info className="size-5 shrink-0 text-dim" />
+          <span className="flex-1">
+            <span className="block text-sm font-semibold text-ink">{t.renewRow}</span>
+            <span className="block text-sm text-dim">{t.renewWhat}</span>
+          </span>
+          <ChevronDown className={`size-5 shrink-0 text-dim transition-transform ${renewOpen ? "rotate-180" : ""}`} />
+        </button>
+        {renewOpen && <p className="screen-in border-t border-panel-edge px-4 py-3 text-sm leading-6 text-dim">{t.renewExplain}</p>}
       </div>
+
       <a
         href={TG_SUPPORT}
         target="_blank"
@@ -399,14 +511,46 @@ export function AccountScreen({ lang }: { lang: Lang }) {
         </span>
         <Fwd className="size-5 shrink-0 text-dim" />
       </a>
+
+      {/* device id — anti-fraud binding */}
       <button
         type="button"
-        onClick={() => setPlans(true)}
+        onClick={onCopyDevice}
+        className="flex items-center gap-3 rounded-2xl border border-panel-edge bg-panel p-4 text-start transition-colors hover:border-ink/20"
+      >
+        <Fingerprint className="size-5 shrink-0 text-dim" />
+        <span className="flex-1">
+          <span className="block text-sm font-semibold text-ink">{t.deviceId}</span>
+          <span className="block text-sm text-dim">{t.deviceIdSub}</span>
+        </span>
+        <span dir="ltr" className="shrink-0 rounded-full bg-night px-2.5 py-1 font-mono text-xs text-dim">
+          {deviceId}
+        </span>
+        <Copy className="size-4 shrink-0 text-dim" />
+      </button>
+
+      <button
+        type="button"
+        onClick={onUpgrade}
         className="mt-1 rounded-2xl bg-glow py-3 font-display text-base font-bold text-on-glow"
       >
-        {t.upgrade}
+        {premium ? t.renewBtn : t.upgrade}
       </button>
-      {plans && <PlansSheet lang={lang} reason="renew" onClose={() => setPlans(false)} />}
     </div>
+  );
+}
+
+function tpl2(s: string, n: number, mode: string) {
+  return s.replace("{n}", String(n)).replace("{mode}", mode);
+}
+
+function WifiIcon(props: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <path d="M12 20h.01" />
+      <path d="M2 8.82a15 15 0 0 1 20 0" />
+      <path d="M5 12.859a10 10 0 0 1 14 0" />
+      <path d="M8.5 16.429a5 5 0 0 1 7 0" />
+    </svg>
   );
 }

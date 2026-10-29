@@ -2,23 +2,32 @@
 
 import { useEffect, useState } from "react";
 import {
+  Ban,
+  Check,
   ChevronLeft,
   ClipboardPaste,
   Crown,
   Eye,
   EyeOff,
+  Fingerprint,
   KeyRound,
+  Loader2,
   Lock,
   LogOut,
   Plus,
+  ReceiptText,
   Server,
+  ShieldCheck,
   Trash2,
   Users,
   X,
 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { COUNTRIES, Flag } from "./flag";
-import type { ConfigItem, ParsedLink } from "./types";
+import { PLAN_DAYS, type ConfigItem, type DeviceRecord, type Order, type ParsedLink, type PlanId } from "./types";
+
+const PLAN_LABEL: Record<PlanId, string> = { p1: "1 month", p3: "3 months", p6: "6 months" };
+const PLAN_PRICE: Record<PlanId, number> = { p1: 200000, p3: 400000, p6: 700000 };
 
 export function parseLink(link: string): ParsedLink | null {
   const t = link.trim();
@@ -253,21 +262,240 @@ function AddConfigSheet({ onClose, onAdd }: { onClose: () => void; onAdd: (c: Om
   );
 }
 
+/* ── Orders tab ── */
+
+function StatusChip({ status }: { status: Order["status"] }) {
+  if (status === "pending")
+    return (
+      <span className="flex items-center gap-1 rounded-full bg-gold/15 px-2 py-0.5 text-[11px] font-bold text-gold">
+        <Loader2 className="size-3 animate-spin" /> PENDING
+      </span>
+    );
+  if (status === "approved")
+    return (
+      <span className="flex items-center gap-1 rounded-full bg-glow/15 px-2 py-0.5 text-[11px] font-bold text-glow">
+        <Check className="size-3" /> APPROVED
+      </span>
+    );
+  return (
+    <span className="flex items-center gap-1 rounded-full bg-danger/15 px-2 py-0.5 text-[11px] font-bold text-danger">
+      <X className="size-3" /> REJECTED
+    </span>
+  );
+}
+
+function OrdersTab({
+  orders,
+  onApprove,
+  onReject,
+}: {
+  orders: Order[];
+  onApprove: (id: string) => void;
+  onReject: (id: string) => void;
+}) {
+  const list = [...orders].sort((a, b) => (a.status === "pending" ? -1 : 1) - (b.status === "pending" ? -1 : 1) || b.at - a.at);
+  return (
+    <div className="scroll-hide mt-3 flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-5 pb-20">
+      {list.length === 0 && (
+        <div className="flex flex-col items-center gap-2 rounded-xl border border-panel-edge bg-panel px-4 py-8 text-center">
+          <ReceiptText className="size-8 text-dim" />
+          <div className="text-sm font-semibold text-ink">No orders yet</div>
+          <div className="text-sm leading-6 text-dim">
+            When a user taps “Go Premium” and pays, the order lands here — approve it to make them premium instantly.
+          </div>
+        </div>
+      )}
+      {list.map((o) => (
+        <div
+          key={o.id}
+          className={o.status === "pending" ? "rounded-xl border border-gold/40 bg-panel px-3 py-3" : "rounded-xl border border-panel-edge bg-panel/60 px-3 py-3 opacity-80"}
+        >
+          <div className="flex items-center justify-between">
+            <span dir="ltr" className="font-mono text-sm font-semibold text-ink">
+              {o.id}
+            </span>
+            <StatusChip status={o.status} />
+          </div>
+          <div dir="ltr" className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-dim">
+            <span className="font-semibold text-ink">{PLAN_LABEL[o.plan]}</span>
+            <span className="tabular-nums">{PLAN_PRICE[o.plan].toLocaleString("en-US")} T</span>
+            <span className="flex items-center gap-1">
+              <Fingerprint className="size-3.5" /> {o.device}
+            </span>
+            <span>· {o.via === "gateway" ? "gateway" : "telegram"}</span>
+            <span>· {new Date(o.at).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })}</span>
+          </div>
+          {o.status === "pending" && (
+            <div className="mt-3 flex gap-2">
+              <button
+                type="button"
+                onClick={() => onApprove(o.id)}
+                className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-gold py-2 text-sm font-bold text-night"
+              >
+                <Crown className="size-4 fill-night" /> Approve premium
+              </button>
+              <button
+                type="button"
+                onClick={() => onReject(o.id)}
+                className="flex items-center justify-center gap-1.5 rounded-lg border border-danger/50 px-4 py-2 text-sm font-bold text-danger"
+              >
+                <Ban className="size-4" /> Reject
+              </button>
+            </div>
+          )}
+          {o.status === "approved" && (
+            <div className="mt-2 text-xs text-dim">
+              Premium active on {o.device} · {PLAN_DAYS[o.plan]} days
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/* ── Security tab ── */
+
+const HARDENING = [
+  "R8 + ProGuard — code, strings & APIs obfuscated",
+  "Client token sealed in a native lib (JNI) — not in strings.xml",
+  "TLS certificate pinning to mianboor APIs",
+  "EncryptedSharedPreferences + Android Keystore",
+  "Play Integrity check · root & emulator detection",
+  "HMAC-signed requests · server-side rate limiting",
+  "Config links never leave the server as raw text",
+];
+
+function SecurityTab({
+  devices,
+  onChangePass,
+}: {
+  devices: DeviceRecord[];
+  onChangePass: (p: string) => void;
+}) {
+  const [np, setNp] = useState("");
+  const [blockRoot, setBlockRoot] = useState(true);
+  const [toast, setToast] = useState("");
+
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(""), 2200);
+    return () => clearTimeout(t);
+  }, [toast]);
+
+  return (
+    <div className="scroll-hide mt-3 flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-5 pb-20">
+      {/* anti-fraud ledger */}
+      <div className="rounded-xl border border-panel-edge bg-panel p-4">
+        <div className="flex items-center gap-2 text-sm font-semibold text-ink">
+          <Fingerprint className="size-4 text-glow" /> Anti-fraud · device ledger
+        </div>
+        <div className="mt-3 flex flex-col gap-2">
+          {devices.map((d) => (
+            <div key={d.id} className="flex items-center gap-2 rounded-lg bg-night px-3 py-2.5">
+              <span dir="ltr" className="min-w-0 flex-1 truncate font-mono text-xs text-ink">
+                {d.id}
+              </span>
+              <span
+                className={
+                  d.trialUsed
+                    ? "shrink-0 rounded-full bg-danger/15 px-2 py-0.5 text-[10px] font-bold text-danger"
+                    : "shrink-0 rounded-full bg-glow/15 px-2 py-0.5 text-[10px] font-bold text-glow"
+                }
+              >
+                {d.trialUsed ? "TRIAL USED" : "TRIAL ACTIVE"}
+              </span>
+              <span className="shrink-0 rounded-full bg-ink/10 px-2 py-0.5 text-[10px] font-bold text-dim" dir="ltr">
+                reinstalls: {d.reinstalls}
+              </span>
+            </div>
+          ))}
+        </div>
+        <div className="mt-2 text-xs leading-5 text-dim">
+          Every install is fingerprinted server-side (ANDROID_ID + hardware hash). A factory reset or reinstall can never mint a new free tier.
+        </div>
+      </div>
+
+      {/* hardening checklist */}
+      <div className="rounded-xl border border-panel-edge bg-panel p-4">
+        <div className="flex items-center gap-2 text-sm font-semibold text-ink">
+          <ShieldCheck className="size-4 text-glow" /> App hardening
+        </div>
+        <div className="mt-3 flex flex-col gap-2">
+          {HARDENING.map((h) => (
+            <div key={h} className="flex items-start gap-2 text-sm leading-5 text-dim">
+              <Check className="mt-0.5 size-3.5 shrink-0 text-glow" strokeWidth={3} />
+              <span dir="ltr">{h}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="flex items-center justify-between rounded-xl border border-panel-edge bg-panel px-4 py-3.5">
+        <span className="text-sm font-semibold text-ink">Block rooted devices</span>
+        <Switch checked={blockRoot} onCheckedChange={setBlockRoot} aria-label="Block rooted devices" />
+      </div>
+
+      <div className="rounded-xl border border-panel-edge bg-panel p-4">
+        <div className="text-sm font-semibold text-ink">Change admin password</div>
+        <input
+          aria-label="New password"
+          type="password"
+          value={np}
+          onChange={(e) => setNp(e.target.value)}
+          placeholder="New password (min 8)"
+          className="mt-3 w-full rounded-lg border border-panel-edge bg-night px-3 py-2 text-sm text-ink outline-none placeholder:text-dim"
+        />
+        <button
+          type="button"
+          disabled={np.length < 8}
+          onClick={() => {
+            onChangePass(np);
+            setNp("");
+            setToast("Password updated");
+          }}
+          className="mt-3 w-full rounded-lg bg-gold py-2 text-sm font-bold text-night disabled:opacity-40"
+        >
+          Update
+        </button>
+      </div>
+      <div className="rounded-xl border border-panel-edge bg-panel p-4 text-sm text-dim">
+        Lock after 5 wrong tries · Session ends when app closes · Hidden entry, no visible button.
+      </div>
+
+      {toast && (
+        <div className="fixed inset-x-0 top-16 z-40 flex justify-center">
+          <span className="screen-in rounded-full bg-ink px-4 py-2 text-sm font-semibold text-night">{toast}</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ── Panel shell ── */
+
 export function AdminPanel({
   configs,
   setConfigs,
+  orders,
+  devices,
+  onApprove,
+  onReject,
   onExit,
   onChangePass,
 }: {
   configs: ConfigItem[];
   setConfigs: React.Dispatch<React.SetStateAction<ConfigItem[]>>;
+  orders: Order[];
+  devices: DeviceRecord[];
+  onApprove: (id: string) => void;
+  onReject: (id: string) => void;
   onExit: () => void;
   onChangePass: (p: string) => void;
 }) {
-  const [tab, setTab] = useState<"configs" | "security">("configs");
+  const [tab, setTab] = useState<"configs" | "orders" | "security">("configs");
   const [adding, setAdding] = useState(false);
   const [toast, setToast] = useState("");
-  const [np, setNp] = useState("");
 
   useEffect(() => {
     if (!toast) return;
@@ -276,6 +504,7 @@ export function AdminPanel({
   }, [toast]);
 
   const active = configs.filter((c) => c.enabled).length;
+  const pending = orders.filter((o) => o.status === "pending").length;
 
   return (
     <div className="relative flex min-h-0 flex-1 flex-col">
@@ -300,7 +529,7 @@ export function AdminPanel({
         {[
           { i: Server, v: configs.length, l: "Configs" },
           { i: Server, v: active, l: "Live" },
-          { i: Users, v: "1,284", l: "Users" },
+          { i: Users, v: orders.length, l: "Orders" },
         ].map((s) => (
           <div key={s.l} className="rounded-xl border border-panel-edge bg-panel px-3 py-2">
             <div className="font-display text-xl font-bold text-ink tabular-nums">{s.v}</div>
@@ -309,22 +538,29 @@ export function AdminPanel({
         ))}
       </div>
 
-      <div className="mx-5 mt-4 grid grid-cols-2 rounded-xl bg-panel p-1">
-        {(["configs", "security"] as const).map((t) => (
+      <div className="mx-5 mt-4 grid grid-cols-3 rounded-xl bg-panel p-1">
+        {(["configs", "orders", "security"] as const).map((tb) => (
           <button
             type="button"
-            key={t}
-            onClick={() => setTab(t)}
+            key={tb}
+            onClick={() => setTab(tb)}
             className={
-              tab === t ? "rounded-lg bg-night py-2 text-sm font-semibold text-ink" : "rounded-lg py-2 text-sm text-dim"
+              tab === tb
+                ? "relative rounded-lg bg-night py-2 text-sm font-semibold capitalize text-ink"
+                : "relative rounded-lg py-2 text-sm capitalize text-dim"
             }
           >
-            {t === "configs" ? "Configs" : "Security"}
+            {tb}
+            {tb === "orders" && pending > 0 && (
+              <span className="absolute -top-1.5 -end-1 grid size-5 place-items-center rounded-full bg-gold text-[10px] font-bold text-night">
+                {pending}
+              </span>
+            )}
           </button>
         ))}
       </div>
 
-      {tab === "configs" ? (
+      {tab === "configs" && (
         <div className="scroll-hide mt-3 flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-5 pb-20">
           {configs.map((c) => (
             <div
@@ -363,36 +599,10 @@ export function AdminPanel({
             </div>
           ))}
         </div>
-      ) : (
-        <div className="mt-3 flex flex-col gap-3 px-5">
-          <div className="rounded-xl border border-panel-edge bg-panel p-4">
-            <div className="text-sm font-semibold text-ink">Change admin password</div>
-            <input
-              aria-label="New password"
-              type="password"
-              value={np}
-              onChange={(e) => setNp(e.target.value)}
-              placeholder="New password (min 8)"
-              className="mt-3 w-full rounded-lg border border-panel-edge bg-night px-3 py-2 text-sm text-ink outline-none placeholder:text-dim"
-            />
-            <button
-              type="button"
-              disabled={np.length < 8}
-              onClick={() => {
-                onChangePass(np);
-                setNp("");
-                setToast("Password updated");
-              }}
-              className="mt-3 w-full rounded-lg bg-gold py-2 text-sm font-bold text-night disabled:opacity-40"
-            >
-              Update
-            </button>
-          </div>
-          <div className="rounded-xl border border-panel-edge bg-panel p-4 text-sm text-dim">
-            Lock after 5 wrong tries · Session ends when app closes · Hidden entry, no visible button.
-          </div>
-        </div>
       )}
+
+      {tab === "orders" && <OrdersTab orders={orders} onApprove={onApprove} onReject={onReject} />}
+      {tab === "security" && <SecurityTab devices={devices} onChangePass={onChangePass} />}
 
       {tab === "configs" && (
         <button

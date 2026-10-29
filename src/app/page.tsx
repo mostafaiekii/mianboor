@@ -1,19 +1,47 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { Hand, Home, Globe, ListPlus, Lock, RotateCcw, User, Eye, Gauge } from "lucide-react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
+import {
+  CreditCard,
+  Eye,
+  Fingerprint,
+  Gauge,
+  GitBranch,
+  Globe,
+  Hand,
+  Home,
+  ListPlus,
+  Lock,
+  Palette,
+  RotateCcw,
+  User,
+} from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { HomeScreen, ServersScreen, AccountScreen } from "@/components/demo/user-screens";
 import { SettingsScreen } from "@/components/demo/settings-screen";
+import { SplitScreen } from "@/components/demo/split-screen";
 import { PlansSheet } from "@/components/demo/plans-sheet";
 import { AdminLogin, AdminPanel } from "@/components/demo/admin-screens";
 import { tr, type Lang } from "@/components/demo/i18n";
-import type { ConfigItem, Screen, VpnState } from "@/components/demo/types";
+import { THEMES, type ThemeName } from "@/components/demo/themes";
+import {
+  FREE_QUOTA_GB,
+  PLAN_DAYS,
+  type ConfigItem,
+  type DeviceRecord,
+  type Entitlement,
+  type Order,
+  type PlanId,
+  type Screen,
+  type SplitState,
+  type VpnState,
+} from "@/components/demo/types";
 
 const HOLD_MS = 5000;
 const DEMO_USER = "admin";
 const DEMO_PASS = "Mianboor@2026";
 const PING_MS = 3000;
+const DEVICE_ID = "MB-7F3A-92K1";
 
 const SEED: ConfigItem[] = [
   { id: 1, name: "Netherlands - Amsterdam", country: "nl", protocol: "VLESS", host: "nl1.mianboor.app", ping: 28, premium: false, enabled: true },
@@ -26,6 +54,10 @@ const SEED: ConfigItem[] = [
 
 const seedPings = (): Record<number, number> =>
   Object.fromEntries(SEED.map((c) => [c.id, c.ping]));
+
+const freshDevices = (): DeviceRecord[] => [
+  { id: DEVICE_ID, trialUsed: false, reinstalls: 0, seen: "just now" },
+];
 
 function NavBtn({
   icon: I,
@@ -60,18 +92,36 @@ export default function VpnDemoPage() {
   const [pings, setPings] = useState<Record<number, number>>(seedPings);
   const [pingLive, setPingLive] = useState(true);
   const [lang, setLang] = useState<Lang>("en");
+  const [theme, setTheme] = useState<ThemeName>("midnight");
   const [selectedId, setSelectedId] = useState<number | null>(2);
   const [vpn, setVpn] = useState<VpnState>("off");
   const [seconds, setSeconds] = useState(0);
   const [hold, setHold] = useState(0);
   const [pass, setPass] = useState(DEMO_PASS);
   const [unlocked, setUnlocked] = useState(false);
-  const [plans, setPlans] = useState<null | "renew" | "premium-lock">(null);
+  const [plans, setPlans] = useState<null | "renew" | "premium-lock" | "trial-over">(null);
+  const [entitlement, setEntitlement] = useState<Entitlement>({ plan: "free" });
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [devices, setDevices] = useState<DeviceRecord[]>(freshDevices);
+  const [trialLocked, setTrialLocked] = useState(false);
+  const [usedGb, setUsedGb] = useState(1.2);
+  const [split, setSplit] = useState<SplitState>({ mode: "exclude", apps: [] });
+  const [toast, setToast] = useState<{ msg: string; k: number } | null>(null);
 
   const t = tr(lang);
   const holdStart = useRef(0);
   const raf = useRef(0);
   const fired = useRef(false);
+
+  const premium = entitlement.plan !== "free";
+
+  const showToast = (msg: string) => setToast({ msg, k: Date.now() });
+
+  useEffect(() => {
+    if (!toast) return;
+    const id = setTimeout(() => setToast(null), 2800);
+    return () => clearTimeout(id);
+  }, [toast]);
 
   /* ── موتور پینگ زنده: هر ۳ ثانیه دوباره اندازه‌گیری می‌شه ── */
   useEffect(() => {
@@ -108,9 +158,12 @@ export default function VpnDemoPage() {
 
   useEffect(() => {
     if (vpn !== "on") return;
-    const t = setInterval(() => setSeconds((s) => s + 1), 1000);
-    return () => clearInterval(t);
-  }, [vpn]);
+    const id = setInterval(() => {
+      setSeconds((s) => s + 1);
+      setUsedGb((u) => (premium ? u : Math.min(FREE_QUOTA_GB, u + 0.015)));
+    }, 1000);
+    return () => clearInterval(id);
+  }, [vpn, premium]);
 
   useEffect(() => {
     if (!configs.find((c) => c.id === selectedId && c.enabled)) {
@@ -130,8 +183,50 @@ export default function VpnDemoPage() {
       return;
     }
     if (!server) return;
+    if (!premium && trialLocked) {
+      setPlans("trial-over");
+      showToast(t.trialOverUpsell);
+      return;
+    }
     setVpn("connecting");
     setTimeout(() => setVpn((v) => (v === "connecting" ? "on" : v)), 1400);
+  };
+
+  /* ── خرید: سفارش ثبت می‌شه، ادمین از تب Orders تأیید می‌کنه ── */
+  const createOrder = (plan: PlanId, via: "gateway" | "telegram"): string => {
+    const id = `MB-${Math.floor(1000 + Math.random() * 9000)}`;
+    setOrders((os) => [{ id, plan, price: plan === "p1" ? 200000 : plan === "p3" ? 400000 : 700000, device: DEVICE_ID, via, at: Date.now(), status: "pending" }, ...os]);
+    showToast(t.orderPlacedToast);
+    return id;
+  };
+
+  const approveOrder = (id: string) => {
+    const o = orders.find((x) => x.id === id);
+    if (!o) return;
+    setOrders((os) => os.map((x) => (x.id === id ? { ...x, status: "approved" } : x)));
+    setEntitlement({ plan: o.plan, expiresAt: Date.now() + PLAN_DAYS[o.plan] * 86400_000 });
+    showToast(t.orderApprovedToast);
+  };
+
+  const rejectOrder = (id: string) => {
+    setOrders((os) => os.map((x) => (x.id === id ? { ...x, status: "rejected" } : x)));
+    showToast(t.orderRejectedToast);
+  };
+
+  /* ── ضدچیت: شبیه‌سازی نصب مجدد — دوره رایگان روی دستگاه قفل می‌مونه ── */
+  const reinstall = () => {
+    setTrialLocked(true);
+    setUsedGb(FREE_QUOTA_GB);
+    setVpn("off");
+    setSeconds(0);
+    setScreen("home");
+    setDevices((ds) => ds.map((d) => (d.id === DEVICE_ID ? { ...d, trialUsed: true, reinstalls: d.reinstalls + 1 } : d)));
+    showToast(t.reinstallDoneToast);
+  };
+
+  const copyDevice = () => {
+    navigator.clipboard?.writeText(DEVICE_ID).catch(() => {});
+    showToast(t.copied);
   };
 
   const tick = () => {
@@ -175,10 +270,18 @@ export default function VpnDemoPage() {
     setPass(DEMO_PASS);
     setUnlocked(false);
     setPlans(null);
+    setEntitlement({ plan: "free" });
+    setOrders([]);
+    setDevices(freshDevices());
+    setTrialLocked(false);
+    setUsedGb(1.2);
+    setSplit({ mode: "exclude", apps: [] });
+    setTheme("midnight");
+    setLang("en");
   };
 
   const isAdmin = screen === "login" || screen === "admin";
-  const phoneRtl = lang === "fa" && !isAdmin;
+  const themeVars = THEMES[theme].vars as CSSProperties;
   const steps: { i: LucideIcon; t: React.ReactNode; done: boolean }[] = [
     { i: Hand, t: "روی آیکن Account پایین صفحه ۵ ثانیه انگشتت رو نگه دار", done: isAdmin || unlocked },
     {
@@ -197,6 +300,26 @@ export default function VpnDemoPage() {
       done: configs.length > SEED.length,
     },
     { i: Eye, t: "از پنل خارج شو و توی Servers ببین کانفیگ جدید اومده", done: configs.length > SEED.length && screen === "servers" },
+    {
+      i: Palette,
+      t: "چرخ‌دنده بالای خانه → زبان رو فارسی کن و یه تم ملایم (مثلاً جنگل) انتخاب کن",
+      done: lang === "fa" || theme !== "midnight",
+    },
+    {
+      i: GitBranch,
+      t: "از Account → Split Tunneling چند اپ رو مستثنی کن و نتیجه رو ببین",
+      done: split.apps.length > 0,
+    },
+    {
+      i: CreditCard,
+      t: "Account → خرید پرمیوم: تعرفه ۳ ماهه ۴۰۰ رو انتخاب و پرداخت کن؛ بعد با ورود مخفی، تب Orders پنل رو بزن و Approve کن",
+      done: premium,
+    },
+    {
+      i: Fingerprint,
+      t: "تنظیمات → شبیه‌سازی نصب مجدد: ببین حجم رایگان روی دستگاه قفل می‌مونه (ضدچیت)",
+      done: trialLocked,
+    },
   ];
 
   return (
@@ -205,16 +328,24 @@ export default function VpnDemoPage() {
         {/* ── راهنمای فارسی ── */}
         <section dir="rtl" className="w-full max-w-sm @4xl:sticky @4xl:top-12 @4xl:order-2">
           <div className="font-display text-sm font-bold tracking-widest text-primary">MIANBOOR VPN · DEMO</div>
-          <h1 className="mt-3 text-4xl leading-tight font-black">ورود مخفی مدیر</h1>
+          <h1 className="mt-3 text-4xl leading-tight font-black">اپ کامل: خرید، ضدچیت، تم</h1>
           <p className="mt-3 text-base leading-8 text-muted-foreground">
-            کاربر عادی هیچ دکمه یا نشونه‌ای نمی‌بینه. فقط تو می‌دونی کجا رو باید نگه داری.
+            ماهی ۵ گیگ رایگان؛ تعرفه‌های ۱ ماهه ۲۰۰ / ۳ ماهه ۴۰۰ / ۶ ماهه ۷۰۰ هزار تومان. خرید که ثبت می‌شه،
+            سفارش می‌ره پنل مدیر (تب Orders) و با تأیید تو، کاربر همون لحظه پرمیوم می‌شه.
           </p>
           <div className="mt-4 flex items-start gap-2 rounded-2xl border border-border bg-card p-4 text-sm leading-7 text-muted-foreground">
             <Gauge className="mt-1 size-4 shrink-0 text-primary" />
             <span>
-              اپ دوزبانه‌ست (از تنظیمات زبان رو عوض کن)، پینگ‌ها هر ۳ ثانیه زنده به‌روز می‌شن و اتصال هوشمند
-              واقعاً کم‌پینگ‌ترین سرور رو انتخاب می‌کنه. سرورهای پرمیوم قفلن و خرید از طریق تلگرام @member9 انجام می‌شه.
+              پینگ‌ها هر ۳ ثانیه زنده به‌روز می‌شن و اتصال هوشمند واقعاً کم‌پینگ‌ترین سرور آزاد رو انتخاب می‌کنه.
+              تونل‌گذاری انتخابی واقعاً کار می‌کنه (Exclude / Include). دوره رایگان به شناسه دستگاه قفله —
+              «شبیه‌سازی نصب مجدد» توی تنظیمات امتحانش کن. تم‌های ملایم هم توی چرخ‌دنده‌ست.
             </span>
+          </div>
+
+          <div className="mt-4 rounded-2xl border border-gold/30 bg-gold/10 p-4 text-sm leading-7 text-muted-foreground">
+            <b className="text-foreground">پرمیوم‌کردن کاربر:</b> کاربر از Account → خرید پرمیوم تعرفه رو انتخاب و پرداخت
+            می‌کنه؛ سفارشش با شناسه دستگاه توی تب <b className="text-foreground">Orders</b> پنل مدیر ظاهر می‌شه — دکمه
+            «Approve premium» رو بزنی، حسابش پرمیوم می‌شه.
           </div>
 
           <div className="mt-6 rounded-2xl border border-border bg-card p-4">
@@ -272,6 +403,7 @@ export default function VpnDemoPage() {
           <div className="relative rounded-[52px] bg-[oklch(0.12_0.02_270)] p-3 shadow-[0_40px_80px_-20px_oklch(0.1_0.05_270/0.6)] ring-1 ring-ink/10">
             <div
               className="relative flex h-[760px] w-[370px] max-w-full flex-col overflow-hidden rounded-[42px] bg-night"
+              style={themeVars}
               onContextMenu={(e) => e.preventDefault()}
             >
               <div className="pointer-events-none absolute -top-24 left-1/2 size-80 -translate-x-1/2 rounded-full bg-[oklch(0.45_0.12_265/0.35)] blur-3xl" />
@@ -291,6 +423,7 @@ export default function VpnDemoPage() {
                     onToggle={toggleVpn}
                     seconds={seconds}
                     server={server}
+                    warn={!premium && trialLocked ? t.trialOverUpsell : null}
                     onPickServer={() => setScreen("servers")}
                     onOpenSettings={() => setScreen("settings")}
                   />
@@ -300,6 +433,7 @@ export default function VpnDemoPage() {
                     lang={lang}
                     configs={liveConfigs}
                     selectedId={selectedId}
+                    premiumUser={premium}
                     onSelect={(id) => {
                       setSelectedId(id);
                       setScreen("home");
@@ -308,15 +442,33 @@ export default function VpnDemoPage() {
                     onBack={() => setScreen("home")}
                   />
                 )}
-                {screen === "account" && <AccountScreen lang={lang} />}
+                {screen === "account" && (
+                  <AccountScreen
+                    lang={lang}
+                    entitlement={entitlement}
+                    trialLocked={trialLocked}
+                    usedGb={usedGb}
+                    split={split}
+                    deviceId={DEVICE_ID}
+                    onOpenSplit={() => setScreen("split")}
+                    onUpgrade={() => setPlans("renew")}
+                    onCopyDevice={copyDevice}
+                  />
+                )}
                 {screen === "settings" && (
                   <SettingsScreen
                     lang={lang}
                     setLang={setLang}
+                    theme={theme}
+                    setTheme={setTheme}
                     pingLive={pingLive}
                     setPingLive={setPingLive}
+                    onReinstall={reinstall}
                     onBack={() => setScreen("home")}
                   />
+                )}
+                {screen === "split" && (
+                  <SplitScreen lang={lang} split={split} setSplit={setSplit} onBack={() => setScreen("account")} />
                 )}
                 {screen === "login" && (
                   <AdminLogin
@@ -332,6 +484,10 @@ export default function VpnDemoPage() {
                   <AdminPanel
                     configs={configs}
                     setConfigs={setConfigs}
+                    orders={orders}
+                    devices={devices}
+                    onApprove={approveOrder}
+                    onReject={rejectOrder}
                     onChangePass={setPass}
                     onExit={() => {
                       setUnlocked(false);
@@ -342,11 +498,18 @@ export default function VpnDemoPage() {
               </div>
 
               {plans && (
-                <PlansSheet
-                  lang={lang}
-                  reason={plans === "premium-lock" ? "premium-lock" : "renew"}
-                  onClose={() => setPlans(null)}
-                />
+                <PlansSheet lang={lang} reason={plans} onClose={() => setPlans(null)} onCreateOrder={createOrder} />
+              )}
+
+              {toast && (
+                <div className="pointer-events-none absolute inset-x-0 top-12 z-40 flex justify-center px-6">
+                  <span
+                    key={toast.k}
+                    className="screen-in max-w-full rounded-full bg-ink px-4 py-2 text-center text-sm font-semibold text-night shadow-lg"
+                  >
+                    {toast.msg}
+                  </span>
+                </div>
               )}
 
               {!isAdmin && (

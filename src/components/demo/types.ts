@@ -2,7 +2,7 @@
 
 export type VpnState = "off" | "connecting" | "on";
 
-export type Screen = "home" | "servers" | "account" | "settings" | "login" | "admin";
+export type Screen = "home" | "servers" | "account" | "settings" | "split" | "login" | "admin";
 
 export interface ConfigItem {
   id: number;
@@ -20,3 +20,50 @@ export interface ParsedLink {
   host: string;
   name: string;
 }
+
+/* ── Entitlements & anti-fraud ── */
+
+export type PlanId = "p1" | "p3" | "p6";
+
+export interface Entitlement {
+  plan: "free" | PlanId;
+  expiresAt?: number;
+}
+
+export interface Order {
+  id: string;
+  plan: PlanId;
+  price: number;
+  device: string;
+  via: "gateway" | "telegram";
+  at: number;
+  status: "pending" | "approved" | "rejected";
+}
+
+export interface DeviceRecord {
+  id: string;
+  trialUsed: boolean;
+  reinstalls: number;
+  seen: string;
+}
+
+/* ── Split tunneling ── */
+
+export type SplitMode = "exclude" | "include";
+
+export interface SplitApp {
+  id: string;
+  name: string;
+  nameFa: string;
+  color: string;
+  letter: string;
+}
+
+export interface SplitState {
+  mode: SplitMode;
+  apps: string[];
+}
+
+export const PLAN_DAYS: Record<PlanId, number> = { p1: 30, p3: 90, p6: 180 };
+
+export const FREE_QUOTA_GB = 5;
