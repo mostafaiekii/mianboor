@@ -1,15 +1,19 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Hand, Home, Globe, ListPlus, Lock, RotateCcw, User, Eye } from "lucide-react";
+import { Hand, Home, Globe, ListPlus, Lock, RotateCcw, User, Eye, Gauge } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { HomeScreen, ServersScreen, AccountScreen } from "@/components/demo/user-screens";
+import { SettingsScreen } from "@/components/demo/settings-screen";
+import { PlansSheet } from "@/components/demo/plans-sheet";
 import { AdminLogin, AdminPanel } from "@/components/demo/admin-screens";
+import { tr, type Lang } from "@/components/demo/i18n";
 import type { ConfigItem, Screen, VpnState } from "@/components/demo/types";
 
 const HOLD_MS = 5000;
 const DEMO_USER = "admin";
 const DEMO_PASS = "Mianboor@2026";
+const PING_MS = 3000;
 
 const SEED: ConfigItem[] = [
   { id: 1, name: "Netherlands - Amsterdam", country: "nl", protocol: "VLESS", host: "nl1.mianboor.app", ping: 28, premium: false, enabled: true },
@@ -19,6 +23,9 @@ const SEED: ConfigItem[] = [
   { id: 5, name: "Turkey - Istanbul", country: "tr", protocol: "VLESS", host: "tr1.mianboor.app", ping: 58, premium: true, enabled: true },
   { id: 6, name: "USA - New York", country: "us", protocol: "Shadowsocks", host: "us1.mianboor.app", ping: 120, premium: true, enabled: false },
 ];
+
+const seedPings = (): Record<number, number> =>
+  Object.fromEntries(SEED.map((c) => [c.id, c.ping]));
 
 function NavBtn({
   icon: I,
@@ -50,16 +57,54 @@ function NavBtn({
 export default function VpnDemoPage() {
   const [screen, setScreen] = useState<Screen>("home");
   const [configs, setConfigs] = useState<ConfigItem[]>(SEED);
+  const [pings, setPings] = useState<Record<number, number>>(seedPings);
+  const [pingLive, setPingLive] = useState(true);
+  const [lang, setLang] = useState<Lang>("en");
   const [selectedId, setSelectedId] = useState<number | null>(2);
   const [vpn, setVpn] = useState<VpnState>("off");
   const [seconds, setSeconds] = useState(0);
   const [hold, setHold] = useState(0);
   const [pass, setPass] = useState(DEMO_PASS);
   const [unlocked, setUnlocked] = useState(false);
+  const [plans, setPlans] = useState<null | "renew" | "premium-lock">(null);
 
+  const t = tr(lang);
   const holdStart = useRef(0);
   const raf = useRef(0);
   const fired = useRef(false);
+
+  /* ── موتور پینگ زنده: هر ۳ ثانیه دوباره اندازه‌گیری می‌شه ── */
+  useEffect(() => {
+    if (!pingLive) return;
+    const id = setInterval(() => {
+      setPings((prev) => {
+        const next = { ...prev };
+        for (const c of configs) {
+          if (!c.enabled) continue;
+          const jitter = 0.85 + Math.random() * 0.35;
+          const spike = Math.random() < 0.06 ? 1.6 : 1;
+          next[c.id] = Math.max(9, Math.round(c.ping * jitter * spike));
+        }
+        return next;
+      });
+    }, PING_MS);
+    return () => clearInterval(id);
+  }, [pingLive, configs]);
+
+  /* ── کانفیگ‌های تازه‌اضافه‌شده (از پنل مدیر) وارد چرخه پینگ می‌شن ── */
+  useEffect(() => {
+    setPings((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      for (const c of configs) {
+        if (next[c.id] === undefined) {
+          next[c.id] = c.ping;
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [configs]);
 
   useEffect(() => {
     if (vpn !== "on") return;
@@ -74,7 +119,9 @@ export default function VpnDemoPage() {
     }
   }, [configs, selectedId]);
 
-  const server = configs.find((c) => c.id === selectedId) ?? null;
+  /* ── کانفیگ‌های زنده: پینگ لحظه‌ای جای پایه رو می‌گیره ── */
+  const liveConfigs: ConfigItem[] = configs.map((c) => ({ ...c, ping: pings[c.id] ?? c.ping }));
+  const server = liveConfigs.find((c) => c.id === selectedId) ?? null;
 
   const toggleVpn = () => {
     if (vpn === "on" || vpn === "connecting") {
@@ -121,14 +168,17 @@ export default function VpnDemoPage() {
   const reset = () => {
     setScreen("home");
     setConfigs(SEED);
+    setPings(seedPings());
     setSelectedId(2);
     setVpn("off");
     setSeconds(0);
     setPass(DEMO_PASS);
     setUnlocked(false);
+    setPlans(null);
   };
 
   const isAdmin = screen === "login" || screen === "admin";
+  const phoneRtl = lang === "fa" && !isAdmin;
   const steps: { i: LucideIcon; t: React.ReactNode; done: boolean }[] = [
     { i: Hand, t: "روی آیکن Account پایین صفحه ۵ ثانیه انگشتت رو نگه دار", done: isAdmin || unlocked },
     {
@@ -159,6 +209,13 @@ export default function VpnDemoPage() {
           <p className="mt-3 text-base leading-8 text-muted-foreground">
             کاربر عادی هیچ دکمه یا نشونه‌ای نمی‌بینه. فقط تو می‌دونی کجا رو باید نگه داری.
           </p>
+          <div className="mt-4 flex items-start gap-2 rounded-2xl border border-border bg-card p-4 text-sm leading-7 text-muted-foreground">
+            <Gauge className="mt-1 size-4 shrink-0 text-primary" />
+            <span>
+              اپ دوزبانه‌ست (از تنظیمات زبان رو عوض کن)، پینگ‌ها هر ۳ ثانیه زنده به‌روز می‌شن و اتصال هوشمند
+              واقعاً کم‌پینگ‌ترین سرور رو انتخاب می‌کنه. سرورهای پرمیوم قفلن و خرید از طریق تلگرام @member9 انجام می‌شه.
+            </span>
+          </div>
 
           <div className="mt-6 rounded-2xl border border-border bg-card p-4">
             <div className="flex items-center justify-between text-sm">
@@ -229,25 +286,38 @@ export default function VpnDemoPage() {
               <div key={screen} className="screen-in relative flex min-h-0 flex-1 flex-col">
                 {screen === "home" && (
                   <HomeScreen
+                    lang={lang}
                     state={vpn}
                     onToggle={toggleVpn}
                     seconds={seconds}
                     server={server}
                     onPickServer={() => setScreen("servers")}
+                    onOpenSettings={() => setScreen("settings")}
                   />
                 )}
                 {screen === "servers" && (
                   <ServersScreen
-                    configs={configs}
+                    lang={lang}
+                    configs={liveConfigs}
                     selectedId={selectedId}
                     onSelect={(id) => {
                       setSelectedId(id);
                       setScreen("home");
                     }}
+                    onPremiumTap={() => setPlans("premium-lock")}
                     onBack={() => setScreen("home")}
                   />
                 )}
-                {screen === "account" && <AccountScreen />}
+                {screen === "account" && <AccountScreen lang={lang} />}
+                {screen === "settings" && (
+                  <SettingsScreen
+                    lang={lang}
+                    setLang={setLang}
+                    pingLive={pingLive}
+                    setPingLive={setPingLive}
+                    onBack={() => setScreen("home")}
+                  />
+                )}
                 {screen === "login" && (
                   <AdminLogin
                     check={(u, p) => u === DEMO_USER && p === pass}
@@ -271,13 +341,21 @@ export default function VpnDemoPage() {
                 )}
               </div>
 
+              {plans && (
+                <PlansSheet
+                  lang={lang}
+                  reason={plans === "premium-lock" ? "premium-lock" : "renew"}
+                  onClose={() => setPlans(null)}
+                />
+              )}
+
               {!isAdmin && (
-                <nav className="relative mx-3 mb-2 flex rounded-3xl border border-panel-edge bg-panel/80 px-2">
-                  <NavBtn icon={Home} label="Home" active={screen === "home"} onClick={() => setScreen("home")} />
-                  <NavBtn icon={Globe} label="Servers" active={screen === "servers"} onClick={() => setScreen("servers")} />
+                <nav dir="ltr" className="relative mx-3 mb-2 flex rounded-3xl border border-panel-edge bg-panel/80 px-2">
+                  <NavBtn icon={Home} label={t.home} active={screen === "home"} onClick={() => setScreen("home")} />
+                  <NavBtn icon={Globe} label={t.servers} active={screen === "servers"} onClick={() => setScreen("servers")} />
                   <NavBtn
                     icon={User}
-                    label="Account"
+                    label={t.account}
                     active={screen === "account"}
                     onClick={accountClick}
                     onPointerDown={startHold}

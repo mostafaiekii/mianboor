@@ -9,8 +9,10 @@ import {
   ChevronRight,
   Crown,
   GitBranch,
+  Lock,
   Power,
   Search,
+  Send,
   Settings,
   ShieldCheck,
   User,
@@ -19,6 +21,8 @@ import {
 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { Flag } from "./flag";
+import { TG_SUPPORT, tr, type Lang } from "./i18n";
+import { PlansSheet } from "./plans-sheet";
 import type { ConfigItem, VpnState } from "./types";
 
 export function pingTone(p: number): string {
@@ -47,30 +51,80 @@ function fmt(sec: number): string {
   return `${h}:${m}:${s}`;
 }
 
+/** Bilingual brand: big word + the other language underneath. */
+export function Brand({ lang }: { lang: Lang }) {
+  return (
+    <span className="flex flex-col leading-none">
+      {lang === "en" ? (
+        <>
+          <span dir="ltr" className="font-display text-xl font-extrabold tracking-tight text-ink">
+            MIANBOOR
+          </span>
+          <span className="mt-1 text-xs font-medium text-dim">میانبر</span>
+        </>
+      ) : (
+        <>
+          <span className="text-xl font-extrabold text-ink">میانبر</span>
+          <span dir="ltr" className="mt-1 font-display text-xs font-medium text-dim">
+            Mianboor
+          </span>
+        </>
+      )}
+    </span>
+  );
+}
+
 export function HomeScreen({
+  lang,
   state,
   onToggle,
   seconds,
   server,
   onPickServer,
+  onOpenSettings,
 }: {
+  lang: Lang;
   state: VpnState;
   onToggle: () => void;
   seconds: number;
   server: ConfigItem | null;
   onPickServer: () => void;
+  onOpenSettings: () => void;
 }) {
+  const t = tr(lang);
+  const rtl = lang === "fa";
   const on = state === "on";
   const busy = state === "connecting";
-  const label = on ? "Connected" : busy ? "Connecting…" : "Not connected";
+  const label = on ? t.connected : busy ? t.connecting : t.notConnected;
+  const Fwd = rtl ? ChevronLeft : ChevronRight;
+
   return (
-    <div className="flex flex-1 flex-col px-6 pt-2">
+    <div dir={rtl ? "rtl" : "ltr"} className="flex flex-1 flex-col px-6 pt-2">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <ShieldCheck className="size-7 text-glow" />
-          <span className="font-display text-xl font-extrabold tracking-tight text-ink">MIANBOOR</span>
+          <ShieldCheck className="size-7 shrink-0 text-glow" />
+          <Brand lang={lang} />
         </div>
-        <Settings className="size-6 text-dim" />
+        <div className="flex items-center gap-1">
+          <a
+            href={TG_SUPPORT}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label={`${t.support} — @member9`}
+            title={t.support}
+            className="grid size-9 place-items-center rounded-full text-dim hover:text-ink"
+          >
+            <Send className="size-5" />
+          </a>
+          <button
+            type="button"
+            onClick={onOpenSettings}
+            aria-label={t.settings}
+            className="grid size-9 place-items-center rounded-full text-dim hover:text-ink"
+          >
+            <Settings className="size-6" />
+          </button>
+        </div>
       </div>
 
       <div className="relative mt-8 flex h-52 items-center justify-center">
@@ -95,30 +149,30 @@ export function HomeScreen({
 
       <div className="mt-6 text-center">
         <div className={on ? "font-display text-2xl font-bold text-glow" : "font-display text-2xl font-bold text-ink"}>{label}</div>
-        <div className="mt-1 font-display text-base tabular-nums text-dim">{on ? fmt(seconds) : "Tap to protect your connection"}</div>
+        <div className="mt-1 font-display text-base tabular-nums text-dim">{on ? fmt(seconds) : t.tapProtect}</div>
       </div>
 
       <button
         type="button"
         onClick={onPickServer}
-        className="mt-6 flex items-center gap-4 rounded-2xl border border-panel-edge bg-panel p-4 text-left transition-colors hover:border-glow/40"
+        className="mt-6 flex items-center gap-4 rounded-2xl border border-panel-edge bg-panel p-4 text-start transition-colors hover:border-glow/40"
       >
         {server ? <Flag code={server.country} size={40} /> : <span className="size-10 rounded-full bg-ink/10" />}
         <span className="flex-1">
-          <span className="block text-base font-semibold text-ink">{server ? server.name : "No server available"}</span>
+          <span className="block text-base font-semibold text-ink">{server ? server.name : t.noMatch}</span>
           {server && (
             <span className="mt-1 flex items-center gap-2 text-sm text-dim">
-              <Bars ping={server.ping} /> {server.ping} ms
+              <Bars ping={server.ping} /> <span className="tabular-nums">{server.ping} ms</span>
             </span>
           )}
         </span>
-        <ChevronRight className="size-5 text-dim" />
+        <Fwd className="size-5 text-dim" />
       </button>
 
       <div className="mt-3 grid grid-cols-2 gap-3">
         <div className="rounded-2xl border border-panel-edge bg-panel p-4">
           <div className="flex items-center gap-2 text-sm text-dim">
-            <ArrowDown className="size-4 text-glow" /> Download
+            <ArrowDown className="size-4 text-glow" /> {t.download}
           </div>
           <div className="mt-2 font-display text-2xl font-bold text-ink tabular-nums">
             {on ? "48.2" : "0.0"} <span className="text-sm font-medium text-dim">Mbps</span>
@@ -126,7 +180,7 @@ export function HomeScreen({
         </div>
         <div className="rounded-2xl border border-panel-edge bg-panel p-4">
           <div className="flex items-center gap-2 text-sm text-dim">
-            <ArrowUp className="size-4 text-up" /> Upload
+            <ArrowUp className="size-4 text-up" /> {t.upload}
           </div>
           <div className="mt-2 font-display text-2xl font-bold text-ink tabular-nums">
             {on ? "12.6" : "0.0"} <span className="text-sm font-medium text-dim">Mbps</span>
@@ -138,113 +192,160 @@ export function HomeScreen({
 }
 
 export function ServersScreen({
+  lang,
   configs,
   selectedId,
   onSelect,
+  onPremiumTap,
   onBack,
 }: {
+  lang: Lang;
   configs: ConfigItem[];
   selectedId: number | null;
   onSelect: (id: number) => void;
+  onPremiumTap: () => void;
   onBack: () => void;
 }) {
+  const t = tr(lang);
+  const rtl = lang === "fa";
+  const Back = rtl ? ChevronRight : ChevronLeft;
+  const Fwd = rtl ? ChevronLeft : ChevronRight;
   const [q, setQ] = useState("");
   const list = configs.filter((c) => c.enabled && c.name.toLowerCase().includes(q.toLowerCase()));
-  const best = [...configs.filter((c) => c.enabled)].sort((a, b) => a.ping - b.ping)[0];
+  const enabled = configs.filter((c) => c.enabled);
+  const freeEnabled = enabled.filter((c) => !c.premium);
+  // Smart Connect really measures: lowest live ping among unlocked servers.
+  const best = [...(freeEnabled.length ? freeEnabled : enabled)].sort((a, b) => a.ping - b.ping)[0];
+
   return (
-    <div className="flex min-h-0 flex-1 flex-col px-5 pt-2">
+    <div dir={rtl ? "rtl" : "ltr"} className="flex min-h-0 flex-1 flex-col px-5 pt-2">
       <button type="button" onClick={onBack} aria-label="Back" className="w-fit text-dim hover:text-ink">
-        <ChevronLeft className="size-6" />
+        <Back className="size-6" />
       </button>
-      <h2 className="mt-3 font-display text-2xl font-bold text-ink">Select Location</h2>
+      <h2 className="mt-3 font-display text-2xl font-bold text-ink">{t.selectLocation}</h2>
       <label className="mt-4 flex items-center gap-3 rounded-xl border border-panel-edge bg-panel px-4 py-3">
         <Search className="size-4 text-dim" />
         <input
           value={q}
           onChange={(e) => setQ(e.target.value)}
-          placeholder="Search countries…"
-          aria-label="Search countries"
+          placeholder={t.search}
+          aria-label={t.search}
           className="w-full bg-transparent text-sm text-ink outline-none placeholder:text-dim"
         />
       </label>
       <button
         type="button"
         onClick={() => best && onSelect(best.id)}
-        className="mt-3 flex items-center gap-3 rounded-xl border border-glow/30 bg-glow/10 px-4 py-3 text-left"
+        className="mt-3 flex items-center gap-3 rounded-xl border border-glow/30 bg-glow/10 px-4 py-3 text-start"
       >
-        <Zap className="size-5 fill-glow text-glow" />
+        <Zap className="size-5 shrink-0 fill-glow text-glow" />
         <span className="flex-1">
-          <span className="block text-sm font-semibold text-ink">Smart Connect</span>
-          <span className="block text-sm text-dim">Fastest server for you</span>
+          <span className="block text-sm font-semibold text-ink">{t.smart}</span>
+          <span className="block text-sm text-dim">{t.smartSub}</span>
         </span>
-        <ChevronRight className="size-4 text-dim" />
+        <Fwd className="size-4 text-dim" />
       </button>
-      <div className="mt-4 text-sm text-dim">Locations · {list.length}</div>
+      <div className="mt-4 flex items-center gap-2 text-sm text-dim">
+        <span>
+          {t.locations} · {list.length}
+        </span>
+        <span className="flex items-center gap-1.5" title={t.livePing}>
+          <span className="relative flex size-2">
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-glow opacity-60" />
+            <span className="relative inline-flex size-2 rounded-full bg-glow" />
+          </span>
+          {t.livePing}
+        </span>
+      </div>
       <div className="scroll-hide mt-2 flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto pb-3">
         {list.map((c) => {
           const sel = c.id === selectedId;
+          const locked = c.premium;
+          const isBest = best?.id === c.id;
           return (
             <button
               type="button"
               key={c.id}
-              onClick={() => onSelect(c.id)}
+              onClick={() => (locked ? onPremiumTap() : onSelect(c.id))}
+              aria-label={`${c.name}${locked ? " (premium)" : ""}`}
               className={
-                sel
-                  ? "flex items-center gap-3 rounded-xl border border-glow/40 bg-panel px-3 py-3 text-left"
-                  : "flex items-center gap-3 rounded-xl border border-panel-edge bg-panel px-3 py-3 text-left hover:border-ink/20"
+                locked
+                  ? "flex items-center gap-3 rounded-xl border border-panel-edge bg-panel/60 px-3 py-3 text-start opacity-75"
+                  : sel
+                    ? "flex items-center gap-3 rounded-xl border border-glow/40 bg-panel px-3 py-3 text-start"
+                    : "flex items-center gap-3 rounded-xl border border-panel-edge bg-panel px-3 py-3 text-start hover:border-ink/20"
               }
             >
               <Flag code={c.country} size={32} />
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-sm font-semibold text-ink">{c.name}</span>
-                <span className="block text-sm text-dim">{c.protocol}</span>
+                <span className="block truncate text-sm text-dim">
+                  {locked ? t.premiumLockSub : c.protocol}
+                </span>
               </span>
-              <span className={`w-12 text-right text-sm tabular-nums ${pingTone(c.ping)}`}>{c.ping} ms</span>
-              {c.premium ? <Crown className="size-4 fill-gold text-gold" /> : <span className="size-4" />}
-              <span className={sel ? "grid size-5 place-items-center rounded-full bg-glow" : "size-5 rounded-full border-2 border-ink/25"}>
-                {sel && <Check className="size-3.5 text-on-glow" strokeWidth={3} />}
-              </span>
+              <span className={`w-12 shrink-0 text-end text-sm tabular-nums ${pingTone(c.ping)}`}>{c.ping} ms</span>
+              {isBest && !locked && (
+                <span className="shrink-0 rounded-full bg-glow/15 px-1.5 py-0.5 text-[10px] font-bold uppercase text-glow">
+                  {t.best}
+                </span>
+              )}
+              {locked ? (
+                <>
+                  <Crown className="size-4 shrink-0 fill-gold text-gold" />
+                  <Lock className="size-4 shrink-0 text-gold" />
+                </>
+              ) : (
+                <span className={sel ? "grid size-5 shrink-0 place-items-center rounded-full bg-glow" : "size-5 shrink-0 rounded-full border-2 border-ink/25"}>
+                  {sel && <Check className="size-3.5 text-on-glow" strokeWidth={3} />}
+                </span>
+              )}
             </button>
           );
         })}
-        {list.length === 0 && <div className="py-8 text-center text-sm text-dim">No servers match.</div>}
+        {list.length === 0 && <div className="py-8 text-center text-sm text-dim">{t.noMatch}</div>}
       </div>
     </div>
   );
 }
 
-export function AccountScreen() {
+export function AccountScreen({ lang }: { lang: Lang }) {
+  const t = tr(lang);
+  const rtl = lang === "fa";
+  const Fwd = rtl ? ChevronLeft : ChevronRight;
   const [kill, setKill] = useState(true);
   const [auto, setAuto] = useState(true);
+  const [plans, setPlans] = useState(false);
   const used = 18.4;
   const total = 50;
   const r = 44;
   const circ = 2 * Math.PI * r;
   const rows = [
-    { icon: ShieldCheck, t: "Kill Switch", d: "Blocks internet if VPN drops", v: kill, set: setKill },
-    { icon: Wifi, t: "Auto Connect", d: "On unsecured Wi-Fi", v: auto, set: setAuto },
+    { icon: ShieldCheck, t: t.killSwitch, d: t.killSwitchSub, v: kill, set: setKill },
+    { icon: Wifi, t: t.autoConnect, d: t.autoConnectSub, v: auto, set: setAuto },
   ];
+
   return (
-    <div className="scroll-hide flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-5 pt-2 pb-3">
-      <h2 className="font-display text-2xl font-bold text-ink">Account</h2>
+    <div
+      dir={rtl ? "rtl" : "ltr"}
+      className="scroll-hide flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-5 pt-2 pb-3"
+    >
+      <h2 className="font-display text-2xl font-bold text-ink">{t.account}</h2>
       <div className="flex items-center gap-4 rounded-2xl border border-panel-edge bg-panel p-4">
-        <span className="grid size-12 place-items-center rounded-full bg-ink/10">
+        <span className="grid size-12 shrink-0 place-items-center rounded-full bg-ink/10">
           <User className="size-6 text-ink" />
         </span>
         <span className="flex-1">
-          <span className="flex items-center gap-2 text-base font-semibold text-ink">
-            <Crown className="size-4 fill-gold text-gold" /> Premium Plan
-          </span>
-          <span className="block text-sm text-dim">Expires in 23 days</span>
+          <span className="block text-base font-semibold text-ink">{t.planFree}</span>
+          <span className="block text-sm text-dim">{t.planFreeSub}</span>
         </span>
-        <ChevronRight className="size-5 text-dim" />
+        <Fwd className="size-5 shrink-0 text-dim" />
       </div>
       <div className="flex items-center justify-between rounded-2xl border border-panel-edge bg-panel p-4">
         <div>
-          <div className="text-sm text-dim">Data usage</div>
-          <div className="mt-1 text-sm text-dim">Resets Nov 20</div>
+          <div className="text-sm text-dim">{t.dataUsage}</div>
+          <div className="mt-1 text-sm text-dim">{t.resetsOn}</div>
         </div>
-        <svg viewBox="0 0 110 110" className="size-28">
+        <svg viewBox="0 0 110 110" className="size-28 shrink-0">
           <circle cx="55" cy="55" r={r} fill="none" stroke="oklch(1 0 0 / 0.08)" strokeWidth="9" />
           <circle
             cx="55"
@@ -265,27 +366,47 @@ export function AccountScreen() {
           </text>
         </svg>
       </div>
-      {rows.map(({ icon: I, t, d, v, set }) => (
-        <div key={t} className="flex items-center gap-3 rounded-2xl border border-panel-edge bg-panel p-4">
-          <I className="size-5 text-dim" />
+      {rows.map(({ icon: I, t: title, d, v, set }) => (
+        <div key={title} className="flex items-center gap-3 rounded-2xl border border-panel-edge bg-panel p-4">
+          <I className="size-5 shrink-0 text-dim" />
           <span className="flex-1">
-            <span className="block text-sm font-semibold text-ink">{t}</span>
+            <span className="block text-sm font-semibold text-ink">{title}</span>
             <span className="block text-sm text-dim">{d}</span>
           </span>
-          <Switch checked={v} onCheckedChange={set} aria-label={t} />
+          <Switch checked={v} onCheckedChange={set} aria-label={title} />
         </div>
       ))}
       <div className="flex items-center gap-3 rounded-2xl border border-panel-edge bg-panel p-4">
-        <GitBranch className="size-5 text-dim" />
+        <GitBranch className="size-5 shrink-0 text-dim" />
         <span className="flex-1">
-          <span className="block text-sm font-semibold text-ink">Split Tunneling</span>
-          <span className="block text-sm text-dim">Choose apps that use VPN</span>
+          <span className="block text-sm font-semibold text-ink">{t.split}</span>
+          <span className="block text-sm text-dim">{t.splitSub}</span>
         </span>
-        <ChevronRight className="size-5 text-dim" />
+        <Fwd className="size-5 shrink-0 text-dim" />
       </div>
-      <button type="button" className="mt-1 rounded-2xl bg-glow py-3 font-display text-base font-bold text-on-glow">
-        Renew Subscription
+      <a
+        href={TG_SUPPORT}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="flex items-center gap-3 rounded-2xl border border-panel-edge bg-panel p-4 transition-colors hover:border-glow/40"
+      >
+        <Send className="size-5 shrink-0 text-dim" />
+        <span className="flex-1">
+          <span className="block text-sm font-semibold text-ink">{t.support}</span>
+          <span dir="ltr" className="block text-sm text-dim">
+            {t.supportSub}
+          </span>
+        </span>
+        <Fwd className="size-5 shrink-0 text-dim" />
+      </a>
+      <button
+        type="button"
+        onClick={() => setPlans(true)}
+        className="mt-1 rounded-2xl bg-glow py-3 font-display text-base font-bold text-on-glow"
+      >
+        {t.upgrade}
       </button>
+      {plans && <PlansSheet lang={lang} reason="renew" onClose={() => setPlans(false)} />}
     </div>
   );
 }
