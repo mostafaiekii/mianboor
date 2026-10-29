@@ -9,25 +9,24 @@ import android.net.Uri
 import android.net.VpnService
 import android.os.Build
 import android.os.Bundle
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.os.VibratorManager
+import android.provider.Settings
+import android.widget.Toast
 import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
-import androidx.compose.foundation.Canvas
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -37,743 +36,1006 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.AlertDialog
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Surface
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableDoubleStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
-import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.Font
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import com.mianboor.vpn.ui.AccountScreen
+import com.mianboor.vpn.ui.AdminLogin
+import com.mianboor.vpn.ui.AdminPanel
+import com.mianboor.vpn.ui.FREE_QUOTA_GB
+import com.mianboor.vpn.ui.HomeScreen
+import com.mianboor.vpn.ui.InstalledApp
+import com.mianboor.vpn.ui.Lang
+import com.mianboor.vpn.ui.LocalMb
+import com.mianboor.vpn.ui.MbThemes
+import com.mianboor.vpn.ui.PlansSheet
+import com.mianboor.vpn.ui.ServersScreen
+import com.mianboor.vpn.ui.SettingsScreen
+import com.mianboor.vpn.ui.SplitScreen
+import com.mianboor.vpn.ui.TG_SUPPORT
+import com.mianboor.vpn.ui.ThemeName
+import com.mianboor.vpn.ui.Vazir
+import com.mianboor.vpn.ui.consumeClicks
+import com.mianboor.vpn.ui.drawableToBitmap
+import com.mianboor.vpn.ui.stringsOf
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import java.util.Locale
+import java.security.MessageDigest
 
-// ---------------------------------------------------------------------------
-// Palette & type
-// ---------------------------------------------------------------------------
+enum class Screen { HOME, SERVERS, ACCOUNT, SETTINGS, SPLIT, LOGIN, ADMIN }
 
-private val Neon = Color(0xFF33F0B7)
-private val NeonSoft = Color(0xFF6EF9D9)
-private val BgColor = Color(0xFF04090B)
-private val PanelColor = Color(0xFF0B161A)
-private val PanelStroke = Color(0x2433F0B7)
-private val TextMain = Color(0xFFE9FFF7)
-private val TextDim = Color(0xFF87AFA4)
-private val ErrorRed = Color(0xFFFF6B8B)
+data class Entitlement(val plan: String, val expiresAt: Long)
 
-private val Vazir = FontFamily(
-    Font(R.font.vazirmatn_regular, FontWeight.Normal),
-    Font(R.font.vazirmatn_bold, FontWeight.Bold)
-)
-
-private val FA_DIGITS = charArrayOf('۰', '۱', '۲', '۳', '۴', '۵', '۶', '۷', '۸', '۹')
-
-private fun faDigits(s: String): String = buildString {
-    for (c in s) append(if (c.isDigit()) FA_DIGITS[c - '0'] else c)
-}
-
-private fun faNum(n: Long): String = faDigits(n.toString())
-private fun faNum(n: Int): String = faDigits(n.toString())
-
-private fun fmtSpeed(mbps: Double): String {
-    val s = if (mbps >= 100) String.format(Locale.US, "%.0f", mbps)
-    else String.format(Locale.US, "%.1f", mbps)
-    return faDigits(s)
-}
+private const val HOLD_MS = 5000L
+private const val PING_INTERVAL_MS = 3000L
 
 class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContent {
-            MaterialTheme(
-                colorScheme = MaterialTheme.colorScheme.copy(
-                    background = BgColor,
-                    surface = PanelColor,
-                    primary = Neon,
-                    onPrimary = BgColor,
-                    onBackground = TextMain,
-                    onSurface = TextMain
-                ),
-                typography = MaterialTheme.typography.copy(
-                    displayLarge = TextStyle(fontFamily = Vazir),
-                    displayMedium = TextStyle(fontFamily = Vazir),
-                    displaySmall = TextStyle(fontFamily = Vazir),
-                    headlineLarge = TextStyle(fontFamily = Vazir),
-                    headlineMedium = TextStyle(fontFamily = Vazir),
-                    headlineSmall = TextStyle(fontFamily = Vazir),
-                    titleLarge = TextStyle(fontFamily = Vazir),
-                    titleMedium = TextStyle(fontFamily = Vazir),
-                    titleSmall = TextStyle(fontFamily = Vazir),
-                    bodyLarge = TextStyle(fontFamily = Vazir),
-                    bodyMedium = TextStyle(fontFamily = Vazir),
-                    bodySmall = TextStyle(fontFamily = Vazir),
-                    labelLarge = TextStyle(fontFamily = Vazir),
-                    labelMedium = TextStyle(fontFamily = Vazir),
-                    labelSmall = TextStyle(fontFamily = Vazir)
-                )
-            ) {
-                androidx.compose.runtime.CompositionLocalProvider(
-                    LocalLayoutDirection provides LayoutDirection.Rtl
-                ) {
-                    Surface(modifier = Modifier.fillMaxSize(), color = BgColor) {
-                        MainScreen()
-                    }
-                }
-            }
+        setContent { MbApp() }
+    }
+}
+
+fun vibrateTick(context: Context) {
+    runCatching {
+        val v: Vibrator = if (Build.VERSION.SDK_INT >= 31) {
+            (context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as VibratorManager).defaultVibrator
+        } else {
+            @Suppress("DEPRECATION")
+            context.getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
+        }
+        v.vibrate(VibrationEffect.createOneShot(60, VibrationEffect.DEFAULT_AMPLITUDE))
+    }
+}
+
+private fun computeDeviceId(context: Context): String {
+    val raw = Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID) ?: "mianboor"
+    val digest = runCatching {
+        MessageDigest.getInstance("MD5").digest(raw.toByteArray())
+            .joinToString("") { String.format("%02X", it) }
+    }.getOrDefault(raw.uppercase().padEnd(8, '0').take(8))
+    return "MB-${digest.take(4)}-${digest.substring(4, 8)}"
+}
+
+@Composable
+fun MbApp() {
+    val context = LocalContext.current
+
+    var lang by remember { mutableStateOf(if (AppPrefs.lang(context) == "fa") Lang.FA else Lang.EN) }
+    var themeName by remember {
+        mutableStateOf(runCatching { ThemeName.valueOf(AppPrefs.theme(context)) }.getOrDefault(ThemeName.MIDNIGHT))
+    }
+    val mb = MbThemes.of(themeName)
+
+    CompositionLocalProvider(
+        LocalMb provides mb,
+        LocalTextStyle provides LocalTextStyle.current.copy(fontFamily = Vazir),
+    ) {
+        CompositionLocalProvider(
+            LocalLayoutDirection provides if (lang == Lang.FA) LayoutDirection.Rtl else LayoutDirection.Ltr,
+        ) {
+            MbAppInner(lang, themeName, onLang = { l ->
+                lang = l
+                AppPrefs.setLang(context, if (l == Lang.FA) "fa" else "en")
+            }, onTheme = { th ->
+                themeName = th
+                AppPrefs.setTheme(context, th.name)
+            })
         }
     }
 }
 
-// ---------------------------------------------------------------------------
-// Main screen
-// ---------------------------------------------------------------------------
-
-private class SetupRequired : Exception()
-
 @Composable
-fun MainScreen() {
+private fun MbAppInner(
+    lang: Lang,
+    themeName: ThemeName,
+    onLang: (Lang) -> Unit,
+    onTheme: (ThemeName) -> Unit,
+) {
     val context = LocalContext.current
-    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    val scope = rememberCoroutineScope()
+    val mb = LocalMb.current
+    val t = stringsOf(lang)
+    val rtl = lang == Lang.FA
+    val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
 
+    // ── vpn engine state ──
     val phase by VpnState.phase.collectAsState()
     val coverMsg by VpnState.coverMsg.collectAsState()
-    val serverName by VpnState.serverName.collectAsState()
-    val serverCountry by VpnState.serverCountry.collectAsState()
     val errorMessage by VpnState.errorMessage.collectAsState()
     val rxBytes by VpnState.rxBytes.collectAsState()
     val txBytes by VpnState.txBytes.collectAsState()
 
-    var showAdmin by remember { mutableStateOf(false) }
-    var configured by remember { mutableStateOf(AppPrefs.isConfigured(context)) }
-    var pendingServer by remember { mutableStateOf<ParsedServer?>(null) }
-
-    // connection timer
+    // ── ui state ──
+    var screen by remember { mutableStateOf(Screen.HOME) }
+    var configs by remember { mutableStateOf<List<ConfigItem>>(emptyList()) }
+    val pings = remember { mutableStateMapOf<String, Int>() }
+    var selectedKey by remember { mutableStateOf(AppPrefs.selectedKey(context)) }
     var seconds by remember { mutableIntStateOf(0) }
+    var downMbps by remember { mutableDoubleStateOf(0.0) }
+    var upMbps by remember { mutableDoubleStateOf(0.0) }
+
+    var entitlement by remember {
+        mutableStateOf(Entitlement(AppPrefs.plan(context), AppPrefs.planExpiresAt(context)))
+    }
+    var orders by remember { mutableStateOf(AppPrefs.orders(context)) }
+    var usedGb by remember { mutableDoubleStateOf(AppPrefs.usageBytes(context) / 1e9) }
+    var trialUsed by remember { mutableStateOf(AppPrefs.trialUsed(context)) }
+    var reinstalls by remember { mutableIntStateOf(AppPrefs.reinstalls(context)) }
+    var deviceId by remember { mutableStateOf(AppPrefs.deviceId(context)) }
+
+    var splitMode by remember { mutableStateOf(AppPrefs.splitMode(context)) }
+    var splitApps by remember { mutableStateOf(AppPrefs.splitApps(context)) }
+    var killSwitch by remember { mutableStateOf(AppPrefs.killSwitch(context)) }
+    var autoConnect by remember { mutableStateOf(AppPrefs.autoConnect(context)) }
+    var pingLive by remember { mutableStateOf(AppPrefs.pingLive(context)) }
+
+    var installedApps by remember { mutableStateOf<List<InstalledApp>>(emptyList()) }
+
+    var adminUnlocked by remember { mutableStateOf(false) }
+    var adminPass by remember { mutableStateOf(AppPrefs.adminPass(context)) }
+    var premiumOv by remember { mutableStateOf(AppPrefs.premiumOv(context)) }
+    var disabledOv by remember { mutableStateOf(AppPrefs.stringSet(context, "disabled_ov")) }
+    var hiddenOv by remember { mutableStateOf(AppPrefs.stringSet(context, "hidden_ov")) }
+    var blockRoot by remember { mutableStateOf(true) }
+
+    var plansReason by remember { mutableStateOf<String?>(null) }
+    var showSetup by remember { mutableStateOf(false) }
+    var toastMsg by remember { mutableStateOf<String?>(null) }
+    var toastKey by remember { mutableLongStateOf(0L) }
+
+    val premium = entitlement.plan != "free" && entitlement.expiresAt > System.currentTimeMillis()
+    val trialLocked = trialUsed || (!premium && usedGb >= FREE_QUOTA_GB)
+
+    fun toast(msg: String) {
+        toastMsg = msg
+        toastKey = System.currentTimeMillis()
+    }
+
+    LaunchedEffect(toastKey) {
+        if (toastKey > 0) {
+            delay(2800)
+            toastMsg = null
+        }
+    }
+
+    // ── config merging ──
+    fun rebuildConfigs() {
+        val cached = AppPrefs.serverCache(context)
+        val locals = AppPrefs.localConfigs(context)
+        val list = buildList {
+            cached.forEach { cc ->
+                val parsed = XrayConfigBuilder.parseLink(cc.link, cc.name, cc.country) ?: return@forEach
+                val key = "srv:${cc.id}"
+                if (key in hiddenOv) return@forEach
+                add(
+                    ConfigItem(
+                        key = key, name = cc.name, country = cc.country,
+                        protocol = parsed.protocol, host = parsed.host, port = parsed.port,
+                        ping = 90, premium = cc.premium || premiumOv[key] == true,
+                        enabled = key !in disabledOv, link = cc.link, local = false,
+                    ),
+                )
+            }
+            locals.forEach { lc ->
+                val parsed = XrayConfigBuilder.parseLink(lc.link, lc.name, lc.country) ?: return@forEach
+                val key = "loc:${lc.id}"
+                add(
+                    ConfigItem(
+                        key = key, name = lc.name, country = lc.country,
+                        protocol = parsed.protocol, host = parsed.host, port = parsed.port,
+                        ping = 90, premium = lc.premium || premiumOv[key] == true,
+                        enabled = lc.enabled, link = lc.link, local = true,
+                    ),
+                )
+            }
+        }
+        configs = list
+    }
+
+    val liveConfigs = configs.map { it.copy(ping = pings[it.key] ?: it.ping) }
+    val enabledConfigs = liveConfigs.filter { it.enabled }
+    val freeEnabled = enabledConfigs.filter { !it.premium }
+    val smartPool = if (premium || freeEnabled.isEmpty()) enabledConfigs else freeEnabled
+    val bestConfig = smartPool.minByOrNull { it.ping }
+    val selectedConfig = enabledConfigs.find { it.key == selectedKey } ?: bestConfig
+
+    // fallback when the selection disappears
+    LaunchedEffect(enabledConfigs) {
+        if (enabledConfigs.isNotEmpty() && enabledConfigs.none { it.key == selectedKey }) {
+            selectedKey = bestConfig?.key
+            AppPrefs.setSelectedKey(context, bestConfig?.key)
+        }
+    }
+
+    // ── init: device id, cached configs, fresh fetch, installed apps ──
+    LaunchedEffect(Unit) {
+        if (deviceId.isBlank()) {
+            deviceId = computeDeviceId(context)
+            AppPrefs.setDeviceId(context, deviceId)
+        }
+        rebuildConfigs()
+        launch(Dispatchers.IO) {
+            // refresh installed apps for split tunneling
+            val pm = context.packageManager
+            val intent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+            val apps = runCatching {
+                pm.queryIntentActivities(intent, 0)
+                    .mapNotNull { ri ->
+                        val pkg = ri.activityInfo.packageName
+                        if (pkg == context.packageName) return@mapNotNull null
+                        InstalledApp(
+                            pkg = pkg,
+                            label = ri.loadLabel(pm).toString(),
+                            icon = drawableToBitmap(runCatching { ri.loadIcon(pm) }.getOrNull()),
+                        )
+                    }
+                    .sortedBy { it.label.lowercase() }
+            }.getOrDefault(emptyList())
+            installedApps = apps
+        }
+        launch(Dispatchers.IO) {
+            if (!AppPrefs.isConfigured(context)) return@launch
+            runCatching {
+                val remote = MianboorApi.fetchConfigs(AppPrefs.serverUrl(context), AppPrefs.clientToken(context))
+                AppPrefs.setServerCache(
+                    context,
+                    remote.map { AppPrefs.CachedConfig(it.id, it.name, it.country, it.link, it.premium) },
+                )
+                scope.launch { rebuildConfigs() }
+            }
+        }
+    }
+
+    // ── live ping engine: re-measure every 3s, one socket pool, no interference ──
+    val configsForPing by rememberUpdatedState(configs)
+    LaunchedEffect(pingLive) {
+        if (!pingLive) return@LaunchedEffect
+        while (true) {
+            val targets = configsForPing.filter { it.enabled }
+            if (targets.isNotEmpty()) {
+                val results = coroutineScope {
+                    targets.map { c ->
+                        async(Dispatchers.IO) {
+                            val ms = ServerTester.ping(c.host, c.port)
+                            c.key to (ms?.toInt() ?: 999)
+                        }
+                    }.awaitAll()
+                }
+                pings.putAll(results.toMap())
+            }
+            delay(PING_INTERVAL_MS)
+        }
+    }
+
+    // ── connection timer ──
     LaunchedEffect(phase) {
         if (phase == Phase.CONNECTED) {
             seconds = 0
             while (true) {
-                kotlinx.coroutines.delay(1000)
+                delay(1000)
                 seconds++
             }
         }
     }
 
-    // live speeds from cumulative tunnel counters
+    // ── live speeds + monthly usage accounting ──
     var lastRx by remember { mutableLongStateOf(0L) }
     var lastTx by remember { mutableLongStateOf(0L) }
-    var downMbps by remember { mutableStateOf(0.0) }
-    var upMbps by remember { mutableStateOf(0.0) }
+    var tick by remember { mutableIntStateOf(0) }
     LaunchedEffect(phase) {
         if (phase == Phase.CONNECTED) {
-            lastRx = 0L; lastTx = 0L
+            lastRx = 0L; lastTx = 0L; tick = 0
+            var pendingBytes = 0L
             while (true) {
-                kotlinx.coroutines.delay(1000)
-                val drx = rxBytes - lastRx
-                val dtx = txBytes - lastTx
+                delay(1000)
+                val drx = (rxBytes - lastRx).coerceAtLeast(0L)
+                val dtx = (txBytes - lastTx).coerceAtLeast(0L)
                 if (lastRx > 0L || lastTx > 0L) {
-                    downMbps = drx.coerceAtLeast(0L) * 8.0 / 1_000_000.0
-                    upMbps = dtx.coerceAtLeast(0L) * 8.0 / 1_000_000.0
+                    downMbps = drx * 8.0 / 1_000_000.0
+                    upMbps = dtx * 8.0 / 1_000_000.0
+                    if (!premium) pendingBytes += drx + dtx
                 }
                 lastRx = rxBytes; lastTx = txBytes
+                tick++
+                if (tick % 5 == 0 && pendingBytes > 0) {
+                    AppPrefs.addUsage(context, pendingBytes)
+                    usedGb = AppPrefs.usageBytes(context) / 1e9
+                    pendingBytes = 0
+                    if (!premium && usedGb >= FREE_QUOTA_GB && !trialUsed) {
+                        trialUsed = true
+                        AppPrefs.setTrialUsed(context, true)
+                    }
+                }
             }
         }
     }
 
-    // cover messages while busy
-    LaunchedEffect(phase) {
+    // ── rotating cover messages while busy ──
+    LaunchedEffect(phase, lang) {
         while (phase == Phase.SCANNING || phase == Phase.CONNECTING) {
             VpnState.coverMsg.value =
-                (if (phase == Phase.SCANNING) SCAN_MSGS else CONNECT_MSGS).random()
-            kotlinx.coroutines.delay(1400)
+                (if (phase == Phase.SCANNING) t.scanningMsgs else t.connectingMsgs).random()
+            delay(1400)
         }
     }
 
-    fun launchVpn(server: ParsedServer) {
+    // ── vpn start/stop ──
+    var pendingTarget by remember { mutableStateOf<ConfigItem?>(null) }
+
+    fun launchVpn(server: ConfigItem) {
         val intent = Intent(context, MianboorVpnService::class.java)
             .setAction(MianboorVpnService.ACTION_CONNECT)
-            .putExtra(MianboorVpnService.EXTRA_LINK, server.rawLink)
+            .putExtra(MianboorVpnService.EXTRA_LINK, server.link)
             .putExtra(MianboorVpnService.EXTRA_NAME, server.name)
             .putExtra(MianboorVpnService.EXTRA_COUNTRY, server.country)
+        VpnState.reset()
         VpnState.phase.value = Phase.CONNECTING
         ContextCompat.startForegroundService(context, intent)
     }
 
     val vpnPermission = rememberLauncherForActivityResult(
-        ActivityResultContracts.StartActivityForResult()
+        ActivityResultContracts.StartActivityForResult(),
     ) { result ->
-        val server = pendingServer
-        pendingServer = null
+        val server = pendingTarget
+        pendingTarget = null
         if (result.resultCode == Activity.RESULT_OK && server != null) {
             launchVpn(server)
         } else {
             VpnState.phase.value = Phase.IDLE
-            VpnState.errorMessage.value = "اجازه اتصال VPN داده نشد"
+            VpnState.errorMessage.value = t.errPermission
         }
     }
 
-    val notifPermission = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { }
+    val notifPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {}
 
     fun requestNotificationsIfNeeded() {
         if (Build.VERSION.SDK_INT >= 33 &&
-            ContextCompat.checkSelfPermission(
-                context, Manifest.permission.POST_NOTIFICATIONS
-            ) != PackageManager.PERMISSION_GRANTED
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) !=
+            PackageManager.PERMISSION_GRANTED
         ) {
             notifPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
     }
 
-    fun startConnect() {
+    fun powerTap() {
+        when (phase) {
+            Phase.CONNECTED -> {
+                VpnState.phase.value = Phase.DISCONNECTING
+                context.startService(
+                    Intent(context, MianboorVpnService::class.java)
+                        .setAction(MianboorVpnService.ACTION_DISCONNECT),
+                )
+                seconds = 0
+                return
+            }
+            Phase.CONNECTING, Phase.SCANNING, Phase.DISCONNECTING -> return
+            else -> Unit
+        }
         requestNotificationsIfNeeded()
-        scope.launch(kotlinx.coroutines.Dispatchers.Main) {
-            VpnState.reset()
-            VpnState.phase.value = Phase.SCANNING
-            try {
-                if (!AppPrefs.isConfigured(context)) throw SetupRequired()
-                val cfgs = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                    MianboorApi.fetchConfigs(
-                        AppPrefs.serverUrl(context),
-                        AppPrefs.clientToken(context)
-                    )
-                }
-                val parsed = cfgs.mapNotNull {
-                    XrayConfigBuilder.parseLink(it.link, it.name, it.country)
-                }
-                if (parsed.isEmpty()) throw IllegalStateException("هیچ کانفیگ فعالی موجود نیست")
-
-                val best = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                    ServerTester.testAll(parsed)
-                } ?: throw IllegalStateException("هیچ سروری در دسترس نیست؛ اینترنتت رو بررسی کن")
-
-                VpnState.serverName.value = best.name
-                VpnState.serverCountry.value = best.country
-
-                val prepare = VpnService.prepare(context)
-                if (prepare != null) {
-                    pendingServer = best
-                    vpnPermission.launch(prepare)
-                } else {
-                    launchVpn(best)
-                }
-            } catch (e: SetupRequired) {
-                VpnState.phase.value = Phase.IDLE
-                VpnState.errorMessage.value = "اول تنظیمات سرور میانبر رو وارد کن"
-                showAdmin = true
-            } catch (e: Exception) {
-                VpnState.phase.value = Phase.IDLE
-                VpnState.errorMessage.value = when (e) {
-                    is IllegalStateException -> e.message ?: "اتصال برقرار نشد"
-                    is java.net.UnknownHostException -> "سرور میانبر پیدا نشد؛ آدرس رو بررسی کن"
-                    is java.io.IOException -> "ارتباط با سرور ممکن نشد؛ اینترنتت رو بررسی کن"
-                    else -> "اتصال برقرار نشد؛ یک بار دیگه امتحان کن"
-                }
-            }
+        if (!AppPrefs.isConfigured(context)) {
+            showSetup = true
+            return
+        }
+        if (!premium && trialLocked) {
+            plansReason = "trial-over"
+            toast(t.trialOverUpsell)
+            return
+        }
+        val target = selectedConfig ?: bestConfig
+        if (target == null) {
+            toast(t.noServers)
+            return
+        }
+        // if the selected server looks dead, quietly fall back to the fastest one
+        val chosen = if ((pings[target.key] ?: target.ping) >= 900) bestConfig ?: target else target
+        selectedKey = chosen.key
+        AppPrefs.setSelectedKey(context, chosen.key)
+        val prepare = VpnService.prepare(context)
+        if (prepare != null) {
+            pendingTarget = chosen
+            vpnPermission.launch(prepare)
+        } else {
+            launchVpn(chosen)
         }
     }
 
-    fun stopConnect() {
-        VpnState.phase.value = Phase.DISCONNECTING
-        context.startService(
-            Intent(context, MianboorVpnService::class.java)
-                .setAction(MianboorVpnService.ACTION_DISCONNECT)
-        )
+    // ── orders & entitlement ──
+    fun createOrder(plan: String, via: String): String {
+        val id = "MB-" + (1000..9999).random()
+        val price = when (plan) { "p1" -> 200_000L; "p3" -> 400_000L; else -> 700_000L }
+        val order = Order(id, plan, price, deviceId, via, System.currentTimeMillis(), "pending")
+        orders = listOf(order) + orders
+        AppPrefs.setOrders(context, orders)
+        toast(t.orderPlacedToast)
+        return id
     }
 
-    // --- admin trigger (5 taps in 4s or 1.2s long-press on the version) ---
-    var tapCount by remember { mutableIntStateOf(0) }
-    var windowStart by remember { mutableLongStateOf(0L) }
-    fun onTapVersion() {
-        val now = System.currentTimeMillis()
-        if (now - windowStart > 4000) {
-            windowStart = now
-            tapCount = 0
-        }
-        tapCount++
-        if (tapCount >= 5) {
-            tapCount = 0
-            showAdmin = true
-        }
+    fun approveOrder(id: String) {
+        val o = orders.find { it.id == id } ?: return
+        orders = orders.map { if (it.id == id) it.copy(status = "approved") else it }
+        AppPrefs.setOrders(context, orders)
+        val days = when (o.plan) { "p1" -> 30; "p3" -> 90; else -> 180 }
+        entitlement = Entitlement(o.plan, System.currentTimeMillis() + days * 86_400_000L)
+        AppPrefs.setPlan(context, o.plan, entitlement.expiresAt)
+        toast(t.orderApprovedToast)
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(BgColor)
-            .systemBarsPadding()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 20.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        // ---------------- header ----------------
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .statusBarsPadding()
-                .padding(top = 8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(
-                painter = painterResource(R.drawable.ic_power),
-                contentDescription = null,
-                tint = Neon,
-                modifier = Modifier.size(26.dp)
-            )
-            Spacer(Modifier.width(8.dp))
-            Text("میانبر", color = TextMain, fontSize = 22.sp, fontWeight = FontWeight.Bold)
-            Spacer(Modifier.weight(1f))
-            IconButton(onClick = {
-                runCatching {
-                    context.startActivity(
-                        Intent(Intent.ACTION_VIEW, Uri.parse("https://t.me/member9"))
-                    )
-                }
-            }) {
-                Text("پشتیبانی", color = TextDim, fontSize = 13.sp)
+    fun rejectOrder(id: String) {
+        orders = orders.map { if (it.id == id) it.copy(status = "rejected") else it }
+        AppPrefs.setOrders(context, orders)
+        toast(t.orderRejectedToast)
+    }
+
+    // ── split tunneling actions ──
+    fun setSplitMode(mode: String) {
+        splitMode = mode
+        AppPrefs.setSplitMode(context, mode)
+    }
+
+    fun toggleSplitApp(pkg: String) {
+        val next = if (pkg in splitApps) splitApps - pkg else splitApps + pkg
+        splitApps = next
+        AppPrefs.setSplitApps(context, next)
+    }
+
+    fun clearSplit() {
+        splitApps = emptyList()
+        AppPrefs.setSplitApps(context, emptyList())
+    }
+
+    // ── admin actions ──
+    fun toggleConfig(key: String, v: Boolean) {
+        if (key.startsWith("srv:")) {
+            disabledOv = if (v) disabledOv - key else disabledOv + key
+            AppPrefs.setStringSet(context, "disabled_ov", disabledOv)
+        } else {
+            val locals = AppPrefs.localConfigs(context).map {
+                if ("loc:${it.id}" == key) it.copy(enabled = v) else it
             }
+            AppPrefs.setLocalConfigs(context, locals)
         }
+        rebuildConfigs()
+    }
 
-        Spacer(Modifier.height(6.dp))
-
-        // ---------------- power button ----------------
-        PowerButton(
-            phase = phase,
-            onTap = {
-                when (phase) {
-                    Phase.IDLE -> startConnect()
-                    Phase.CONNECTED -> stopConnect()
-                    else -> Unit
-                }
-            }
-        )
-
-        Spacer(Modifier.height(18.dp))
-
-        // ---------------- status ----------------
-        val (title, subtitle) = when (phase) {
-            Phase.IDLE -> "متصل نیستی" to "برای شروع، دکمه رو بزن"
-            Phase.SCANNING -> "در حال آماده‌سازی…" to "چند لحظه صبر کن"
-            Phase.CONNECTING -> "در حال اتصال…" to ""
-            Phase.CONNECTED -> "متصل شدی!" to ""
-            Phase.DISCONNECTING -> "در حال قطع اتصال…" to ""
-        }
-        Text(
-            title,
-            color = if (phase == Phase.CONNECTED) Neon else TextMain,
-            fontSize = 24.sp,
-            fontWeight = FontWeight.Bold,
-            textAlign = TextAlign.Center
-        )
-        if (subtitle.isNotEmpty()) {
-            Spacer(Modifier.height(4.dp))
-            Text(subtitle, color = TextDim, fontSize = 14.sp, textAlign = TextAlign.Center)
-        }
-
-        AnimatedVisibility(
-            visible = phase == Phase.CONNECTED,
-            enter = fadeIn() + slideInVertically { it / 2 },
-            exit = fadeOut() + slideOutVertically { it / 2 }
-        ) {
-            Row(
-                modifier = Modifier
-                    .padding(top = 10.dp)
-                    .background(PanelColor, RoundedCornerShape(50))
-                    .border(1.dp, PanelStroke, RoundedCornerShape(50))
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Box(
-                    Modifier
-                        .size(8.dp)
-                        .background(Neon, CircleShape)
-                )
-                Spacer(Modifier.width(8.dp))
-                Text(
-                    "سریع‌ترین مسیر: $serverName ($serverCountry)",
-                    color = TextMain,
-                    fontSize = 13.sp
-                )
-            }
-        }
-
-        // ---------------- cover message / error ----------------
-        Spacer(Modifier.height(14.dp))
-        AnimatedVisibility(
-            visible = (phase == Phase.SCANNING || phase == Phase.CONNECTING) && coverMsg.isNotBlank(),
-            enter = fadeIn(),
-            exit = fadeOut()
-        ) {
-            Text(
-                coverMsg,
-                color = TextDim,
-                fontSize = 14.sp,
-                textAlign = TextAlign.Center
+    fun deleteConfig(key: String) {
+        if (key.startsWith("srv:")) {
+            hiddenOv = hiddenOv + key
+            AppPrefs.setStringSet(context, "hidden_ov", hiddenOv)
+        } else {
+            AppPrefs.setLocalConfigs(
+                context,
+                AppPrefs.localConfigs(context).filter { "loc:${it.id}" != key },
             )
         }
-        AnimatedVisibility(visible = errorMessage != null, enter = fadeIn(), exit = fadeOut()) {
-            Text(
-                errorMessage ?: "",
-                color = ErrorRed,
-                fontSize = 14.sp,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.padding(horizontal = 8.dp)
-            )
-        }
-
-        // ---------------- setup hint ----------------
-        if (!configured) {
-            Spacer(Modifier.height(16.dp))
-            Surface(
-                shape = RoundedCornerShape(16.dp),
-                color = PanelColor,
-                border = androidx.compose.foundation.BorderStroke(1.dp, PanelStroke)
-            ) {
-                Column(
-                    Modifier.padding(16.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Text("راه‌اندازی اولیه", color = TextMain, fontWeight = FontWeight.Bold)
-                    Spacer(Modifier.height(6.dp))
-                    Text(
-                        "برای اتصال به سرور میانبر، آدرس سرور و توکن رو یک بار وارد کن.",
-                        color = TextDim,
-                        fontSize = 13.sp,
-                        textAlign = TextAlign.Center
-                    )
-                    TextButton(onClick = { showAdmin = true }) {
-                        Text("ورود تنظیمات", color = Neon)
-                    }
-                }
-            }
-        }
-
-        // ---------------- stats ----------------
-        Spacer(Modifier.height(18.dp))
-        AnimatedVisibility(
-            visible = phase == Phase.CONNECTED,
-            enter = fadeIn() + slideInVertically { it },
-            exit = fadeOut() + slideOutVertically { it }
-        ) {
-            StatsPanel(seconds, downMbps, upMbps)
-        }
-
-        Spacer(Modifier.weight(1f))
-
-        // ---------------- footer (admin trigger) ----------------
-        Text(
-            "Mianboor v1.0.0",
-            color = TextDim.copy(alpha = 0.7f),
-            fontSize = 12.sp,
-            modifier = Modifier
-                .padding(vertical = 14.dp)
-                .pointerInput(Unit) {
-                    detectTapGestures(
-                        onTap = { onTapVersion() },
-                        onLongPress = { showAdmin = true }
-                    )
-                }
-        )
+        rebuildConfigs()
     }
 
-    if (showAdmin) {
-        AdminDialog(
-            initialUrl = AppPrefs.serverUrl(context),
-            initialToken = AppPrefs.clientToken(context),
-            onDismiss = { showAdmin = false },
-            onSave = { url, token ->
-                AppPrefs.save(context, url, token)
-                configured = AppPrefs.isConfigured(context)
-                showAdmin = false
-            }
-        )
+    fun togglePremium(key: String) {
+        val cur = premiumOv[key] == true
+        premiumOv = premiumOv + (key to !cur)
+        AppPrefs.setPremiumOv(context, premiumOv)
+        rebuildConfigs()
     }
-}
 
-// ---------------------------------------------------------------------------
-// Power button
-// ---------------------------------------------------------------------------
+    fun addConfig(name: String, country: String, link: String, prem: Boolean) {
+        AppPrefs.addLocalConfig(context, name, country, link, prem)
+        rebuildConfigs()
+    }
 
-@Composable
-private fun PowerButton(phase: Phase, onTap: () -> Unit) {
-    val busy = phase == Phase.SCANNING || phase == Phase.CONNECTING || phase == Phase.DISCONNECTING
-    val connected = phase == Phase.CONNECTED
-    val glowColor = if (connected || busy) Neon else TextDim.copy(alpha = 0.35f)
+    // ── reinstall simulation (anti-fraud) ──
+    fun reinstallSim() {
+        trialUsed = true
+        reinstalls += 1
+        AppPrefs.setTrialUsed(context, true)
+        AppPrefs.setReinstalls(context, reinstalls)
+        AppPrefs.resetUsage(context)
+        usedGb = FREE_QUOTA_GB.toDouble()
+        VpnState.phase.value = Phase.IDLE
+        plansReason = null
+        adminUnlocked = false
+        screen = Screen.HOME
+        entitlement = Entitlement("free", 0)
+        AppPrefs.setPlan(context, "free", 0)
+        orders = emptyList()
+        AppPrefs.setOrders(context, emptyList())
+        toast(t.reinstallDoneToast)
+    }
 
-    val pulse = rememberInfiniteTransition(label = "pulse")
-    val ringScale by pulse.animateFloat(
-        0.94f, 1.10f,
-        infiniteRepeatable(tween(1700, easing = FastOutSlowInEasing), RepeatMode.Restart),
-        label = "ringScale"
-    )
-    val ringAlpha by pulse.animateFloat(
-        0.5f, 0.0f,
-        infiniteRepeatable(tween(1700, easing = FastOutSlowInEasing), RepeatMode.Restart),
-        label = "ringAlpha"
-    )
-    val spin = rememberInfiniteTransition(label = "spin")
-    val angle by spin.animateFloat(
-        0f, 360f,
-        infiniteRepeatable(tween(2600, easing = LinearEasing), RepeatMode.Restart),
-        label = "angle"
-    )
+    fun openTelegram() {
+        runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(TG_SUPPORT))) }
+    }
+
+    fun copyDeviceId() {
+        clipboard.setText(AnnotatedString(deviceId))
+        toast(t.copied)
+    }
+
+    // ── back handling ──
+    BackHandler(enabled = screen in setOf(Screen.SERVERS, Screen.SETTINGS, Screen.SPLIT, Screen.LOGIN, Screen.ACCOUNT)) {
+        screen = when (screen) {
+            Screen.SERVERS, Screen.SETTINGS -> Screen.HOME
+            Screen.SPLIT -> Screen.ACCOUNT
+            Screen.LOGIN -> Screen.ACCOUNT
+            else -> Screen.HOME
+        }
+    }
+    BackHandler(enabled = screen == Screen.ADMIN) {
+        adminUnlocked = false
+        screen = Screen.ACCOUNT
+    }
+
+    val uiState = when (phase) {
+        Phase.CONNECTED -> "on"
+        Phase.CONNECTING, Phase.SCANNING -> "connecting"
+        else -> "off"
+    }
+
+    val isAdmin = screen == Screen.LOGIN || screen == Screen.ADMIN
 
     Box(
-        modifier = Modifier
-            .padding(top = 10.dp)
-            .size(240.dp)
-            .pointerInput(Unit) { detectTapGestures(onTap = { onTap() }) },
-        contentAlignment = Alignment.Center
+        Modifier
+            .fillMaxSize()
+            .background(mb.night),
     ) {
-        Canvas(Modifier.fillMaxSize()) {
-            val cx = size.width / 2f
-            val cy = size.height / 2f
-            val r = size.minDimension * 0.30f
-
-            // soft outer halos
-            if (connected || busy) {
-                for (i in 0..2) {
-                    val scale = ringScale + i * 0.09f
-                    val alpha = (ringAlpha - i * 0.13f).coerceIn(0f, 1f)
-                    if (alpha > 0.01f) {
-                        drawCircle(
-                            color = Neon.copy(alpha = alpha),
-                            radius = r * scale,
-                            center = Offset(cx, cy),
-                            style = Stroke(width = 3.dp.toPx())
-                        )
-                    }
-                }
-            } else {
-                drawCircle(
-                    color = glowColor.copy(alpha = 0.15f),
-                    radius = r * 1.28f,
-                    center = Offset(cx, cy),
-                    style = Stroke(width = 2.dp.toPx())
-                )
-            }
-
-            // rotating dashes while busy
-            if (busy) {
-                rotate(angle, Offset(cx, cy)) {
-                    val dash = 14f
-                    val gap = 12f
-                    var a = 0f
-                    while (a < 360f) {
-                        drawArc(
-                            color = Neon.copy(alpha = 0.65f),
-                            startAngle = a,
-                            sweepAngle = dash,
-                            useCenter = false,
-                            topLeft = Offset(cx - r * 1.42f, cy - r * 1.42f),
-                            size = androidx.compose.ui.geometry.Size(r * 2.84f, r * 2.84f),
-                            style = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round)
-                        )
-                        a += dash + gap
-                    }
-                }
-            }
-
-            // main disc
-            drawCircle(
-                brush = Brush.radialGradient(
-                    colors = listOf(
-                        if (connected) Color(0xFF17A87A) else Color(0xFF123229),
-                        Color(0xFF071310)
+        // ambient halo like the demo frame
+        Box(
+            Modifier
+                .align(Alignment.TopCenter)
+                .size(320.dp, 220.dp)
+                .background(
+                    androidx.compose.ui.graphics.Brush.radialGradient(
+                        listOf(mb.glow.copy(alpha = 0.08f), Color.Transparent),
                     ),
-                    center = Offset(cx, cy),
-                    radius = r
                 ),
-                radius = r,
-                center = Offset(cx, cy)
-            )
-            drawCircle(
-                color = if (connected) Neon else Neon.copy(alpha = 0.55f),
-                radius = r,
-                center = Offset(cx, cy),
-                style = Stroke(width = 4.dp.toPx())
-            )
+        )
 
-            // power glyph: circle arc with gap on top + vertical line
-            val gr = r * 0.52f
-            val sw = 5.dp.toPx()
-            drawArc(
-                color = TextMain,
-                startAngle = -55f,
-                sweepAngle = 290f,
-                useCenter = false,
-                topLeft = Offset(cx - gr, cy - gr),
-                size = androidx.compose.ui.geometry.Size(gr * 2f, gr * 2f),
-                style = Stroke(width = sw, cap = StrokeCap.Round)
-            )
-            drawLine(
-                color = TextMain,
-                start = Offset(cx, cy - gr - sw * 1.1f),
-                end = Offset(cx, cy - gr * 0.42f),
-                strokeWidth = sw,
-                cap = StrokeCap.Round
-            )
-        }
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Stats panel
-// ---------------------------------------------------------------------------
-
-@Composable
-private fun StatsPanel(seconds: Int, down: Double, up: Double) {
-    Surface(
-        shape = RoundedCornerShape(20.dp),
-        color = PanelColor,
-        border = androidx.compose.foundation.BorderStroke(1.dp, PanelStroke)
-    ) {
         Column(
             Modifier
-                .fillMaxWidth()
-                .padding(18.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
+                .fillMaxSize()
+                .statusBarsPadding()
+                .navigationBarsPadding(),
         ) {
-            val mm = seconds / 60
-            val ss = seconds % 60
-            Text(
-                faDigits(String.format(Locale.US, "%02d:%02d", mm, ss)),
-                color = TextMain,
-                fontSize = 34.sp,
-                fontWeight = FontWeight.Bold
-            )
-            Spacer(Modifier.height(14.dp))
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                SpeedCell("↓", down, TextMain)
-                SpeedCell("↑", up, NeonSoft)
+            AnimatedContent(
+                targetState = screen,
+                transitionSpec = {
+                    (fadeIn(androidx.compose.animation.core.tween(220)) +
+                        slideInVertically(androidx.compose.animation.core.tween(220)) { it / 24 }) togetherWith
+                        fadeOut(androidx.compose.animation.core.tween(160))
+                },
+                label = "screen",
+                modifier = Modifier.weight(1f),
+            ) { scr ->
+                when (scr) {
+                    Screen.HOME -> HomeScreen(
+                        lang = lang,
+                        state = uiState,
+                        onToggle = { powerTap() },
+                        seconds = seconds,
+                        server = selectedConfig,
+                        warn = when {
+                            errorMessage != null -> errorMessage
+                            !premium && trialLocked -> t.trialOverUpsell
+                            else -> null
+                        },
+                        onPickServer = { screen = Screen.SERVERS },
+                        onOpenSettings = { screen = Screen.SETTINGS },
+                        onSupport = { openTelegram() },
+                        downMbps = downMbps,
+                        upMbps = upMbps,
+                    )
+                    Screen.SERVERS -> ServersScreen(
+                        lang = lang,
+                        configs = liveConfigs,
+                        selectedKey = selectedKey,
+                        premiumUser = premium,
+                        onSelect = { key ->
+                            selectedKey = key
+                            AppPrefs.setSelectedKey(context, key)
+                            screen = Screen.HOME
+                        },
+                        onPremiumTap = { plansReason = "premium-lock" },
+                        onBack = { screen = Screen.HOME },
+                    )
+                    Screen.ACCOUNT -> AccountScreen(
+                        lang = lang,
+                        premium = premium,
+                        planId = entitlement.plan,
+                        expiresAt = entitlement.expiresAt,
+                        trialLocked = trialLocked,
+                        usedGb = usedGb,
+                        splitCount = splitApps.size,
+                        splitMode = splitMode,
+                        deviceId = deviceId,
+                        killSwitch = killSwitch,
+                        autoConnect = autoConnect,
+                        onKillSwitch = { v -> killSwitch = v; AppPrefs.setKillSwitch(context, v) },
+                        onAutoConnect = { v -> autoConnect = v; AppPrefs.setAutoConnect(context, v) },
+                        onOpenSplit = { screen = Screen.SPLIT },
+                        onUpgrade = { plansReason = "renew" },
+                        onSupport = { openTelegram() },
+                        toast = { toast(it) },
+                    )
+                    Screen.SETTINGS -> SettingsScreen(
+                        lang = lang,
+                        setLang = onLang,
+                        theme = themeName,
+                        setTheme = onTheme,
+                        pingLive = pingLive,
+                        setPingLive = { v -> pingLive = v; AppPrefs.setPingLive(context, v) },
+                        onReinstall = { reinstallSim() },
+                        onSupport = { openTelegram() },
+                        onBack = { screen = Screen.HOME },
+                    )
+                    Screen.SPLIT -> SplitScreen(
+                        lang = lang,
+                        mode = splitMode,
+                        apps = splitApps,
+                        installed = installedApps,
+                        onSetMode = { setSplitMode(it) },
+                        onToggleApp = { toggleSplitApp(it) },
+                        onClear = { clearSplit() },
+                        onBack = { screen = Screen.ACCOUNT },
+                    )
+                    Screen.LOGIN -> AdminLogin(
+                        check = { u, p -> u == AppPrefs.adminUser(context) && p == adminPass },
+                        onSuccess = {
+                            adminUnlocked = true
+                            screen = Screen.ADMIN
+                        },
+                        onCancel = { screen = Screen.ACCOUNT },
+                    )
+                    Screen.ADMIN -> AdminPanel(
+                        configs = configs,
+                        orders = orders,
+                        devices = listOf(
+                            DeviceRecord(deviceId, trialUsed, reinstalls, "this device"),
+                        ),
+                        blockRoot = blockRoot,
+                        onToggleConfig = { k, v -> toggleConfig(k, v) },
+                        onDeleteConfig = { k -> deleteConfig(k) },
+                        onTogglePremium = { k -> togglePremium(k) },
+                        onAddConfig = { n, c, l, p -> addConfig(n, c, l, p) },
+                        onApprove = { approveOrder(it) },
+                        onReject = { rejectOrder(it) },
+                        onBlockRoot = { blockRoot = it },
+                        onChangePass = { p ->
+                            adminPass = p
+                            AppPrefs.setAdminPass(context, p)
+                        },
+                        onExit = {
+                            adminUnlocked = false
+                            screen = Screen.ACCOUNT
+                        },
+                        toast = { toast(it) },
+                    )
+                }
             }
-            Spacer(Modifier.height(14.dp))
-            QualityBars(if (down >= 8) 5 else if (down >= 4) 4 else if (down >= 2) 3 else if (down >= 0.5) 2 else if (down > 0.0) 1 else 0)
-            Spacer(Modifier.height(4.dp))
-            Text("کیفیت اتصال", color = TextDim, fontSize = 12.sp)
-        }
-    }
-}
 
-@Composable
-private fun SpeedCell(arrow: String, mbps: Double, color: Color) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Text(arrow, color = color, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-        Spacer(Modifier.width(6.dp))
-        Text(
-            "${fmtSpeed(mbps)} مگابیت",
-            color = TextMain,
-            fontSize = 15.sp
+            // ── bottom navigation (always LTR, like the demo) ──
+            if (!isAdmin) {
+                CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+                    BottomNav(
+                        lang = lang,
+                        screen = screen,
+                        onHome = { screen = Screen.HOME },
+                        onServers = { screen = Screen.SERVERS },
+                        onAccountTap = { screen = Screen.ACCOUNT },
+                        onAdminHold = {
+                            vibrateTick(context)
+                            screen = if (adminUnlocked) Screen.ADMIN else Screen.LOGIN
+                        },
+                    )
+                }
+            }
+        }
+
+        // ── plans sheet ──
+        PlansSheet(
+            visible = plansReason != null,
+            lang = lang,
+            reason = plansReason ?: "renew",
+            onClose = { plansReason = null },
+            onCreateOrder = { plan, via -> createOrder(plan, via) },
+        )
+
+        // ── setup sheet (rare: when no token was injected at build time) ──
+        if (showSetup) {
+            SetupSheet(
+                lang = lang,
+                initialUrl = AppPrefs.serverUrl(context),
+                initialToken = AppPrefs.clientToken(context),
+                onClose = { showSetup = false },
+                onSave = { url, token ->
+                    AppPrefs.save(context, url, token)
+                    showSetup = false
+                    toast(t.savedToast)
+                    scope.launch(Dispatchers.IO) {
+                        runCatching {
+                            val remote = MianboorApi.fetchConfigs(url, token)
+                            AppPrefs.setServerCache(
+                                context,
+                                remote.map { AppPrefs.CachedConfig(it.id, it.name, it.country, it.link, it.premium) },
+                            )
+                            scope.launch { rebuildConfigs() }
+                        }
+                    }
+                },
+            )
+        }
+
+        // ── toast ──
+        com.mianboor.vpn.ui.ToastHost(
+            message = toastMsg,
+            visible = toastMsg != null,
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .statusBarsPadding()
+                .padding(top = 52.dp, start = 24.dp, end = 24.dp),
         )
     }
 }
 
+// ---------------------------------------------------------------------------
+// Bottom navigation with the hidden 5s hold trigger on the Account tab
+// ---------------------------------------------------------------------------
+
 @Composable
-private fun QualityBars(active: Int) {
-    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        repeat(5) { i ->
-            Box(
-                Modifier
-                    .size(width = 22.dp, height = 8.dp)
-                    .background(
-                        if (i < active) Neon else Neon.copy(alpha = 0.12f),
-                        RoundedCornerShape(4.dp)
-                    )
+private fun BottomNav(
+    lang: Lang,
+    screen: Screen,
+    onHome: () -> Unit,
+    onServers: () -> Unit,
+    onAccountTap: () -> Unit,
+    onAdminHold: () -> Unit,
+) {
+    val t = stringsOf(lang)
+    val mb = LocalMb.current
+
+    var holding by remember { mutableStateOf(false) }
+    var progress by remember { mutableStateOf(0f) }
+    var fired by remember { mutableStateOf(false) }
+
+    LaunchedEffect(holding) {
+        if (holding) {
+            val start = System.currentTimeMillis()
+            while (holding && progress < 1f) {
+                androidx.compose.runtime.withFrameNanos { }
+                progress = ((System.currentTimeMillis() - start).toFloat() / HOLD_MS).coerceIn(0f, 1f)
+            }
+            if (progress >= 1f && !fired) {
+                fired = true
+                onAdminHold()
+            }
+        } else {
+            progress = 0f
+            fired = false
+        }
+    }
+
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(start = 12.dp, end = 12.dp, bottom = 8.dp)
+            .clip(RoundedCornerShape(24.dp))
+            .background(mb.panel.copy(alpha = 0.8f))
+            .border(1.dp, mb.panelEdge, RoundedCornerShape(24.dp))
+            .padding(horizontal = 8.dp),
+    ) {
+        NavBtn(
+            iconRes = com.mianboor.vpn.R.drawable.ic_home,
+            label = t.home,
+            active = screen == Screen.HOME,
+            modifier = Modifier.weight(1f),
+            onClick = onHome,
+        )
+        NavBtn(
+            iconRes = com.mianboor.vpn.R.drawable.ic_globe,
+            label = t.servers,
+            active = screen == Screen.SERVERS,
+            modifier = Modifier.weight(1f),
+            onClick = onServers,
+        )
+        Box(Modifier.weight(1f)) {
+            NavBtn(
+                iconRes = com.mianboor.vpn.R.drawable.ic_user,
+                label = t.account,
+                active = screen == Screen.ACCOUNT,
+                modifier = Modifier.fillMaxWidth(),
+                onClick = {
+                    // swallow the tap that follows a fired 5s hold
+                    if (fired) fired = false else onAccountTap()
+                },
+                onPress = { holding = it },
             )
+            if (holding && progress > 0.02f) {
+                Canvas(
+                    Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(top = 2.dp)
+                        .size(22.dp),
+                ) {
+                    drawArc(
+                        color = mb.gold,
+                        startAngle = -90f,
+                        sweepAngle = 360f * progress,
+                        useCenter = false,
+                        style = Stroke(2.5f, cap = StrokeCap.Round),
+                    )
+                }
+            }
         }
     }
 }
 
+@Composable
+private fun NavBtn(
+    iconRes: Int,
+    label: String,
+    active: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+    onPress: ((Boolean) -> Unit)? = null,
+) {
+    val mb = LocalMb.current
+    val tint = if (active) mb.glow else mb.dim
+    val gesture = if (onPress != null) {
+        Modifier.pointerInput(Unit) {
+            detectTapGestures(
+                onTap = { onClick() },
+                onPress = {
+                    onPress(true)
+                    try {
+                        awaitRelease()
+                    } finally {
+                        onPress(false)
+                    }
+                },
+            )
+        }
+    } else {
+        Modifier.clickable { onClick() }
+    }
+    Column(
+        modifier
+            .then(gesture)
+            .padding(vertical = 10.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Icon(
+            com.mianboor.vpn.ui.ic(iconRes), null,
+            tint = tint, modifier = Modifier.size(24.dp),
+        )
+        Spacer(Modifier.height(4.dp))
+        Text(label, color = tint, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+    }
+}
+
 // ---------------------------------------------------------------------------
-// Admin dialog (hidden — 5 taps or long-press on the version)
+// First-time setup sheet (only shown when no token was injected into the APK)
 // ---------------------------------------------------------------------------
 
 @Composable
-private fun AdminDialog(
+private fun SetupSheet(
+    lang: Lang,
     initialUrl: String,
     initialToken: String,
-    onDismiss: () -> Unit,
-    onSave: (String, String) -> Unit
+    onClose: () -> Unit,
+    onSave: (String, String) -> Unit,
 ) {
+    val t = stringsOf(lang)
+    val mb = LocalMb.current
     var url by remember { mutableStateOf(initialUrl) }
     var token by remember { mutableStateOf(initialToken) }
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("تنظیمات مدیر", color = TextMain, fontWeight = FontWeight.Bold) },
-        text = {
-            Column {
-                Text(
-                    "این تنظیمات فقط برای مدیر میانبر است.",
-                    color = TextDim,
-                    fontSize = 12.sp
-                )
-                Spacer(Modifier.height(12.dp))
-                OutlinedTextField(
-                    value = url,
-                    onValueChange = { url = it },
-                    label = { Text("آدرس سرور") },
-                    placeholder = { Text("https://example.com") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-                Spacer(Modifier.height(10.dp))
-                OutlinedTextField(
-                    value = token,
-                    onValueChange = { token = it },
-                    label = { Text("توکن کلاینت") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(mb.night.copy(alpha = 0.7f))
+            .clickable { onClose() },
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(
+            Modifier
+                .padding(24.dp)
+                .clip(RoundedCornerShape(18.dp))
+                .background(mb.panel)
+                .border(1.dp, mb.panelEdge, RoundedCornerShape(18.dp))
+                .padding(20.dp)
+                .consumeClicks(),
+        ) {
+            Text(t.setupTitle, color = mb.ink, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+            Text(t.setupDesc, color = mb.dim, fontSize = 13.sp, modifier = Modifier.padding(top = 4.dp))
+            SetupField(url, { url = it }, "https://mianboor.example.com", Modifier.padding(top = 14.dp))
+            SetupField(token, { token = it }, "client token", Modifier.padding(top = 8.dp))
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(top = 16.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(mb.glow)
+                    .clickable { onSave(url.trim(), token.trim()) }
+                    .padding(vertical = 12.dp),
+                horizontalArrangement = Arrangement.Center,
+            ) {
+                Text(t.saveBtn, color = mb.onGlow, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+            }
+        }
+    }
+}
+
+@Composable
+private fun SetupField(
+    value: String,
+    onChange: (String) -> Unit,
+    placeholder: String,
+    modifier: Modifier = Modifier,
+) {
+    val mb = LocalMb.current
+    BasicTextField(
+        value = value,
+        onValueChange = onChange,
+        singleLine = true,
+        textStyle = TextStyle(color = mb.ink, fontSize = 14.sp),
+        cursorBrush = SolidColor(mb.glow),
+        decorationBox = { inner ->
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(mb.night)
+                    .border(1.dp, mb.panelEdge, RoundedCornerShape(12.dp))
+                    .padding(horizontal = 12.dp, vertical = 12.dp),
+            ) {
+                if (value.isEmpty()) Text(placeholder, color = mb.dim, fontSize = 14.sp)
+                inner()
             }
         },
-        confirmButton = {
-            TextButton(onClick = { onSave(url, token) }) { Text("ذخیره", color = Neon) }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text("انصراف", color = TextDim) }
-        },
-        containerColor = PanelColor
+        modifier = modifier.fillMaxWidth(),
     )
 }

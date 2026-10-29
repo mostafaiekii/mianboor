@@ -21,7 +21,7 @@ export async function GET(req: Request) {
 
   const configs = await db.vpnConfig.findMany({
     where: { active: true },
-    select: { id: true, name: true, country: true, link: true },
+    select: { id: true, name: true, country: true, link: true, premium: true },
     orderBy: { createdAt: "desc" },
   });
 

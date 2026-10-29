@@ -15,6 +15,9 @@ object ServerTester {
 
     private const val CONNECT_TIMEOUT_MS = 2500
 
+    /** Public single-server TCP ping used by the live-ping engine. */
+    fun ping(host: String, port: Int, timeoutMs: Int = CONNECT_TIMEOUT_MS): Long? = tcpPing(host, port, timeoutMs)
+
     fun testAll(servers: List<ParsedServer>): ParsedServer? {
         if (servers.isEmpty()) return null
         if (servers.size == 1) return tcpPing(servers[0].host, servers[0].port)?.let { servers[0] }
@@ -40,10 +43,10 @@ object ServerTester {
         }
     }
 
-    private fun tcpPing(host: String, port: Int): Long? = try {
+    private fun tcpPing(host: String, port: Int, timeoutMs: Int = CONNECT_TIMEOUT_MS): Long? = try {
         Socket().use { s ->
             val t0 = System.currentTimeMillis()
-            s.connect(InetSocketAddress(host, port), CONNECT_TIMEOUT_MS)
+            s.connect(InetSocketAddress(host, port), timeoutMs)
             System.currentTimeMillis() - t0
         }
     } catch (t: Throwable) {

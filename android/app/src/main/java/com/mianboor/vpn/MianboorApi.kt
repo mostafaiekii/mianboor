@@ -10,7 +10,8 @@ data class RemoteConfig(
     val id: String,
     val name: String,
     val country: String,
-    val link: String
+    val link: String,
+    val premium: Boolean = false,
 )
 
 /**
@@ -55,7 +56,8 @@ object MianboorApi {
                     id = o.optString("id"),
                     name = o.optString("name").ifBlank { "سرور" },
                     country = o.optString("country").ifBlank { "نامشخص" },
-                    link = link
+                    link = link,
+                    premium = o.optBoolean("premium", false),
                 )
             }
         } finally {

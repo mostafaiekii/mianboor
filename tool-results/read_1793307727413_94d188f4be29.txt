@@ -1,0 +1,780 @@
+     1→package com.mianboor.vpn
+     2→
+     3→import android.Manifest
+     4→import android.app.Activity
+     5→import android.content.Context
+     6→import android.content.Intent
+     7→import android.content.pm.PackageManager
+     8→import android.net.Uri
+     9→import android.net.VpnService
+    10→import android.os.Build
+    11→import android.os.Bundle
+    12→import androidx.activity.ComponentActivity
+    13→import androidx.activity.compose.setContent
+    14→import androidx.activity.compose.rememberLauncherForActivityResult
+    15→import androidx.activity.result.contract.ActivityResultContracts
+    16→import androidx.compose.animation.AnimatedVisibility
+    17→import androidx.compose.animation.core.FastOutSlowInEasing
+    18→import androidx.compose.animation.core.LinearEasing
+    19→import androidx.compose.animation.core.RepeatMode
+    20→import androidx.compose.animation.core.animateFloat
+    21→import androidx.compose.animation.core.infiniteRepeatable
+    22→import androidx.compose.animation.core.rememberInfiniteTransition
+    23→import androidx.compose.animation.core.tween
+    24→import androidx.compose.animation.fadeIn
+    25→import androidx.compose.animation.fadeOut
+    26→import androidx.compose.animation.slideInVertically
+    27→import androidx.compose.animation.slideOutVertically
+    28→import androidx.compose.foundation.Canvas
+    29→import androidx.compose.foundation.background
+    30→import androidx.compose.foundation.border
+    31→import androidx.compose.foundation.gestures.detectTapGestures
+    32→import androidx.compose.foundation.layout.Arrangement
+    33→import androidx.compose.foundation.layout.Box
+    34→import androidx.compose.foundation.layout.Column
+    35→import androidx.compose.foundation.layout.Row
+    36→import androidx.compose.foundation.layout.Spacer
+    37→import androidx.compose.foundation.layout.fillMaxSize
+    38→import androidx.compose.foundation.layout.fillMaxWidth
+    39→import androidx.compose.foundation.layout.height
+    40→import androidx.compose.foundation.layout.padding
+    41→import androidx.compose.foundation.layout.size
+    42→import androidx.compose.foundation.layout.statusBarsPadding
+    43→import androidx.compose.foundation.layout.systemBarsPadding
+    44→import androidx.compose.foundation.layout.width
+    45→import androidx.compose.foundation.rememberScrollState
+    46→import androidx.compose.foundation.shape.CircleShape
+    47→import androidx.compose.foundation.shape.RoundedCornerShape
+    48→import androidx.compose.foundation.verticalScroll
+    49→import androidx.compose.material3.AlertDialog
+    50→import androidx.compose.material3.Icon
+    51→import androidx.compose.material3.IconButton
+    52→import androidx.compose.material3.MaterialTheme
+    53→import androidx.compose.material3.OutlinedTextField
+    54→import androidx.compose.material3.Surface
+    55→import androidx.compose.material3.Text
+    56→import androidx.compose.material3.TextButton
+    57→import androidx.compose.runtime.Composable
+    58→import androidx.compose.runtime.LaunchedEffect
+    59→import androidx.compose.runtime.getValue
+    60→import androidx.compose.runtime.mutableIntStateOf
+    61→import androidx.compose.runtime.mutableLongStateOf
+    62→import androidx.compose.runtime.mutableStateOf
+    63→import androidx.compose.runtime.remember
+    64→import androidx.compose.runtime.collectAsState
+    65→import androidx.compose.runtime.setValue
+    66→import androidx.compose.ui.Alignment
+    67→import androidx.compose.ui.Modifier
+    68→import androidx.compose.ui.geometry.Offset
+    69→import androidx.compose.ui.graphics.Brush
+    70→import androidx.compose.ui.graphics.Color
+    71→import androidx.compose.ui.graphics.StrokeCap
+    72→import androidx.compose.ui.graphics.drawscope.Stroke
+    73→import androidx.compose.ui.graphics.drawscope.rotate
+    74→import androidx.compose.ui.input.pointer.pointerInput
+    75→import androidx.compose.ui.platform.LocalContext
+    76→import androidx.compose.ui.platform.LocalLayoutDirection
+    77→import androidx.compose.ui.res.painterResource
+    78→import androidx.compose.ui.text.TextStyle
+    79→import androidx.compose.ui.text.font.Font
+    80→import androidx.compose.ui.text.font.FontFamily
+    81→import androidx.compose.ui.text.font.FontWeight
+    82→import androidx.compose.ui.text.style.TextAlign
+    83→import androidx.compose.ui.unit.LayoutDirection
+    84→import androidx.compose.ui.unit.dp
+    85→import androidx.compose.ui.unit.sp
+    86→import androidx.core.content.ContextCompat
+    87→import kotlinx.coroutines.launch
+    88→import java.util.Locale
+    89→
+    90→// ---------------------------------------------------------------------------
+    91→// Palette & type
+    92→// ---------------------------------------------------------------------------
+    93→
+    94→private val Neon = Color(0xFF33F0B7)
+    95→private val NeonSoft = Color(0xFF6EF9D9)
+    96→private val BgColor = Color(0xFF04090B)
+    97→private val PanelColor = Color(0xFF0B161A)
+    98→private val PanelStroke = Color(0x2433F0B7)
+    99→private val TextMain = Color(0xFFE9FFF7)
+   100→private val TextDim = Color(0xFF87AFA4)
+   101→private val ErrorRed = Color(0xFFFF6B8B)
+   102→
+   103→private val Vazir = FontFamily(
+   104→    Font(R.font.vazirmatn_regular, FontWeight.Normal),
+   105→    Font(R.font.vazirmatn_bold, FontWeight.Bold)
+   106→)
+   107→
+   108→private val FA_DIGITS = charArrayOf('۰', '۱', '۲', '۳', '۴', '۵', '۶', '۷', '۸', '۹')
+   109→
+   110→private fun faDigits(s: String): String = buildString {
+   111→    for (c in s) append(if (c.isDigit()) FA_DIGITS[c - '0'] else c)
+   112→}
+   113→
+   114→private fun faNum(n: Long): String = faDigits(n.toString())
+   115→private fun faNum(n: Int): String = faDigits(n.toString())
+   116→
+   117→private fun fmtSpeed(mbps: Double): String {
+   118→    val s = if (mbps >= 100) String.format(Locale.US, "%.0f", mbps)
+   119→    else String.format(Locale.US, "%.1f", mbps)
+   120→    return faDigits(s)
+   121→}
+   122→
+   123→class MainActivity : ComponentActivity() {
+   124→
+   125→    override fun onCreate(savedInstanceState: Bundle?) {
+   126→        super.onCreate(savedInstanceState)
+   127→        setContent {
+   128→            MaterialTheme(
+   129→                colorScheme = MaterialTheme.colorScheme.copy(
+   130→                    background = BgColor,
+   131→                    surface = PanelColor,
+   132→                    primary = Neon,
+   133→                    onPrimary = BgColor,
+   134→                    onBackground = TextMain,
+   135→                    onSurface = TextMain
+   136→                ),
+   137→                typography = MaterialTheme.typography.copy(
+   138→                    displayLarge = TextStyle(fontFamily = Vazir),
+   139→                    displayMedium = TextStyle(fontFamily = Vazir),
+   140→                    displaySmall = TextStyle(fontFamily = Vazir),
+   141→                    headlineLarge = TextStyle(fontFamily = Vazir),
+   142→                    headlineMedium = TextStyle(fontFamily = Vazir),
+   143→                    headlineSmall = TextStyle(fontFamily = Vazir),
+   144→                    titleLarge = TextStyle(fontFamily = Vazir),
+   145→                    titleMedium = TextStyle(fontFamily = Vazir),
+   146→                    titleSmall = TextStyle(fontFamily = Vazir),
+   147→                    bodyLarge = TextStyle(fontFamily = Vazir),
+   148→                    bodyMedium = TextStyle(fontFamily = Vazir),
+   149→                    bodySmall = TextStyle(fontFamily = Vazir),
+   150→                    labelLarge = TextStyle(fontFamily = Vazir),
+   151→                    labelMedium = TextStyle(fontFamily = Vazir),
+   152→                    labelSmall = TextStyle(fontFamily = Vazir)
+   153→                )
+   154→            ) {
+   155→                androidx.compose.runtime.CompositionLocalProvider(
+   156→                    LocalLayoutDirection provides LayoutDirection.Rtl
+   157→                ) {
+   158→                    Surface(modifier = Modifier.fillMaxSize(), color = BgColor) {
+   159→                        MainScreen()
+   160→                    }
+   161→                }
+   162→            }
+   163→        }
+   164→    }
+   165→}
+   166→
+   167→// ---------------------------------------------------------------------------
+   168→// Main screen
+   169→// ---------------------------------------------------------------------------
+   170→
+   171→private class SetupRequired : Exception()
+   172→
+   173→@Composable
+   174→fun MainScreen() {
+   175→    val context = LocalContext.current
+   176→    val scope = androidx.compose.runtime.rememberCoroutineScope()
+   177→
+   178→    val phase by VpnState.phase.collectAsState()
+   179→    val coverMsg by VpnState.coverMsg.collectAsState()
+   180→    val serverName by VpnState.serverName.collectAsState()
+   181→    val serverCountry by VpnState.serverCountry.collectAsState()
+   182→    val errorMessage by VpnState.errorMessage.collectAsState()
+   183→    val rxBytes by VpnState.rxBytes.collectAsState()
+   184→    val txBytes by VpnState.txBytes.collectAsState()
+   185→
+   186→    var showAdmin by remember { mutableStateOf(false) }
+   187→    var configured by remember { mutableStateOf(AppPrefs.isConfigured(context)) }
+   188→    var pendingServer by remember { mutableStateOf<ParsedServer?>(null) }
+   189→
+   190→    // connection timer
+   191→    var seconds by remember { mutableIntStateOf(0) }
+   192→    LaunchedEffect(phase) {
+   193→        if (phase == Phase.CONNECTED) {
+   194→            seconds = 0
+   195→            while (true) {
+   196→                kotlinx.coroutines.delay(1000)
+   197→                seconds++
+   198→            }
+   199→        }
+   200→    }
+   201→
+   202→    // live speeds from cumulative tunnel counters
+   203→    var lastRx by remember { mutableLongStateOf(0L) }
+   204→    var lastTx by remember { mutableLongStateOf(0L) }
+   205→    var downMbps by remember { mutableStateOf(0.0) }
+   206→    var upMbps by remember { mutableStateOf(0.0) }
+   207→    LaunchedEffect(phase) {
+   208→        if (phase == Phase.CONNECTED) {
+   209→            lastRx = 0L; lastTx = 0L
+   210→            while (true) {
+   211→                kotlinx.coroutines.delay(1000)
+   212→                val drx = rxBytes - lastRx
+   213→                val dtx = txBytes - lastTx
+   214→                if (lastRx > 0L || lastTx > 0L) {
+   215→                    downMbps = drx.coerceAtLeast(0L) * 8.0 / 1_000_000.0
+   216→                    upMbps = dtx.coerceAtLeast(0L) * 8.0 / 1_000_000.0
+   217→                }
+   218→                lastRx = rxBytes; lastTx = txBytes
+   219→            }
+   220→        }
+   221→    }
+   222→
+   223→    // cover messages while busy
+   224→    LaunchedEffect(phase) {
+   225→        while (phase == Phase.SCANNING || phase == Phase.CONNECTING) {
+   226→            VpnState.coverMsg.value =
+   227→                (if (phase == Phase.SCANNING) SCAN_MSGS else CONNECT_MSGS).random()
+   228→            kotlinx.coroutines.delay(1400)
+   229→        }
+   230→    }
+   231→
+   232→    fun launchVpn(server: ParsedServer) {
+   233→        val intent = Intent(context, MianboorVpnService::class.java)
+   234→            .setAction(MianboorVpnService.ACTION_CONNECT)
+   235→            .putExtra(MianboorVpnService.EXTRA_LINK, server.rawLink)
+   236→            .putExtra(MianboorVpnService.EXTRA_NAME, server.name)
+   237→            .putExtra(MianboorVpnService.EXTRA_COUNTRY, server.country)
+   238→        VpnState.phase.value = Phase.CONNECTING
+   239→        ContextCompat.startForegroundService(context, intent)
+   240→    }
+   241→
+   242→    val vpnPermission = rememberLauncherForActivityResult(
+   243→        ActivityResultContracts.StartActivityForResult()
+   244→    ) { result ->
+   245→        val server = pendingServer
+   246→        pendingServer = null
+   247→        if (result.resultCode == Activity.RESULT_OK && server != null) {
+   248→            launchVpn(server)
+   249→        } else {
+   250→            VpnState.phase.value = Phase.IDLE
+   251→            VpnState.errorMessage.value = "اجازه اتصال VPN داده نشد"
+   252→        }
+   253→    }
+   254→
+   255→    val notifPermission = rememberLauncherForActivityResult(
+   256→        ActivityResultContracts.RequestPermission()
+   257→    ) { }
+   258→
+   259→    fun requestNotificationsIfNeeded() {
+   260→        if (Build.VERSION.SDK_INT >= 33 &&
+   261→            ContextCompat.checkSelfPermission(
+   262→                context, Manifest.permission.POST_NOTIFICATIONS
+   263→            ) != PackageManager.PERMISSION_GRANTED
+   264→        ) {
+   265→            notifPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+   266→        }
+   267→    }
+   268→
+   269→    fun startConnect() {
+   270→        requestNotificationsIfNeeded()
+   271→        scope.launch(kotlinx.coroutines.Dispatchers.Main) {
+   272→            VpnState.reset()
+   273→            VpnState.phase.value = Phase.SCANNING
+   274→            try {
+   275→                if (!AppPrefs.isConfigured(context)) throw SetupRequired()
+   276→                val cfgs = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+   277→                    MianboorApi.fetchConfigs(
+   278→                        AppPrefs.serverUrl(context),
+   279→                        AppPrefs.clientToken(context)
+   280→                    )
+   281→                }
+   282→                val parsed = cfgs.mapNotNull {
+   283→                    XrayConfigBuilder.parseLink(it.link, it.name, it.country)
+   284→                }
+   285→                if (parsed.isEmpty()) throw IllegalStateException("هیچ کانفیگ فعالی موجود نیست")
+   286→
+   287→                val best = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+   288→                    ServerTester.testAll(parsed)
+   289→                } ?: throw IllegalStateException("هیچ سروری در دسترس نیست؛ اینترنتت رو بررسی کن")
+   290→
+   291→                VpnState.serverName.value = best.name
+   292→                VpnState.serverCountry.value = best.country
+   293→
+   294→                val prepare = VpnService.prepare(context)
+   295→                if (prepare != null) {
+   296→                    pendingServer = best
+   297→                    vpnPermission.launch(prepare)
+   298→                } else {
+   299→                    launchVpn(best)
+   300→                }
+   301→            } catch (e: SetupRequired) {
+   302→                VpnState.phase.value = Phase.IDLE
+   303→                VpnState.errorMessage.value = "اول تنظیمات سرور میانبر رو وارد کن"
+   304→                showAdmin = true
+   305→            } catch (e: Exception) {
+   306→                VpnState.phase.value = Phase.IDLE
+   307→                VpnState.errorMessage.value = when (e) {
+   308→                    is IllegalStateException -> e.message ?: "اتصال برقرار نشد"
+   309→                    is java.net.UnknownHostException -> "سرور میانبر پیدا نشد؛ آدرس رو بررسی کن"
+   310→                    is java.io.IOException -> "ارتباط با سرور ممکن نشد؛ اینترنتت رو بررسی کن"
+   311→                    else -> "اتصال برقرار نشد؛ یک بار دیگه امتحان کن"
+   312→                }
+   313→            }
+   314→        }
+   315→    }
+   316→
+   317→    fun stopConnect() {
+   318→        VpnState.phase.value = Phase.DISCONNECTING
+   319→        context.startService(
+   320→            Intent(context, MianboorVpnService::class.java)
+   321→                .setAction(MianboorVpnService.ACTION_DISCONNECT)
+   322→        )
+   323→    }
+   324→
+   325→    // --- admin trigger (5 taps in 4s or 1.2s long-press on the version) ---
+   326→    var tapCount by remember { mutableIntStateOf(0) }
+   327→    var windowStart by remember { mutableLongStateOf(0L) }
+   328→    fun onTapVersion() {
+   329→        val now = System.currentTimeMillis()
+   330→        if (now - windowStart > 4000) {
+   331→            windowStart = now
+   332→            tapCount = 0
+   333→        }
+   334→        tapCount++
+   335→        if (tapCount >= 5) {
+   336→            tapCount = 0
+   337→            showAdmin = true
+   338→        }
+   339→    }
+   340→
+   341→    Column(
+   342→        modifier = Modifier
+   343→            .fillMaxSize()
+   344→            .background(BgColor)
+   345→            .systemBarsPadding()
+   346→            .verticalScroll(rememberScrollState())
+   347→            .padding(horizontal = 20.dp),
+   348→        horizontalAlignment = Alignment.CenterHorizontally
+   349→    ) {
+   350→        // ---------------- header ----------------
+   351→        Row(
+   352→            modifier = Modifier
+   353→                .fillMaxWidth()
+   354→                .statusBarsPadding()
+   355→                .padding(top = 8.dp),
+   356→            verticalAlignment = Alignment.CenterVertically
+   357→        ) {
+   358→            Icon(
+   359→                painter = painterResource(R.drawable.ic_power),
+   360→                contentDescription = null,
+   361→                tint = Neon,
+   362→                modifier = Modifier.size(26.dp)
+   363→            )
+   364→            Spacer(Modifier.width(8.dp))
+   365→            Text("میانبر", color = TextMain, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+   366→            Spacer(Modifier.weight(1f))
+   367→            IconButton(onClick = {
+   368→                runCatching {
+   369→                    context.startActivity(
+   370→                        Intent(Intent.ACTION_VIEW, Uri.parse("https://t.me/member9"))
+   371→                    )
+   372→                }
+   373→            }) {
+   374→                Text("پشتیبانی", color = TextDim, fontSize = 13.sp)
+   375→            }
+   376→        }
+   377→
+   378→        Spacer(Modifier.height(6.dp))
+   379→
+   380→        // ---------------- power button ----------------
+   381→        PowerButton(
+   382→            phase = phase,
+   383→            onTap = {
+   384→                when (phase) {
+   385→                    Phase.IDLE -> startConnect()
+   386→                    Phase.CONNECTED -> stopConnect()
+   387→                    else -> Unit
+   388→                }
+   389→            }
+   390→        )
+   391→
+   392→        Spacer(Modifier.height(18.dp))
+   393→
+   394→        // ---------------- status ----------------
+   395→        val (title, subtitle) = when (phase) {
+   396→            Phase.IDLE -> "متصل نیستی" to "برای شروع، دکمه رو بزن"
+   397→            Phase.SCANNING -> "در حال آماده‌سازی…" to "چند لحظه صبر کن"
+   398→            Phase.CONNECTING -> "در حال اتصال…" to ""
+   399→            Phase.CONNECTED -> "متصل شدی!" to ""
+   400→            Phase.DISCONNECTING -> "در حال قطع اتصال…" to ""
+   401→        }
+   402→        Text(
+   403→            title,
+   404→            color = if (phase == Phase.CONNECTED) Neon else TextMain,
+   405→            fontSize = 24.sp,
+   406→            fontWeight = FontWeight.Bold,
+   407→            textAlign = TextAlign.Center
+   408→        )
+   409→        if (subtitle.isNotEmpty()) {
+   410→            Spacer(Modifier.height(4.dp))
+   411→            Text(subtitle, color = TextDim, fontSize = 14.sp, textAlign = TextAlign.Center)
+   412→        }
+   413→
+   414→        AnimatedVisibility(
+   415→            visible = phase == Phase.CONNECTED,
+   416→            enter = fadeIn() + slideInVertically { it / 2 },
+   417→            exit = fadeOut() + slideOutVertically { it / 2 }
+   418→        ) {
+   419→            Row(
+   420→                modifier = Modifier
+   421→                    .padding(top = 10.dp)
+   422→                    .background(PanelColor, RoundedCornerShape(50))
+   423→                    .border(1.dp, PanelStroke, RoundedCornerShape(50))
+   424→                    .padding(horizontal = 16.dp, vertical = 8.dp),
+   425→                verticalAlignment = Alignment.CenterVertically
+   426→            ) {
+   427→                Box(
+   428→                    Modifier
+   429→                        .size(8.dp)
+   430→                        .background(Neon, CircleShape)
+   431→                )
+   432→                Spacer(Modifier.width(8.dp))
+   433→                Text(
+   434→                    "سریع‌ترین مسیر: $serverName ($serverCountry)",
+   435→                    color = TextMain,
+   436→                    fontSize = 13.sp
+   437→                )
+   438→            }
+   439→        }
+   440→
+   441→        // ---------------- cover message / error ----------------
+   442→        Spacer(Modifier.height(14.dp))
+   443→        AnimatedVisibility(
+   444→            visible = (phase == Phase.SCANNING || phase == Phase.CONNECTING) && coverMsg.isNotBlank(),
+   445→            enter = fadeIn(),
+   446→            exit = fadeOut()
+   447→        ) {
+   448→            Text(
+   449→                coverMsg,
+   450→                color = TextDim,
+   451→                fontSize = 14.sp,
+   452→                textAlign = TextAlign.Center
+   453→            )
+   454→        }
+   455→        AnimatedVisibility(visible = errorMessage != null, enter = fadeIn(), exit = fadeOut()) {
+   456→            Text(
+   457→                errorMessage ?: "",
+   458→                color = ErrorRed,
+   459→                fontSize = 14.sp,
+   460→                textAlign = TextAlign.Center,
+   461→                modifier = Modifier.padding(horizontal = 8.dp)
+   462→            )
+   463→        }
+   464→
+   465→        // ---------------- setup hint ----------------
+   466→        if (!configured) {
+   467→            Spacer(Modifier.height(16.dp))
+   468→            Surface(
+   469→                shape = RoundedCornerShape(16.dp),
+   470→                color = PanelColor,
+   471→                border = androidx.compose.foundation.BorderStroke(1.dp, PanelStroke)
+   472→            ) {
+   473→                Column(
+   474→                    Modifier.padding(16.dp),
+   475→                    horizontalAlignment = Alignment.CenterHorizontally
+   476→                ) {
+   477→                    Text("راه‌اندازی اولیه", color = TextMain, fontWeight = FontWeight.Bold)
+   478→                    Spacer(Modifier.height(6.dp))
+   479→                    Text(
+   480→                        "برای اتصال به سرور میانبر، آدرس سرور و توکن رو یک بار وارد کن.",
+   481→                        color = TextDim,
+   482→                        fontSize = 13.sp,
+   483→                        textAlign = TextAlign.Center
+   484→                    )
+   485→                    TextButton(onClick = { showAdmin = true }) {
+   486→                        Text("ورود تنظیمات", color = Neon)
+   487→                    }
+   488→                }
+   489→            }
+   490→        }
+   491→
+   492→        // ---------------- stats ----------------
+   493→        Spacer(Modifier.height(18.dp))
+   494→        AnimatedVisibility(
+   495→            visible = phase == Phase.CONNECTED,
+   496→            enter = fadeIn() + slideInVertically { it },
+   497→            exit = fadeOut() + slideOutVertically { it }
+   498→        ) {
+   499→            StatsPanel(seconds, downMbps, upMbps)
+   500→        }
+   501→
+   502→        Spacer(Modifier.weight(1f))
+   503→
+   504→        // ---------------- footer (admin trigger) ----------------
+   505→        Text(
+   506→            "Mianboor v1.0.0",
+   507→            color = TextDim.copy(alpha = 0.7f),
+   508→            fontSize = 12.sp,
+   509→            modifier = Modifier
+   510→                .padding(vertical = 14.dp)
+   511→                .pointerInput(Unit) {
+   512→                    detectTapGestures(
+   513→                        onTap = { onTapVersion() },
+   514→                        onLongPress = { showAdmin = true }
+   515→                    )
+   516→                }
+   517→        )
+   518→    }
+   519→
+   520→    if (showAdmin) {
+   521→        AdminDialog(
+   522→            initialUrl = AppPrefs.serverUrl(context),
+   523→            initialToken = AppPrefs.clientToken(context),
+   524→            onDismiss = { showAdmin = false },
+   525→            onSave = { url, token ->
+   526→                AppPrefs.save(context, url, token)
+   527→                configured = AppPrefs.isConfigured(context)
+   528→                showAdmin = false
+   529→            }
+   530→        )
+   531→    }
+   532→}
+   533→
+   534→// ---------------------------------------------------------------------------
+   535→// Power button
+   536→// ---------------------------------------------------------------------------
+   537→
+   538→@Composable
+   539→private fun PowerButton(phase: Phase, onTap: () -> Unit) {
+   540→    val busy = phase == Phase.SCANNING || phase == Phase.CONNECTING || phase == Phase.DISCONNECTING
+   541→    val connected = phase == Phase.CONNECTED
+   542→    val glowColor = if (connected || busy) Neon else TextDim.copy(alpha = 0.35f)
+   543→
+   544→    val pulse = rememberInfiniteTransition(label = "pulse")
+   545→    val ringScale by pulse.animateFloat(
+   546→        0.94f, 1.10f,
+   547→        infiniteRepeatable(tween(1700, easing = FastOutSlowInEasing), RepeatMode.Restart),
+   548→        label = "ringScale"
+   549→    )
+   550→    val ringAlpha by pulse.animateFloat(
+   551→        0.5f, 0.0f,
+   552→        infiniteRepeatable(tween(1700, easing = FastOutSlowInEasing), RepeatMode.Restart),
+   553→        label = "ringAlpha"
+   554→    )
+   555→    val spin = rememberInfiniteTransition(label = "spin")
+   556→    val angle by spin.animateFloat(
+   557→        0f, 360f,
+   558→        infiniteRepeatable(tween(2600, easing = LinearEasing), RepeatMode.Restart),
+   559→        label = "angle"
+   560→    )
+   561→
+   562→    Box(
+   563→        modifier = Modifier
+   564→            .padding(top = 10.dp)
+   565→            .size(240.dp)
+   566→            .pointerInput(Unit) { detectTapGestures(onTap = { onTap() }) },
+   567→        contentAlignment = Alignment.Center
+   568→    ) {
+   569→        Canvas(Modifier.fillMaxSize()) {
+   570→            val cx = size.width / 2f
+   571→            val cy = size.height / 2f
+   572→            val r = size.minDimension * 0.30f
+   573→
+   574→            // soft outer halos
+   575→            if (connected || busy) {
+   576→                for (i in 0..2) {
+   577→                    val scale = ringScale + i * 0.09f
+   578→                    val alpha = (ringAlpha - i * 0.13f).coerceIn(0f, 1f)
+   579→                    if (alpha > 0.01f) {
+   580→                        drawCircle(
+   581→                            color = Neon.copy(alpha = alpha),
+   582→                            radius = r * scale,
+   583→                            center = Offset(cx, cy),
+   584→                            style = Stroke(width = 3.dp.toPx())
+   585→                        )
+   586→                    }
+   587→                }
+   588→            } else {
+   589→                drawCircle(
+   590→                    color = glowColor.copy(alpha = 0.15f),
+   591→                    radius = r * 1.28f,
+   592→                    center = Offset(cx, cy),
+   593→                    style = Stroke(width = 2.dp.toPx())
+   594→                )
+   595→            }
+   596→
+   597→            // rotating dashes while busy
+   598→            if (busy) {
+   599→                rotate(angle, Offset(cx, cy)) {
+   600→                    val dash = 14f
+   601→                    val gap = 12f
+   602→                    var a = 0f
+   603→                    while (a < 360f) {
+   604→                        drawArc(
+   605→                            color = Neon.copy(alpha = 0.65f),
+   606→                            startAngle = a,
+   607→                            sweepAngle = dash,
+   608→                            useCenter = false,
+   609→                            topLeft = Offset(cx - r * 1.42f, cy - r * 1.42f),
+   610→                            size = androidx.compose.ui.geometry.Size(r * 2.84f, r * 2.84f),
+   611→                            style = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round)
+   612→                        )
+   613→                        a += dash + gap
+   614→                    }
+   615→                }
+   616→            }
+   617→
+   618→            // main disc
+   619→            drawCircle(
+   620→                brush = Brush.radialGradient(
+   621→                    colors = listOf(
+   622→                        if (connected) Color(0xFF17A87A) else Color(0xFF123229),
+   623→                        Color(0xFF071310)
+   624→                    ),
+   625→                    center = Offset(cx, cy),
+   626→                    radius = r
+   627→                ),
+   628→                radius = r,
+   629→                center = Offset(cx, cy)
+   630→            )
+   631→            drawCircle(
+   632→                color = if (connected) Neon else Neon.copy(alpha = 0.55f),
+   633→                radius = r,
+   634→                center = Offset(cx, cy),
+   635→                style = Stroke(width = 4.dp.toPx())
+   636→            )
+   637→
+   638→            // power glyph: circle arc with gap on top + vertical line
+   639→            val gr = r * 0.52f
+   640→            val sw = 5.dp.toPx()
+   641→            drawArc(
+   642→                color = TextMain,
+   643→                startAngle = -55f,
+   644→                sweepAngle = 290f,
+   645→                useCenter = false,
+   646→                topLeft = Offset(cx - gr, cy - gr),
+   647→                size = androidx.compose.ui.geometry.Size(gr * 2f, gr * 2f),
+   648→                style = Stroke(width = sw, cap = StrokeCap.Round)
+   649→            )
+   650→            drawLine(
+   651→                color = TextMain,
+   652→                start = Offset(cx, cy - gr - sw * 1.1f),
+   653→                end = Offset(cx, cy - gr * 0.42f),
+   654→                strokeWidth = sw,
+   655→                cap = StrokeCap.Round
+   656→            )
+   657→        }
+   658→    }
+   659→}
+   660→
+   661→// ---------------------------------------------------------------------------
+   662→// Stats panel
+   663→// ---------------------------------------------------------------------------
+   664→
+   665→@Composable
+   666→private fun StatsPanel(seconds: Int, down: Double, up: Double) {
+   667→    Surface(
+   668→        shape = RoundedCornerShape(20.dp),
+   669→        color = PanelColor,
+   670→        border = androidx.compose.foundation.BorderStroke(1.dp, PanelStroke)
+   671→    ) {
+   672→        Column(
+   673→            Modifier
+   674→                .fillMaxWidth()
+   675→                .padding(18.dp),
+   676→            horizontalAlignment = Alignment.CenterHorizontally
+   677→        ) {
+   678→            val mm = seconds / 60
+   679→            val ss = seconds % 60
+   680→            Text(
+   681→                faDigits(String.format(Locale.US, "%02d:%02d", mm, ss)),
+   682→                color = TextMain,
+   683→                fontSize = 34.sp,
+   684→                fontWeight = FontWeight.Bold
+   685→            )
+   686→            Spacer(Modifier.height(14.dp))
+   687→            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+   688→                SpeedCell("↓", down, TextMain)
+   689→                SpeedCell("↑", up, NeonSoft)
+   690→            }
+   691→            Spacer(Modifier.height(14.dp))
+   692→            QualityBars(if (down >= 8) 5 else if (down >= 4) 4 else if (down >= 2) 3 else if (down >= 0.5) 2 else if (down > 0.0) 1 else 0)
+   693→            Spacer(Modifier.height(4.dp))
+   694→            Text("کیفیت اتصال", color = TextDim, fontSize = 12.sp)
+   695→        }
+   696→    }
+   697→}
+   698→
+   699→@Composable
+   700→private fun SpeedCell(arrow: String, mbps: Double, color: Color) {
+   701→    Row(verticalAlignment = Alignment.CenterVertically) {
+   702→        Text(arrow, color = color, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+   703→        Spacer(Modifier.width(6.dp))
+   704→        Text(
+   705→            "${fmtSpeed(mbps)} مگابیت",
+   706→            color = TextMain,
+   707→            fontSize = 15.sp
+   708→        )
+   709→    }
+   710→}
+   711→
+   712→@Composable
+   713→private fun QualityBars(active: Int) {
+   714→    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+   715→        repeat(5) { i ->
+   716→            Box(
+   717→                Modifier
+   718→                    .size(width = 22.dp, height = 8.dp)
+   719→                    .background(
+   720→                        if (i < active) Neon else Neon.copy(alpha = 0.12f),
+   721→                        RoundedCornerShape(4.dp)
+   722→                    )
+   723→            )
+   724→        }
+   725→    }
+   726→}
+   727→
+   728→// ---------------------------------------------------------------------------
+   729→// Admin dialog (hidden — 5 taps or long-press on the version)
+   730→// ---------------------------------------------------------------------------
+   731→
+   732→@Composable
+   733→private fun AdminDialog(
+   734→    initialUrl: String,
+   735→    initialToken: String,
+   736→    onDismiss: () -> Unit,
+   737→    onSave: (String, String) -> Unit
+   738→) {
+   739→    var url by remember { mutableStateOf(initialUrl) }
+   740→    var token by remember { mutableStateOf(initialToken) }
+   741→
+   742→    AlertDialog(
+   743→        onDismissRequest = onDismiss,
+   744→        title = { Text("تنظیمات مدیر", color = TextMain, fontWeight = FontWeight.Bold) },
+   745→        text = {
+   746→            Column {
+   747→                Text(
+   748→                    "این تنظیمات فقط برای مدیر میانبر است.",
+   749→                    color = TextDim,
+   750→                    fontSize = 12.sp
+   751→                )
+   752→                Spacer(Modifier.height(12.dp))
+   753→                OutlinedTextField(
+   754→                    value = url,
+   755→                    onValueChange = { url = it },
+   756→                    label = { Text("آدرس سرور") },
+   757→                    placeholder = { Text("https://example.com") },
+   758→                    singleLine = true,
+   759→                    modifier = Modifier.fillMaxWidth()
+   760→                )
+   761→                Spacer(Modifier.height(10.dp))
+   762→                OutlinedTextField(
+   763→                    value = token,
+   764→                    onValueChange = { token = it },
+   765→                    label = { Text("توکن کلاینت") },
+   766→                    singleLine = true,
+   767→                    modifier = Modifier.fillMaxWidth()
+   768→                )
+   769→            }
+   770→        },
+   771→        confirmButton = {
+   772→            TextButton(onClick = { onSave(url, token) }) { Text("ذخیره", color = Neon) }
+   773→        },
+   774→        dismissButton = {
+   775→            TextButton(onClick = onDismiss) { Text("انصراف", color = TextDim) }
+   776→        },
+   777→        containerColor = PanelColor
+   778→    )
+   779→}
+   780→

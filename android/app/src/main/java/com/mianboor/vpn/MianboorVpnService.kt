@@ -103,7 +103,7 @@ class MianboorVpnService : VpnService() {
             throw IllegalStateException("هسته اتصال راه نیفتاد")
         }
 
-        // 4) Bring up the TUN interface
+        // 4) Bring up the TUN interface (with split tunneling rules)
         val builder = Builder()
             .setSession("Mianboor")
             .setMtu(MTU)
@@ -113,9 +113,10 @@ class MianboorVpnService : VpnService() {
             .addDnsServer("1.1.1.1")
             .addRoute("0.0.0.0", 0)
             .addRoute("::", 0)
-            // Our own traffic (including the xray child process) must bypass
-            // the VPN, otherwise the tunneled traffic loops forever.
-            .addDisallowedApplication(packageName)
+        applySplitTunneling(builder)
+        // Our own traffic (including the xray child process) must bypass
+        // the VPN, otherwise the tunneled traffic loops forever.
+        if (!isIncludeMode()) builder.addDisallowedApplication(packageName)
         val fd = builder.establish() ?: throw IllegalStateException("اجازه اتصال داده نشد")
         tun = fd
 
@@ -132,15 +133,26 @@ class MianboorVpnService : VpnService() {
         }
         if (!TProxyService.isRunning()) throw IllegalStateException("تونل امن راه نیفتاد")
 
-        // 6) Connected — start the stats loop
+        // 6) Connected — remember for boot auto-connect, then start the stats loop
+        AppPrefs.setLastServer(this, link, name, country)
         VpnState.serverName.value = server.name
         VpnState.serverCountry.value = country
         VpnState.coverMsg.value = ""
         VpnState.phase.value = Phase.CONNECTED
 
         statsJob = scope.launch {
+            var retries = 0
             while (isActive) {
                 if (!TProxyService.isRunning()) {
+                    if (AppPrefs.killSwitch(this@MianboorVpnService) && retries < 1) {
+                        // kill switch: silently re-establish the tunnel once
+                        retries++
+                        runCatching { shutdown() }
+                        VpnState.phase.value = Phase.CONNECTING
+                        delay(1200)
+                        runCatching { startTunnel(link, name, country) }
+                        break
+                    }
                     VpnState.errorMessage.value = "اتصال قطع شد؛ دوباره تلاش کن"
                     shutdown()
                     VpnState.phase.value = Phase.IDLE
@@ -154,6 +166,28 @@ class MianboorVpnService : VpnService() {
             }
         }
     }
+
+    /**
+     * Real split tunneling: exclude mode disallows the selected packages,
+     * include mode allows ONLY the selected packages (self always excluded
+     * from the tunnel so xray traffic never loops).
+     */
+    private fun applySplitTunneling(builder: Builder) {
+        val mode = AppPrefs.splitMode(this)
+        val apps = AppPrefs.splitApps(this)
+        if (mode == "include" && apps.isNotEmpty()) {
+            apps.forEach { pkg ->
+                runCatching { builder.addAllowedApplication(pkg) }
+            }
+        } else if (mode == "exclude") {
+            apps.forEach { pkg ->
+                runCatching { builder.addDisallowedApplication(pkg) }
+            }
+        }
+    }
+
+    private fun isIncludeMode(): Boolean =
+        AppPrefs.splitMode(this) == "include" && AppPrefs.splitApps(this).isNotEmpty()
 
     private suspend fun shutdown() {
         statsJob?.cancel()

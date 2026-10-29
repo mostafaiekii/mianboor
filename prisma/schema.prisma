@@ -14,5 +14,6 @@ model VpnConfig {
   link      String
   country   String   @default("نامشخص")
   active    Boolean  @default(true)
+  premium   Boolean  @default(false)
   createdAt DateTime @default(now())
 }
