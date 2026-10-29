@@ -30,9 +30,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.SolidColor
+import android.graphics.Drawable as GDrawable
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.drawable.BitmapDrawable
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -259,7 +259,7 @@ private fun SegBtn(label: String, active: Boolean, modifier: Modifier = Modifier
 }
 
 /** Render any launcher Drawable (incl. adaptive icons) into an ImageBitmap. */
-fun drawableToBitmap(d: android.graphics.Drawable?, size: Int = 96): ImageBitmap? {
+fun drawableToBitmap(d: GDrawable?, size: Int = 96): ImageBitmap? {
     if (d == null) return null
     return runCatching {
         val bmp = android.graphics.Bitmap.createBitmap(size, size, android.graphics.Bitmap.Config.ARGB_8888)

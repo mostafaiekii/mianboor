@@ -157,7 +157,7 @@ fun SettingsScreen(
                     Text(t.livePingSet, color = mb.ink, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                     Text(t.livePingSetDesc, color = mb.dim, fontSize = 13.sp)
                 }
-                MbSwitch(pingLive, setPingLive)
+                MbSwitch(pingLive, onChange = setPingLive)
             }
         }
 

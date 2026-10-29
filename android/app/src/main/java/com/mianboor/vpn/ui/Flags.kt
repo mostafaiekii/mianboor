@@ -40,10 +40,10 @@ private val F_NAVY = Color(0xFF18337D)
  * inline SVG flags (viewBox 36×36, clipped to a circle).
  */
 @Composable
-fun Flag(code: String, size: Dp, modifier: Modifier = Modifier) {
+fun Flag(code: String, side: Dp, modifier: Modifier = Modifier) {
     Canvas(
         modifier = modifier
-            .size(size)
+            .size(side)
             .clip(CircleShape)
             .background(Color(0xFF3A3F52))
             .border(1.dp, Color.White.copy(alpha = 0.15f), CircleShape),

@@ -617,7 +617,7 @@ private fun SecurityTab(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text("Block rooted devices", color = mb.ink, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
-                MbSwitch(blockRoot, onBlockRoot)
+                MbSwitch(blockRoot, onChange = onBlockRoot)
             }
         }
         item {

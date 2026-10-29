@@ -9,6 +9,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -306,7 +307,7 @@ private fun SwitchRow(
                 Text(title, color = mb.ink, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                 Text(sub, color = mb.dim, fontSize = 13.sp)
             }
-            MbSwitch(checked, onChange)
+            MbSwitch(checked, onChange = onChange)
         }
     }
 }

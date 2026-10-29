@@ -1,6 +1,7 @@
 package com.mianboor.vpn.ui
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -28,8 +29,10 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.composed
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -88,10 +91,10 @@ fun Bars(ping: Int, modifier: Modifier = Modifier) {
 
 /** Demo-style switch (glow track / outlined track). */
 @Composable
-fun MbSwitch(checked: Boolean, onChange: (Boolean) -> Unit, modifier: Modifier = Modifier) {
+fun MbSwitch(checked: Boolean, modifier: Modifier = Modifier, onChange: (Boolean) -> Unit) {
     val mb = LocalMb.current
     val x by animateDpAsState(if (checked) 22.dp else 3.dp, tween(180), label = "mbSwitch")
-    val trackColor by androidx.compose.animation.core.animateColorAsState(
+    val trackColor by animateColorAsState(
         if (checked) mb.glow else Color.Transparent, tween(180), label = "mbTrack",
     )
     Box(
@@ -245,7 +248,7 @@ fun EmptyHint(text: String, modifier: Modifier = Modifier) {
 }
 
 /** Swallow clicks so taps on a sheet's body don't fall through to the scrim. */
-fun Modifier.consumeClicks(): Modifier = androidx.compose.ui.composed {
+fun Modifier.consumeClicks(): Modifier = composed {
     clickable(
         interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
         indication = null,
