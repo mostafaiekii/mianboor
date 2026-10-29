@@ -41,6 +41,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.graphics.drawscope.Stroke
 import com.mianboor.vpn.AppPrefs
 import com.mianboor.vpn.R
 
@@ -447,8 +448,7 @@ fun SpinningLoader(modifier: Modifier = Modifier) {
         rotate(angle) {
             drawArc(
                 mb.glow, startAngle = 0f, sweepAngle = 270f, useCenter = false,
-                strokeWidth = 2.dp.toPx(),
-                cap = androidx.compose.ui.graphics.StrokeCap.Round,
+                style = Stroke(2.dp.toPx(), cap = androidx.compose.ui.graphics.StrokeCap.Round),
                 topLeft = Offset.Zero,
             )
         }
