@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono, Vazirmatn } from "next/font/google";
+import { Geist, Geist_Mono, Manrope, Vazirmatn } from "next/font/google";
 import "./globals.css";
 import { Toaster } from "@/components/ui/toaster";
 
@@ -18,11 +18,17 @@ const vazir = Vazirmatn({
   subsets: ["arabic"],
 });
 
+const manrope = Manrope({
+  variable: "--font-manrope",
+  subsets: ["latin"],
+});
+
 export const metadata: Metadata = {
-  title: "میانبر — Mianboor VPN",
-  description: "اپلیکیشن VPN نئونی میانبر؛ با یه لمس به سریع‌ترین سرور وصل شو. پشتیبانی: @member9",
-  keywords: ["VPN", "شیلد", "نیون", "اتصال امن", "سرور سریع"],
-  authors: [{ name: "Shield VPN" }],
+  title: "میانبر — Mianboor VPN · دمو",
+  description:
+    "دموی رابط کاربری اپ VPN میانبر؛ حلقه پاور نئونی، انتخاب سرور با پرچم و پینگ، و پنل مخفی مدیر با نگه‌داشتن تب Account.",
+  keywords: ["VPN", "میانبر", "Mianboor", "دمو", "اتصال امن"],
+  authors: [{ name: "Mianboor VPN" }],
   icons: {
     icon: "https://z-cdn.chatglm.cn/z-ai/static/logo.svg",
   },
@@ -48,7 +54,7 @@ export default function RootLayout({
   return (
     <html lang="fa" dir="rtl" suppressHydrationWarning>
       <body
-        className={`${vazir.variable} ${geistSans.variable} ${geistMono.variable} font-sans antialiased bg-[#010402] text-foreground`}
+        className={`${vazir.variable} ${manrope.variable} ${geistSans.variable} ${geistMono.variable} font-sans antialiased bg-background text-foreground`}
       >
         {children}
         <Toaster />

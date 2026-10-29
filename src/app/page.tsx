@@ -1,575 +1,298 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import {
-  Activity,
-  ArrowDown,
-  ArrowUp,
-  Power,
-  Send,
-  ShieldCheck,
-  Timer,
-  Zap,
-} from "lucide-react";
-import AdminPanel from "@/components/admin-panel";
+import { Hand, Home, Globe, ListPlus, Lock, RotateCcw, User, Eye } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
+import { HomeScreen, ServersScreen, AccountScreen } from "@/components/demo/user-screens";
+import { AdminLogin, AdminPanel } from "@/components/demo/admin-screens";
+import type { ConfigItem, Screen, VpnState } from "@/components/demo/types";
 
-type Status = "idle" | "scanning" | "connecting" | "connected" | "disconnecting";
+const HOLD_MS = 5000;
+const DEMO_USER = "admin";
+const DEMO_PASS = "Mianboor@2026";
 
-interface Server {
-  country: string;
-  city: string;
-  flag: string;
-  ping: number;
-  load: number;
+const SEED: ConfigItem[] = [
+  { id: 1, name: "Netherlands - Amsterdam", country: "nl", protocol: "VLESS", host: "nl1.mianboor.app", ping: 28, premium: false, enabled: true },
+  { id: 2, name: "Germany - Frankfurt", country: "de", protocol: "VLESS", host: "de1.mianboor.app", ping: 32, premium: false, enabled: true },
+  { id: 3, name: "Finland - Helsinki", country: "fi", protocol: "VMESS", host: "fi1.mianboor.app", ping: 41, premium: false, enabled: true },
+  { id: 4, name: "United Kingdom - London", country: "gb", protocol: "Trojan", host: "uk1.mianboor.app", ping: 45, premium: true, enabled: true },
+  { id: 5, name: "Turkey - Istanbul", country: "tr", protocol: "VLESS", host: "tr1.mianboor.app", ping: 58, premium: true, enabled: true },
+  { id: 6, name: "USA - New York", country: "us", protocol: "Shadowsocks", host: "us1.mianboor.app", ping: 120, premium: true, enabled: false },
+];
+
+function NavBtn({
+  icon: I,
+  label,
+  active,
+  ...rest
+}: {
+  icon: LucideIcon;
+  label: string;
+  active: boolean;
+} & React.ButtonHTMLAttributes<HTMLButtonElement>) {
+  return (
+    <button
+      type="button"
+      {...rest}
+      className={
+        active
+          ? "flex flex-1 select-none flex-col items-center gap-1 py-2 text-glow"
+          : "flex flex-1 select-none flex-col items-center gap-1 py-2 text-dim hover:text-ink"
+      }
+      style={{ WebkitTouchCallout: "none", touchAction: "manipulation" }}
+    >
+      <I className="size-6" />
+      <span className="text-sm font-medium">{label}</span>
+    </button>
+  );
 }
 
-const SERVERS: Server[] = [
-  { country: "فنلاند", city: "هلسینکی", flag: "🇫🇮", ping: 24, load: 14 },
-  { country: "آلمان", city: "فرانکفورت", flag: "🇩🇪", ping: 31, load: 27 },
-  { country: "هلند", city: "آمستردام", flag: "🇳🇱", ping: 36, load: 21 },
-  { country: "فرانسه", city: "پاریس", flag: "🇫🇷", ping: 42, load: 33 },
-  { country: "ترکیه", city: "استانبول", flag: "🇹🇷", ping: 47, load: 58 },
-  { country: "امارات", city: "دبی", flag: "🇦🇪", ping: 55, load: 37 },
-  { country: "انگلیس", city: "لندن", flag: "🇬🇧", ping: 63, load: 44 },
-  { country: "آمریکا", city: "نیویورک", flag: "🇺🇸", ping: 112, load: 49 },
-];
-
-const SCAN_MSGS = [
-  "داریم سریع‌ترین سرور رو پیدا می‌کنیم…",
-  "تست پینگ سرورهای نزدیک…",
-];
-const CONNECT_MSGS = [
-  "سریع‌ترین سرور پیدا شد ✓",
-  "در حال برقراری تونل امن…",
-  "فعال‌سازی رمزنگاری…",
-  "الان وصل میشی…",
-];
-const DISCONNECT_MSG = "در حال قطع اتصال…";
-const IDLE_MSG = "برای اتصال لمس کن";
-
-const faNum = (n: number) => n.toLocaleString("fa-IR");
-
-const PARTICLES = [
-  { x: "12%", y: "20%", s: 3, d: 5, del: 0 },
-  { x: "84%", y: "15%", s: 4, d: 6, del: 1.1 },
-  { x: "72%", y: "62%", s: 3, d: 5.5, del: 0.6 },
-  { x: "18%", y: "74%", s: 2, d: 4.5, del: 1.6 },
-  { x: "90%", y: "42%", s: 2, d: 6.5, del: 2 },
-  { x: "6%", y: "46%", s: 2, d: 5.2, del: 0.3 },
-];
-
 export default function VpnDemoPage() {
-  const [status, setStatus] = useState<Status>("idle");
-  const [phaseMsg, setPhaseMsg] = useState(SCAN_MSGS[0]);
-  const [flicker, setFlicker] = useState<Server | null>(null);
-  const [server, setServer] = useState<Server | null>(null);
+  const [screen, setScreen] = useState<Screen>("home");
+  const [configs, setConfigs] = useState<ConfigItem[]>(SEED);
+  const [selectedId, setSelectedId] = useState<number | null>(2);
+  const [vpn, setVpn] = useState<VpnState>("off");
   const [seconds, setSeconds] = useState(0);
-  const [down, setDown] = useState(0);
-  const [up, setUp] = useState(0);
-  const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const [hold, setHold] = useState(0);
+  const [pass, setPass] = useState(DEMO_PASS);
+  const [unlocked, setUnlocked] = useState(false);
 
-  const clearTimers = () => {
-    timers.current.forEach(clearTimeout);
-    timers.current = [];
-  };
-  useEffect(() => () => clearTimers(), []);
+  const holdStart = useRef(0);
+  const raf = useRef(0);
+  const fired = useRef(false);
 
-  const later = (fn: () => void, ms: number) => {
-    timers.current.push(setTimeout(fn, ms));
-  };
-
-  /* ── پیام‌های حین اتصال ── */
   useEffect(() => {
-    if (status !== "scanning" && status !== "connecting") return;
-    const list = status === "scanning" ? SCAN_MSGS : CONNECT_MSGS;
-    let i = 0;
-    const id = setInterval(() => {
-      i = (i + 1) % list.length;
-      setPhaseMsg(list[i]);
-    }, 850);
-    return () => clearInterval(id);
-  }, [status]);
+    if (vpn !== "on") return;
+    const t = setInterval(() => setSeconds((s) => s + 1), 1000);
+    return () => clearInterval(t);
+  }, [vpn]);
 
-  /* ── چشمک زدن سرورها حین اسکن ── */
   useEffect(() => {
-    if (status !== "scanning") return;
-    const id = setInterval(() => {
-      const s = SERVERS[Math.floor(Math.random() * SERVERS.length)];
-      setFlicker({ ...s, ping: s.ping + Math.floor(Math.random() * 9 - 4) });
-    }, 110);
-    return () => clearInterval(id);
-  }, [status]);
+    if (!configs.find((c) => c.id === selectedId && c.enabled)) {
+      const first = configs.find((c) => c.enabled);
+      setSelectedId(first ? first.id : null);
+    }
+  }, [configs, selectedId]);
 
-  /* ── تایمر مدت اتصال ── */
-  useEffect(() => {
-    if (status !== "connected") return;
-    const id = setInterval(() => setSeconds((s) => s + 1), 1000);
-    return () => clearInterval(id);
-  }, [status]);
+  const server = configs.find((c) => c.id === selectedId) ?? null;
 
-  /* ── سرعت‌های نوسانی ── */
-  useEffect(() => {
-    if (status !== "connected") return;
-    const id = setInterval(() => {
-      setDown((d) =>
-        Math.max(72, Math.min(128, d + Math.floor(Math.random() * 11 - 5)))
-      );
-      setUp((u) =>
-        Math.max(24, Math.min(52, u + Math.floor(Math.random() * 7 - 3)))
-      );
-    }, 1200);
-    return () => clearInterval(id);
-  }, [status]);
-
-  const connect = () => {
-    clearTimers();
-    setPhaseMsg(SCAN_MSGS[0]);
-    setStatus("scanning");
-    later(() => {
-      // پشت صحنه: انتخاب سریع‌ترین سرور بر اساس پینگ + کمی نویز واقعی
-      let best = SERVERS[0];
-      let bestScore = Infinity;
-      for (const s of SERVERS) {
-        const score = s.ping + Math.random() * 8;
-        if (score < bestScore) {
-          bestScore = score;
-          best = s;
-        }
-      }
-      setServer({
-        ...best,
-        ping: best.ping + Math.floor(Math.random() * 5),
-        load: Math.max(5, best.load + Math.floor(Math.random() * 11 - 5)),
-      });
-      setPhaseMsg(CONNECT_MSGS[0]);
-      setStatus("connecting");
-      later(() => {
-        setSeconds(0);
-        setDown(96);
-        setUp(38);
-        setStatus("connected");
-      }, 2600);
-    }, 1700);
-  };
-
-  const disconnect = () => {
-    clearTimers();
-    setStatus("disconnecting");
-    later(() => {
-      setStatus("idle");
-      setServer(null);
-      setFlicker(null);
+  const toggleVpn = () => {
+    if (vpn === "on" || vpn === "connecting") {
+      setVpn("off");
       setSeconds(0);
-      setDown(0);
-      setUp(0);
-    }, 900);
+      return;
+    }
+    if (!server) return;
+    setVpn("connecting");
+    setTimeout(() => setVpn((v) => (v === "connecting" ? "on" : v)), 1400);
   };
 
-  const handleClick = () => {
-    if (status === "idle") connect();
-    else if (status === "connected") disconnect();
+  const tick = () => {
+    const p = Math.min(1, (performance.now() - holdStart.current) / HOLD_MS);
+    setHold(p);
+    if (p >= 1) {
+      fired.current = true;
+      if (navigator.vibrate) navigator.vibrate(60);
+      setHold(0);
+      setScreen(unlocked ? "admin" : "login");
+      return;
+    }
+    raf.current = requestAnimationFrame(tick);
   };
 
-  const msg =
-    status === "idle"
-      ? IDLE_MSG
-      : status === "disconnecting"
-        ? DISCONNECT_MSG
-        : phaseMsg;
+  const startHold = () => {
+    fired.current = false;
+    holdStart.current = performance.now();
+    cancelAnimationFrame(raf.current);
+    raf.current = requestAnimationFrame(tick);
+  };
+  const endHold = () => {
+    cancelAnimationFrame(raf.current);
+    setHold(0);
+  };
+  const accountClick = () => {
+    if (fired.current) {
+      fired.current = false;
+      return;
+    }
+    setScreen("account");
+  };
 
-  const busy = status === "scanning" || status === "connecting";
-  const connected = status === "connected";
+  const reset = () => {
+    setScreen("home");
+    setConfigs(SEED);
+    setSelectedId(2);
+    setVpn("off");
+    setSeconds(0);
+    setPass(DEMO_PASS);
+    setUnlocked(false);
+  };
 
-  const btnSkin = connected
-    ? "border-emerald-300/90 bg-gradient-to-b from-emerald-400/25 to-emerald-600/10 text-emerald-100 shadow-[0_0_90px_-5px_rgba(0,255,157,0.85),inset_0_0_45px_rgba(0,255,157,0.35)]"
-    : busy
-      ? "border-emerald-300/60 bg-emerald-500/10 text-emerald-200 shadow-[0_0_50px_-8px_rgba(0,255,157,0.6),inset_0_0_25px_rgba(0,255,157,0.18)]"
-      : "border-emerald-400/25 bg-emerald-950/20 text-emerald-300/50 shadow-[0_0_35px_-12px_rgba(0,255,157,0.4)]";
-
-  const mm = Math.floor(seconds / 60);
-  const ss = seconds % 60;
-  const timerText = `${faNum(mm)}:${faNum(ss).padStart(2, "۰")}`;
-
-  const badge =
-    connected
-      ? { text: "متصل", dot: "bg-emerald-400", ring: "shadow-[0_0_10px_rgba(0,255,157,0.9)]" }
-      : busy
-        ? { text: "در حال اتصال…", dot: "bg-amber-300", ring: "shadow-[0_0_10px_rgba(252,211,77,0.9)]" }
-        : status === "disconnecting"
-          ? { text: "در حال قطع…", dot: "bg-amber-300", ring: "" }
-          : { text: "آماده", dot: "bg-zinc-500", ring: "" };
+  const isAdmin = screen === "login" || screen === "admin";
+  const steps: { i: LucideIcon; t: React.ReactNode; done: boolean }[] = [
+    { i: Hand, t: "روی آیکن Account پایین صفحه ۵ ثانیه انگشتت رو نگه دار", done: isAdmin || unlocked },
+    {
+      i: Lock,
+      t: (
+        <>
+          وارد شو با <b className="font-mono text-foreground">{DEMO_USER}</b> و{" "}
+          <b className="font-mono text-foreground">{pass}</b>
+        </>
+      ),
+      done: unlocked,
+    },
+    {
+      i: ListPlus,
+      t: "روی Add config بزن، لینک vless یا vmess رو بچسبون و Save & publish",
+      done: configs.length > SEED.length,
+    },
+    { i: Eye, t: "از پنل خارج شو و توی Servers ببین کانفیگ جدید اومده", done: configs.length > SEED.length && screen === "servers" },
+  ];
 
   return (
-    <div className="relative min-h-dvh overflow-hidden bg-[#010402] text-emerald-50 flex flex-col">
-      {/* ── پس‌زمینه نئون ── */}
-      <div className="pointer-events-none absolute inset-0">
-        <div
-          className="neon-grid absolute inset-0"
-          style={{
-            maskImage:
-              "radial-gradient(ellipse 95% 75% at 50% 32%, black 25%, transparent 78%)",
-            WebkitMaskImage:
-              "radial-gradient(ellipse 95% 75% at 50% 32%, black 25%, transparent 78%)",
-          }}
-        />
-        {/* هاله پشت دکمه */}
-        <motion.div
-          className="absolute left-1/2 top-[24%] h-[26rem] w-[26rem] -translate-x-1/2 -translate-y-1/2 rounded-full blur-3xl"
-          style={{
-            background:
-              "radial-gradient(circle, rgba(0,255,157,0.16) 0%, rgba(0,255,157,0.05) 45%, transparent 70%)",
-          }}
-          animate={
-            connected
-              ? { scale: [1, 1.18, 1], opacity: [0.9, 1, 0.9] }
-              : { scale: [1, 1.05, 1], opacity: [0.45, 0.6, 0.45] }
-          }
-          transition={{ duration: connected ? 2.4 : 4.5, repeat: Infinity, ease: "easeInOut" }}
-        />
-        {/* ذرات شناور */}
-        {PARTICLES.map((p, i) => (
-          <motion.span
-            key={i}
-            className="absolute rounded-full bg-emerald-300"
-            style={{ left: p.x, top: p.y, width: p.s, height: p.s }}
-            animate={{ y: [0, -20, 0], opacity: [0.15, 0.85, 0.15] }}
-            transition={{
-              duration: p.d,
-              repeat: Infinity,
-              delay: p.del,
-              ease: "easeInOut",
-            }}
-          />
-        ))}
-      </div>
+    <main dir="ltr" className="@container min-h-dvh bg-background text-foreground">
+      <div className="mx-auto flex max-w-5xl flex-col items-center gap-12 px-6 py-12 @4xl:flex-row @4xl:items-start @4xl:justify-center">
+        {/* ── راهنمای فارسی ── */}
+        <section dir="rtl" className="w-full max-w-sm @4xl:sticky @4xl:top-12 @4xl:order-2">
+          <div className="font-display text-sm font-bold tracking-widest text-primary">MIANBOOR VPN · DEMO</div>
+          <h1 className="mt-3 text-4xl leading-tight font-black">ورود مخفی مدیر</h1>
+          <p className="mt-3 text-base leading-8 text-muted-foreground">
+            کاربر عادی هیچ دکمه یا نشونه‌ای نمی‌بینه. فقط تو می‌دونی کجا رو باید نگه داری.
+          </p>
 
-      <main className="relative mx-auto flex w-full max-w-md flex-1 flex-col px-6 pt-7 pb-5">
-        {/* ── هدر ── */}
-        <header className="flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-emerald-400/30 bg-emerald-500/10 shadow-[0_0_18px_-4px_rgba(0,255,157,0.55)]">
-              <ShieldCheck className="h-5 w-5 text-emerald-300" />
+          <div className="mt-6 rounded-2xl border border-border bg-card p-4">
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-muted-foreground">نگه‌داشتن Account</span>
+              <span dir="ltr" className="font-display font-bold tabular-nums">
+                {(hold * 5).toFixed(1)} / 5s
+              </span>
             </div>
-            <div className="leading-tight">
-              <p className="text-[15px] font-extrabold tracking-tight">میانبر</p>
-              <p className="text-[11px] text-emerald-200/50">Mianboor VPN · نسخه آزمایشی</p>
+            <div className="mt-3 h-2 overflow-hidden rounded-full bg-muted">
+              <div
+                className="h-full rounded-full bg-gold"
+                style={{ width: `${hold * 100}%`, transition: hold === 0 ? "width .2s" : "none" }}
+              />
             </div>
+            <div className="mt-2 text-sm text-muted-foreground">این نشانگر فقط توی دموئه، توی اپ اصلی نیست.</div>
           </div>
-          <div className="flex items-center gap-2">
-            <a
-              href="https://t.me/member9"
-              target="_blank"
-              rel="noopener noreferrer"
-              aria-label="پشتیبانی تلگرام — @member9"
-              title="پشتیبانی تلگرام"
-              className="flex h-9 w-9 items-center justify-center rounded-full border border-emerald-400/20 bg-white/[0.03] text-emerald-300 backdrop-blur transition-colors hover:border-emerald-400/40 hover:bg-emerald-500/10"
-            >
-              <Send className="h-4 w-4" />
-            </a>
-            <div className="flex items-center gap-2 rounded-full border border-emerald-400/20 bg-white/[0.03] px-3 py-1.5 backdrop-blur">
-            <span className={`h-2 w-2 rounded-full ${badge.dot} ${badge.ring} ${busy || connected ? "animate-pulse" : ""}`} />
-            <span className="text-xs font-medium text-emerald-100/80">{badge.text}</span>
-            </div>
-          </div>
-        </header>
 
-        {/* ── پیام وضعیت ── */}
-        <div
-          className="mt-8 flex h-8 items-center justify-center"
-          aria-live="polite"
-        >
-          <AnimatePresence mode="wait">
-            <motion.p
-              key={msg}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              transition={{ duration: 0.25 }}
-              className={`text-sm font-medium sm:text-base ${
-                connected ? "text-emerald-300" : "text-emerald-100/75"
-              }`}
-            >
-              {msg}
-            </motion.p>
-          </AnimatePresence>
-        </div>
-
-        {/* ── دکمه بزرگ نئون ── */}
-        <section className="mt-4 flex justify-center">
-          <div className="relative h-56 w-56 sm:h-64 sm:w-64">
-            {/* حلقه‌های پخش‌شونده وقتی وصل هستیم */}
-            {connected &&
-              [0, 1, 2].map((i) => (
-                <motion.div
-                  key={i}
-                  className="absolute inset-0 rounded-full border border-emerald-400/50"
-                  animate={{ scale: [1, 1.55], opacity: [0.65, 0] }}
-                  transition={{
-                    duration: 2.2,
-                    repeat: Infinity,
-                    delay: i * 0.7,
-                    ease: "easeOut",
-                  }}
-                />
-              ))}
-
-            {/* قوس‌های چرخان حین اتصال */}
-            {busy && (
-              <>
-                <motion.svg
-                  className="absolute -inset-3 h-[calc(100%+1.5rem)] w-[calc(100%+1.5rem)]"
-                  viewBox="0 0 100 100"
-                  animate={{ rotate: 360 }}
-                  transition={{ repeat: Infinity, duration: 2.2, ease: "linear" }}
+          <ol className="mt-6 flex flex-col gap-4">
+            {steps.map((s, idx) => (
+              <li key={idx} className="flex items-start gap-3">
+                <span
+                  className={
+                    s.done
+                      ? "grid size-9 shrink-0 place-items-center rounded-full bg-primary text-primary-foreground"
+                      : "grid size-9 shrink-0 place-items-center rounded-full bg-muted text-muted-foreground"
+                  }
                 >
-                  <circle
-                    cx="50"
-                    cy="50"
-                    r="47.5"
-                    fill="none"
-                    stroke="rgba(0,255,157,0.9)"
-                    strokeWidth="1.4"
-                    strokeLinecap="round"
-                    strokeDasharray="70 228"
-                  />
-                </motion.svg>
-                <motion.svg
-                  className="absolute -inset-6 h-[calc(100%+3rem)] w-[calc(100%+3rem)]"
-                  viewBox="0 0 100 100"
-                  animate={{ rotate: -360 }}
-                  transition={{ repeat: Infinity, duration: 3.4, ease: "linear" }}
+                  <s.i className="size-4" />
+                </span>
+                <span
+                  className={
+                    s.done
+                      ? "pt-1.5 text-base leading-7 text-muted-foreground line-through decoration-primary/60"
+                      : "pt-1.5 text-base leading-7"
+                  }
                 >
-                  <circle
-                    cx="50"
-                    cy="50"
-                    r="48.5"
-                    fill="none"
-                    stroke="rgba(45,212,191,0.45)"
-                    strokeWidth="1"
-                    strokeLinecap="round"
-                    strokeDasharray="34 271"
-                  />
-                </motion.svg>
-              </>
-            )}
+                  {s.t}
+                </span>
+              </li>
+            ))}
+          </ol>
 
-            {/* خود دکمه */}
-            <motion.button
-              onClick={handleClick}
-              whileTap={{ scale: 0.94 }}
-              whileHover={{ scale: 1.02 }}
-              aria-label={connected ? "قطع اتصال" : "اتصال به سریع‌ترین سرور"}
-              className={`absolute inset-0 cursor-pointer rounded-full border backdrop-blur-sm transition-colors duration-500 ${btnSkin}`}
-            >
-              <span className="absolute inset-4 rounded-full border border-emerald-400/20" />
-              <motion.span
-                className="absolute inset-0 flex items-center justify-center"
-                animate={busy ? { opacity: [0.6, 1, 0.6] } : { opacity: 1 }}
-                transition={{ duration: 1, repeat: busy ? Infinity : 0 }}
-              >
-                <Power
-                  className={`h-16 w-16 sm:h-20 sm:w-20 transition-all duration-500 ${
-                    connected ? "drop-shadow-[0_0_18px_rgba(0,255,157,0.95)]" : "drop-shadow-[0_0_8px_rgba(0,255,157,0.35)]"
-                  }`}
-                  strokeWidth={2.2}
-                />
-              </motion.span>
-            </motion.button>
-          </div>
-        </section>
-
-        {/* ── کارت سرور ── */}
-        <section className="mt-8">
-          <motion.div
-            layout
-            className="relative overflow-hidden rounded-2xl border border-emerald-400/15 bg-white/[0.03] p-5 shadow-[0_0_40px_-18px_rgba(0,255,157,0.5)] backdrop-blur-xl"
+          <button
+            type="button"
+            onClick={reset}
+            className="mt-8 flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground"
           >
-            <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-l from-transparent via-emerald-300/60 to-transparent" />
-
-            <AnimatePresence mode="wait">
-              {status === "idle" && (
-                <motion.div
-                  key="idle"
-                  initial={{ opacity: 0, y: 12 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -12 }}
-                  transition={{ duration: 0.3 }}
-                  className="flex items-center gap-4"
-                >
-                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-emerald-400/25 bg-emerald-500/10">
-                    <Zap className="h-6 w-6 text-emerald-300" />
-                  </div>
-                  <div>
-                    <p className="font-bold">سریع‌ترین سرور، خودکار</p>
-                    <p className="mt-1 text-xs leading-5 text-emerald-100/55">
-                      فقط لمس کن؛ بقیه‌ش با ما. بهترین سرور بر اساس پینگ و بار شبکه انتخاب میشه.
-                    </p>
-                  </div>
-                </motion.div>
-              )}
-
-              {status === "scanning" && flicker && (
-                <motion.div
-                  key="scanning"
-                  initial={{ opacity: 0, y: 12 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -12 }}
-                  transition={{ duration: 0.25 }}
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <span className="text-3xl">{flicker.flag}</span>
-                      <div>
-                        <p className="font-bold">{flicker.country}</p>
-                        <p className="text-xs text-emerald-100/50">{flicker.city}</p>
-                      </div>
-                    </div>
-                    <motion.span
-                      key={flicker.ping}
-                      className="rounded-full border border-emerald-400/25 bg-emerald-500/10 px-3 py-1 text-sm font-semibold text-emerald-200"
-                    >
-                      {faNum(flicker.ping)} ms
-                    </motion.span>
-                  </div>
-                  <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-emerald-950">
-                    <motion.div
-                      key="scanbar"
-                      className="h-full rounded-full bg-gradient-to-l from-emerald-400 to-teal-300 shadow-[0_0_12px_rgba(0,255,157,0.8)]"
-                      initial={{ width: "0%" }}
-                      animate={{ width: "100%" }}
-                      transition={{ duration: 1.7, ease: "easeInOut" }}
-                    />
-                  </div>
-                </motion.div>
-              )}
-
-              {(status === "connecting" || connected) && server && (
-                <motion.div
-                  key="server"
-                  initial={{ opacity: 0, y: 12 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -12 }}
-                  transition={{ duration: 0.3 }}
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <motion.span
-                        className="text-3xl"
-                        animate={connected ? { scale: [1, 1.08, 1] } : {}}
-                        transition={{ duration: 2, repeat: Infinity }}
-                      >
-                        {server.flag}
-                      </motion.span>
-                      <div>
-                        <p className="text-[11px] text-emerald-300/60">
-                          {connected ? "متصل به سریع‌ترین سرور" : "قفل شد روی بهترین سرور"}
-                        </p>
-                        <p className="text-lg font-extrabold leading-6">
-                          {server.country}
-                          <span className="mr-1.5 text-sm font-medium text-emerald-100/50">
-                            · {server.city}
-                          </span>
-                        </p>
-                      </div>
-                    </div>
-                    <span
-                      className={`rounded-full border px-3 py-1 text-sm font-semibold ${
-                        connected
-                          ? "border-emerald-300/40 bg-emerald-400/15 text-emerald-200 shadow-[0_0_14px_-2px_rgba(0,255,157,0.6)]"
-                          : "border-emerald-400/25 bg-emerald-500/10 text-emerald-200"
-                      }`}
-                    >
-                      {faNum(server.ping)} ms
-                    </span>
-                  </div>
-
-                  <div className="mt-4 flex items-center gap-3">
-                    <span className="shrink-0 text-[11px] text-emerald-100/50">بار شبکه</span>
-                    <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-emerald-950">
-                      <motion.div
-                        className="h-full rounded-full bg-gradient-to-l from-emerald-400 to-teal-300"
-                        initial={{ width: 0 }}
-                        animate={{ width: `${server.load}%` }}
-                        transition={{ duration: 0.8, ease: "easeOut" }}
-                      />
-                    </div>
-                    <span className="shrink-0 text-xs font-semibold text-emerald-200/80">
-                      {faNum(server.load)}٪
-                    </span>
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </motion.div>
+            <RotateCcw className="size-4" /> شروع دوباره دمو
+          </button>
         </section>
 
-        {/* ── آمار اتصال ── */}
-        <AnimatePresence>
-          {connected && (
-            <motion.section
-              initial={{ opacity: 0, y: 16 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: 16 }}
-              transition={{ duration: 0.35 }}
-              className="mt-4"
+        {/* ── قاب گوشی ── */}
+        <div className="shrink-0 origin-top scale-[0.85] max-sm:-mb-28 sm:scale-100">
+          <div className="relative rounded-[52px] bg-[oklch(0.12_0.02_270)] p-3 shadow-[0_40px_80px_-20px_oklch(0.1_0.05_270/0.6)] ring-1 ring-ink/10">
+            <div
+              className="relative flex h-[760px] w-[370px] max-w-full flex-col overflow-hidden rounded-[42px] bg-night"
+              onContextMenu={(e) => e.preventDefault()}
             >
-              <div className="grid grid-cols-3 gap-3">
-                <div className="rounded-2xl border border-emerald-400/15 bg-white/[0.03] p-3.5 text-center backdrop-blur-xl">
-                  <Timer className="mx-auto h-4 w-4 text-emerald-300/80" />
-                  <p className="mt-1.5 text-[10px] text-emerald-100/50">زمان اتصال</p>
-                  <p className="mt-0.5 text-sm font-bold tabular-nums" dir="ltr">
-                    {timerText}
-                  </p>
-                </div>
-                <div className="rounded-2xl border border-emerald-400/15 bg-white/[0.03] p-3.5 text-center backdrop-blur-xl">
-                  <ArrowDown className="mx-auto h-4 w-4 text-emerald-300/80" />
-                  <p className="mt-1.5 text-[10px] text-emerald-100/50">دانلود</p>
-                  <p className="mt-0.5 text-sm font-bold tabular-nums">
-                    {faNum(down)}
-                    <span className="text-[9px] font-normal text-emerald-100/40"> Mbps</span>
-                  </p>
-                </div>
-                <div className="rounded-2xl border border-emerald-400/15 bg-white/[0.03] p-3.5 text-center backdrop-blur-xl">
-                  <ArrowUp className="mx-auto h-4 w-4 text-emerald-300/80" />
-                  <p className="mt-1.5 text-[10px] text-emerald-100/50">آپلود</p>
-                  <p className="mt-0.5 text-sm font-bold tabular-nums">
-                    {faNum(up)}
-                    <span className="text-[9px] font-normal text-emerald-100/40"> Mbps</span>
-                  </p>
-                </div>
+              <div className="pointer-events-none absolute -top-24 left-1/2 size-80 -translate-x-1/2 rounded-full bg-[oklch(0.45_0.12_265/0.35)] blur-3xl" />
+              <div className="relative flex items-center justify-between px-7 pt-4 pb-2 font-display text-sm font-semibold text-ink">
+                <span>9:41</span>
+                <span className="size-4 rounded-full bg-black ring-1 ring-ink/10" />
+                <span className="flex items-center gap-1">
+                  <span className="h-2.5 w-4 rounded-sm border border-ink/80" />
+                </span>
               </div>
 
-              {/* کیفیت اتصال */}
-              <div className="mt-3 flex items-center justify-between rounded-2xl border border-emerald-400/15 bg-white/[0.03] px-4 py-3 backdrop-blur-xl">
-                <div className="flex items-center gap-2">
-                  <Activity className="h-4 w-4 text-emerald-300/80" />
-                  <span className="text-xs text-emerald-100/60">کیفیت اتصال</span>
-                </div>
-                <div className="flex items-center gap-2.5">
-                  <div className="flex items-end gap-0.5" dir="ltr">
-                    {[6, 9, 12, 15].map((h, i) => (
-                      <motion.span
-                        key={h}
-                        className="w-1 rounded-sm bg-emerald-300"
-                        animate={{ opacity: [0.3, 1, 0.3] }}
-                        transition={{ duration: 1.4, repeat: Infinity, delay: i * 0.18 }}
-                        style={{ height: h }}
-                      />
-                    ))}
-                  </div>
-                  <span className="bg-gradient-to-l from-emerald-300 to-teal-200 bg-clip-text text-sm font-extrabold text-transparent">
-                    عالی
-                  </span>
-                </div>
+              <div key={screen} className="screen-in relative flex min-h-0 flex-1 flex-col">
+                {screen === "home" && (
+                  <HomeScreen
+                    state={vpn}
+                    onToggle={toggleVpn}
+                    seconds={seconds}
+                    server={server}
+                    onPickServer={() => setScreen("servers")}
+                  />
+                )}
+                {screen === "servers" && (
+                  <ServersScreen
+                    configs={configs}
+                    selectedId={selectedId}
+                    onSelect={(id) => {
+                      setSelectedId(id);
+                      setScreen("home");
+                    }}
+                    onBack={() => setScreen("home")}
+                  />
+                )}
+                {screen === "account" && <AccountScreen />}
+                {screen === "login" && (
+                  <AdminLogin
+                    check={(u, p) => u === DEMO_USER && p === pass}
+                    onSuccess={() => {
+                      setUnlocked(true);
+                      setScreen("admin");
+                    }}
+                    onCancel={() => setScreen("account")}
+                  />
+                )}
+                {screen === "admin" && (
+                  <AdminPanel
+                    configs={configs}
+                    setConfigs={setConfigs}
+                    onChangePass={setPass}
+                    onExit={() => {
+                      setUnlocked(false);
+                      setScreen("account");
+                    }}
+                  />
+                )}
               </div>
-            </motion.section>
-          )}
-        </AnimatePresence>
 
-        {/* ── فوتر + پنل مخفی مدیر ── */}
-        <AdminPanel />
-      </main>
-    </div>
+              {!isAdmin && (
+                <nav className="relative mx-3 mb-2 flex rounded-3xl border border-panel-edge bg-panel/80 px-2">
+                  <NavBtn icon={Home} label="Home" active={screen === "home"} onClick={() => setScreen("home")} />
+                  <NavBtn icon={Globe} label="Servers" active={screen === "servers"} onClick={() => setScreen("servers")} />
+                  <NavBtn
+                    icon={User}
+                    label="Account"
+                    active={screen === "account"}
+                    onClick={accountClick}
+                    onPointerDown={startHold}
+                    onPointerUp={endHold}
+                    onPointerLeave={endHold}
+                    onPointerCancel={endHold}
+                    data-testid="account-tab"
+                  />
+                </nav>
+              )}
+              <div className="relative mx-auto mb-2 h-1 w-28 rounded-full bg-ink/40" />
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
   );
 }
