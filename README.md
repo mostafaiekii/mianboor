@@ -32,7 +32,7 @@
 
 ```
 ├── src/                    # وب‌اپ میانبر (Next.js 16 + Prisma)
-│   ├── app/page.tsx        # دموی نئونی وب
+│   ├── app/page.tsx        # دموی نئونی وب (قاب گوشی + راهنما)
 │   ├── app/api/admin/…     # پنل مدیر (احراز هویت با کوکی HMAC)
 │   └── app/api/client/…    # API کلاینت (توکن‌محور، بدون لینک خام در UI)
 ├── android/                # اپ اندروید (Kotlin + Jetpack Compose)
@@ -48,10 +48,10 @@
 
 ## نصب اپ اندروید
 
-1. به بخش [Releases](https://github.com/kopersheikhi-jpg/mianboor/releases) برو و آخرین `Mianboor-vX.Y.Z.apk` را دانلود کن.
+1. به بخش [Releases](https://github.com/mostafaiekii/mianboor/releases) برو و آخرین `Mianboor-vX.Y.Z.apk` را دانلود کن (فعلاً **v1.1.0**).
 2. فایل را نصب کن (اجازه «نصب از منابع ناشناس» لازم است).
-3. بار اول، دکمه پاور را بزن؛ اگر تنظیمات سرور وارد نشده باشد، صفحه «راه‌اندازی اولیه» باز می‌شود.
-4. آدرس سرور و توکن کلاینت را (که مدیر در اختیارت گذاشته) وارد کن — فقط یک بار.
+3. همین! ✅ آدرس سرور و توکن از قبل داخل APK تزریق شده — دکمه پاور را بزن و وصل شو. هیچ کلیدی لازم نیست.
+4. فقط اگر بیلد بدون Secret انجام شده باشد، صفحه «راه‌اندازی اولیه» باز می‌شود و باید آدرس سرور و توکن را یک بار وارد کنی.
 
 ### تنظیمات مدیر داخل اپ
 
@@ -101,3 +101,7 @@ cd android
 ## پشتیبانی
 
 телگرام: [@member9](https://t.me/member9)
+
+---
+
+🌐 دموی وب: [mianboor.vercel.app](https://mianboor.vercel.app) · 📦 آخرین نسخه: [Releases](https://github.com/mostafaiekii/mianboor/releases/latest)
