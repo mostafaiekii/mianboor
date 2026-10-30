@@ -6,18 +6,15 @@ import {
   Check,
   CreditCard,
   DownloadCloud,
-  Eye,
   Fingerprint,
   Gauge,
   Gift,
   GitBranch,
   Globe,
-  Hand,
   Home,
   Info,
-  ListPlus,
-  Lock,
   Palette,
+  Power,
   RotateCcw,
   ShieldCheck,
   User,
@@ -53,8 +50,13 @@ import {
 } from "@/components/demo/types";
 
 const HOLD_MS = 5000;
-const DEMO_USER = "admin";
-const DEMO_PASS = "Mianboor@2026";
+/* دروازهٔ ورود دمو — فقط هش؛ هیچ مقدار متنی در سورس نگه داشته نمی‌شه */
+const authHash = (s: string) => {
+  let h = 5381;
+  for (let i = 0; i < s.length; i++) h = ((h * 33) ^ s.charCodeAt(i)) >>> 0;
+  return h.toString(36);
+};
+const DEMO_AUTH = "1qt9z6z";
 const PING_MS = 3000;
 const DEVICE_ID = "MB-7F3A-92K1";
 const APP_VERSION = "1.6.0";
@@ -79,6 +81,7 @@ const DEMO_BY_SERVER: UsageRow[] = [
   { label: "Germany - Frankfurt", mb: 842, flag: "de" },
   { label: "Netherlands - Amsterdam", mb: 244, flag: "nl" },
   { label: "Finland - Helsinki", mb: 157, flag: "fi" },
+  { label: "Singapore - Singapore", mb: 96, flag: "sg" },
 ];
 
 const SEED: ConfigItem[] = [
@@ -87,7 +90,13 @@ const SEED: ConfigItem[] = [
   { id: 3, name: "Finland - Helsinki", country: "fi", protocol: "VMESS", host: "fi1.mianboor.app", ping: 41, premium: false, enabled: true },
   { id: 4, name: "United Kingdom - London", country: "gb", protocol: "Trojan", host: "uk1.mianboor.app", ping: 45, premium: true, enabled: true },
   { id: 5, name: "Turkey - Istanbul", country: "tr", protocol: "VLESS", host: "tr1.mianboor.app", ping: 58, premium: true, enabled: true },
-  { id: 6, name: "USA - New York", country: "us", protocol: "Shadowsocks", host: "us1.mianboor.app", ping: 120, premium: true, enabled: false },
+  { id: 6, name: "USA - New York", country: "us", protocol: "Shadowsocks", host: "us1.mianboor.app", ping: 120, premium: true, enabled: true },
+  { id: 7, name: "France - Paris", country: "fr", protocol: "VLESS", host: "fr1.mianboor.app", ping: 38, premium: false, enabled: true },
+  { id: 8, name: "Sweden - Stockholm", country: "se", protocol: "VLESS", host: "se1.mianboor.app", ping: 47, premium: false, enabled: true },
+  { id: 9, name: "UAE - Dubai", country: "ae", protocol: "VMESS", host: "ae1.mianboor.app", ping: 64, premium: true, enabled: true },
+  { id: 10, name: "Singapore - Singapore", country: "sg", protocol: "VLESS", host: "sg1.mianboor.app", ping: 148, premium: true, enabled: true },
+  { id: 11, name: "Canada - Toronto", country: "ca", protocol: "Trojan", host: "ca1.mianboor.app", ping: 132, premium: true, enabled: true },
+  { id: 12, name: "Japan - Tokyo", country: "jp", protocol: "Shadowsocks", host: "jp1.mianboor.app", ping: 168, premium: true, enabled: true },
 ];
 
 const seedPings = (): Record<number, number> =>
@@ -336,8 +345,7 @@ export default function VpnDemoPage() {
   const [selectedId, setSelectedId] = useState<number | null>(2);
   const [vpn, setVpn] = useState<VpnState>("off");
   const [seconds, setSeconds] = useState(0);
-  const [hold, setHold] = useState(0);
-  const [pass, setPass] = useState(DEMO_PASS);
+  const [passHash, setPassHash] = useState(DEMO_AUTH);
   const [unlocked, setUnlocked] = useState(false);
   const [plans, setPlans] = useState<null | "renew" | "premium-lock" | "trial-over">(null);
   const [entitlement, setEntitlement] = useState<Entitlement>({ plan: "free" });
@@ -360,7 +368,7 @@ export default function VpnDemoPage() {
   const [push, setPush] = useState<{ n: Notice; k: number } | null>(null);
   const [popupNotice, setPopupNotice] = useState<Notice | null>(null);
   const [pendingPopupId, setPendingPopupId] = useState<string | null>(null);
-  /* OTA: انتشار ادمین → پاپ‌آپ → دانلود پچ → نصب خودکار */
+  /* OTA: انتشار → پاپ‌آپ → دانلود پچ → نصب خودکار */
   const [ota, setOta] = useState<OtaRelease | null>(null);
   const [otaState, setOtaState] = useState<null | "offer" | "progress" | "done">(null);
   const [otaProgress, setOtaProgress] = useState(0);
@@ -402,7 +410,7 @@ export default function VpnDemoPage() {
     return () => clearInterval(id);
   }, [pingLive, configs]);
 
-  /* ── کانفیگ‌های تازه‌اضافه‌شده (از پنل مدیر) وارد چرخه پینگ می‌شن ── */
+  /* ── کانفیگ‌های تازه‌اضافه‌شده وارد چرخه پینگ می‌شن ── */
   useEffect(() => {
     setPings((prev) => {
       let changed = false;
@@ -442,7 +450,7 @@ export default function VpnDemoPage() {
     };
   }, [vpn]);
 
-  /* ── بنر نسخهٔ جدید حذف شد — آپدیت حالا از پنل ادمین منتشر می‌شه (تب Update) ── */
+  /* ── بنر نسخهٔ جدید حذف شد — آپدیت از سمت مدیریت منتشر می‌شه ── */
 
   /* ── نوتیف گوشی: بنر heads-up بعد از ۵ ثانیه خودش محو می‌شه ── */
   useEffect(() => {
@@ -527,7 +535,7 @@ export default function VpnDemoPage() {
     }, 900);
   };
 
-  /* ── خرید: سفارش ثبت می‌شه، ادمین از تب Orders تأیید می‌کنه ── */
+  /* ── خرید: سفارش ثبت می‌شه و پس از بررسی تأیید می‌شه ── */
   const createOrder = (plan: PlanId, via: "gateway" | "telegram"): string => {
     const id = `MB-${Math.floor(1000 + Math.random() * 9000)}`;
     setOrders((os) => [{ id, plan, price: plan === "p1" ? 200000 : plan === "p3" ? 400000 : 700000, device: DEVICE_ID, via, at: Date.now(), status: "pending" }, ...os]);
@@ -612,7 +620,7 @@ export default function VpnDemoPage() {
     showToast(t.copied);
   };
 
-  /* ── اعلان‌ها: ارسال مدیر → تحویل روی دستگاه (push / popup / inbox) ── */
+  /* ── اعلان‌ها: تحویل روی دستگاه (push / popup / inbox) ── */
   const sendNotice = (n: { title: string; body: string; kind: NoticeKind; audience: NoticeAudience; channels: NoticeChannel[] }) => {
     const matches = n.audience === "all" || (n.audience === "premium" ? premium : !premium);
     const notice: Notice = { ...n, id: `n-${Date.now()}`, at: Date.now(), read: false };
@@ -634,7 +642,7 @@ export default function VpnDemoPage() {
     showToast(t.markAll);
   };
 
-  /* ── OTA: انتشار آپدیت از پنل → پاپ‌آپ روی دستگاه کاربر ── */
+  /* ── OTA: انتشار آپدیت → پاپ‌آپ روی دستگاه کاربر ── */
   const publishOta = (r: { version: string; notes: string; modules: OtaModule[]; sizeMb: number }) => {
     const rel: OtaRelease = { ...r, at: Date.now() };
     setOta(rel);
@@ -653,12 +661,10 @@ export default function VpnDemoPage() {
   };
 
   const tick = () => {
-    const p = Math.min(1, (performance.now() - holdStart.current) / HOLD_MS);
-    setHold(p);
+    const p = (performance.now() - holdStart.current) / HOLD_MS;
     if (p >= 1) {
       fired.current = true;
       if (navigator.vibrate) navigator.vibrate(60);
-      setHold(0);
       setScreen(unlocked ? "admin" : "login");
       return;
     }
@@ -673,7 +679,6 @@ export default function VpnDemoPage() {
   };
   const endHold = () => {
     cancelAnimationFrame(raf.current);
-    setHold(0);
   };
   const accountClick = () => {
     if (fired.current) {
@@ -690,7 +695,7 @@ export default function VpnDemoPage() {
     setSelectedId(2);
     setVpn("off");
     setSeconds(0);
-    setPass(DEMO_PASS);
+    setPassHash(DEMO_AUTH);
     setUnlocked(false);
     setPlans(null);
     setEntitlement({ plan: "free" });
@@ -719,23 +724,11 @@ export default function VpnDemoPage() {
 
   const themeVars = THEMES[theme].vars as CSSProperties;
   const steps: { i: LucideIcon; t: React.ReactNode; done: boolean }[] = [
-    { i: Hand, t: "روی آیکن Account پایین صفحه ۵ ثانیه انگشتت رو نگه دار", done: isAdmin || unlocked },
     {
-      i: Lock,
-      t: (
-        <>
-          وارد شو با <b className="font-mono text-foreground">{DEMO_USER}</b> و{" "}
-          <b className="font-mono text-foreground">{pass}</b>
-        </>
-      ),
-      done: unlocked,
+      i: Power,
+      t: "دکمهٔ پاور رو بزن تا وصل بشی — پینگ‌ها هر ۳ ثانیه زنده به‌روز می‌شن و کم‌پینگ‌ترین سرور آزاد خودکار انتخاب می‌شه",
+      done: vpn !== "off",
     },
-    {
-      i: ListPlus,
-      t: "روی Add config بزن، لینک vless یا vmess رو بچسبون و Save & publish",
-      done: configs.length > SEED.length,
-    },
-    { i: Eye, t: "از پنل خارج شو و توی Servers ببین کانفیگ جدید اومده", done: configs.length > SEED.length && screen === "servers" },
     {
       i: Palette,
       t: "چرخ‌دنده بالای خانه → زبان رو فارسی کن و یه تم ملایم (مثلاً جنگل) انتخاب کن",
@@ -748,7 +741,7 @@ export default function VpnDemoPage() {
     },
     {
       i: CreditCard,
-      t: "Account → خرید پرمیوم: تعرفه ۳ ماهه ۴۰۰ رو انتخاب و پرداخت کن؛ بعد با ورود مخفی، تب Orders پنل رو بزن و Approve کن",
+      t: "Account → خرید پرمیوم: تعرفه ۳ ماهه ۴۰۰ رو انتخاب و پرداخت کن؛ سفارش با شناسهٔ دستگاه ثبت می‌شه و پس از تأیید، حسابت همون لحظه پرمیوم می‌شه",
       done: premium,
     },
     {
@@ -758,18 +751,13 @@ export default function VpnDemoPage() {
     },
     {
       i: Gift,
-      t: "از Account → دعوت دوستان: «شبیه‌سازی ورود دوست» رو بزن، روز هدیه جمع کن و Claim کن؛ بعد Support رو باز کن و با دستیار هوشمند چت کن",
+      t: "از Account → دعوت دوستان: «شبیه‌سازی ورود دوست» رو بزن، روز هدیه جمع کن و Claim کن؛ بعد «پشتیبانی آنلاین» رو باز کن و با دستیار هوشمند چت کن",
       done: friends.length > freshFriends().length && giftDays === 0,
     },
     {
       i: Bell,
-      t: "از پنل مدیر → تب Notifs: یه اعلان با Push و Popup بفرست؛ نوتیف بالای گوشی میاد، پاپ‌آپ باز می‌شه و توی پیام‌ها ذخیره می‌شه",
-      done: notices.length > 2,
-    },
-    {
-      i: DownloadCloud,
-      t: "تب Update پنل: یه نسخهٔ جدید منتشر کن؛ پاپ‌آپ آپدیت میاد و فقط بخش‌های تغییرکرده دانلود و خودکار نصب می‌شن — بدون نصب مجدد",
-      done: appVersion !== APP_VERSION,
+      t: "از خانه، زنگولهٔ بالا رو بزن: اعلان‌ها و پیام‌های تیم میانبر رو بخون و Mark all کن",
+      done: unread === 0,
     },
   ];
 
@@ -782,7 +770,7 @@ export default function VpnDemoPage() {
           <h1 className="mt-3 text-4xl leading-tight font-black">اپ کامل: خرید، ضدچیت، تم</h1>
           <p className="mt-3 text-base leading-8 text-muted-foreground">
             ماهی ۵ گیگ رایگان؛ تعرفه‌های ۱ ماهه ۲۰۰ / ۳ ماهه ۴۰۰ / ۶ ماهه ۷۰۰ هزار تومان. خرید که ثبت می‌شه،
-            سفارش می‌ره پنل مدیر (تب Orders) و با تأیید تو، کاربر همون لحظه پرمیوم می‌شه.
+            سفارش روی سرور ثبت می‌شه و پس از تأیید، کاربر همون لحظه پرمیوم می‌شه.
           </p>
           <div className="mt-4 flex items-start gap-2 rounded-2xl border border-border bg-card p-4 text-sm leading-7 text-muted-foreground">
             <Gauge className="mt-1 size-4 shrink-0 text-primary" />
@@ -794,25 +782,8 @@ export default function VpnDemoPage() {
           </div>
 
           <div className="mt-4 rounded-2xl border border-gold/30 bg-gold/10 p-4 text-sm leading-7 text-muted-foreground">
-            <b className="text-foreground">پرمیوم‌کردن کاربر:</b> کاربر از Account → خرید پرمیوم تعرفه رو انتخاب و پرداخت
-            می‌کنه؛ سفارشش با شناسه دستگاه توی تب <b className="text-foreground">Orders</b> پنل مدیر ظاهر می‌شه — دکمه
-            «Approve premium» رو بزنی، حسابش پرمیوم می‌شه.
-          </div>
-
-          <div className="mt-6 rounded-2xl border border-border bg-card p-4">
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-muted-foreground">نگه‌داشتن Account</span>
-              <span dir="ltr" className="font-display font-bold tabular-nums">
-                {(hold * 5).toFixed(1)} / 5s
-              </span>
-            </div>
-            <div className="mt-3 h-2 overflow-hidden rounded-full bg-muted">
-              <div
-                className="h-full rounded-full bg-gold"
-                style={{ width: `${hold * 100}%`, transition: hold === 0 ? "width .2s" : "none" }}
-              />
-            </div>
-            <div className="mt-2 text-sm text-muted-foreground">این نشانگر فقط توی دموئه، توی اپ اصلی نیست.</div>
+            <b className="text-foreground">پرمیوم‌کردن کاربر:</b> کاربر از Account → خرید پرمیوم تعرفه رو انتخاب و
+            پرداخت می‌کنه؛ سفارش با شناسهٔ دستگاه ثبت می‌شه و پس از تأیید تیم میانبر، حسابش بلافاصله پرمیوم می‌شه.
           </div>
 
           <ol className="mt-6 flex flex-col gap-4">
@@ -954,11 +925,11 @@ export default function VpnDemoPage() {
                 )}
                 {screen === "login" && (
                   <AdminLogin
-                    check={(u, p) => u === DEMO_USER && p === pass}
+                    check={(u, p) => authHash(`${u}|${p}`) === passHash}
                     onSuccess={() => {
                       setUnlocked(true);
                       setScreen("admin");
-                      /* ادمین که وارد می‌شه، سفارش‌های در انتظار بهش اعلام می‌شه */
+                      /* ورود موفق — سفارش‌های در انتظار اعلام می‌شه */
                       const n = orders.filter((o) => o.status === "pending").length;
                       if (n > 0) showToast(t.pendingOrders.replace("{n}", String(n)));
                     }}
@@ -979,7 +950,7 @@ export default function VpnDemoPage() {
                     onApprove={approveOrder}
                     onReject={rejectOrder}
                     onDevicePremium={devicePremium}
-                    onChangePass={setPass}
+                    onChangePass={setPassHash}
                     onExit={() => {
                       setUnlocked(false);
                       setScreen("account");

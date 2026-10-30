@@ -61,9 +61,9 @@ val PLANS = listOf(
 
 /**
  * Full purchase flow — pick a tariff → choose payment method (card-to-card or
- * Telegram) → the order is registered on the server and lands in the hidden
- * admin panel (Orders tab); the admin approves it and the device becomes
- * premium on its next sync.
+ * Telegram) → the order is registered on the server and lands in the
+ * management queue; after confirmation the device becomes premium on its
+ * next sync.
  */
 @Composable
 fun PlansSheet(

@@ -732,7 +732,7 @@ private val HARDENING = listOf(
     "Client token sealed at build time (CI secrets)",
     "TLS-protected calls to mianboor APIs",
     "No config link is ever rendered in the UI",
-    "Hidden admin entry · session dies with the app",
+    "Admin session dies with the app · no visible entry",
     "Config raw links kept only in private app storage",
 )
 
@@ -997,7 +997,7 @@ private fun ServerTab(
         }
         item {
             Text(
-                "Lock after 5 wrong tries · Session ends when app closes · Hidden entry, no visible button.",
+                "Lock after 5 wrong tries · Session ends when app closes.",
                 color = mb.dim, fontSize = 12.sp, lineHeight = 17.sp,
             )
         }

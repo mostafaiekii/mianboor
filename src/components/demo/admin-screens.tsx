@@ -534,7 +534,7 @@ function UsersTab({
         </button>
       </div>
       <div className="rounded-xl border border-panel-edge bg-panel p-4 text-sm text-dim">
-        Lock after 5 wrong tries · Session ends when app closes · Hidden entry, no visible button.
+        Lock after 5 wrong tries · Session ends when app closes.
       </div>
 
       {toast && (

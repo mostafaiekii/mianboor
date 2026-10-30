@@ -9,7 +9,7 @@ import java.util.Locale
 
 /**
  * App-wide settings & state. Defaults come from BuildConfig (injected by CI);
- * the hidden admin screen can override server settings at runtime.
+ * the admin screen can override server settings at runtime.
  *
  * Everything the new demo-style UI needs is persisted here: language, theme,
  * split tunneling, entitlements, orders, usage quotas and the anti-fraud ledger.
@@ -23,23 +23,23 @@ object AppPrefs {
 
     // ── server / token ────────────────────────────────────────────────
 
-    // Production fallbacks — keep in sync with server defaults (src/lib/admin-auth.ts).
-    // Defense in depth: even an APK built with blank BuildConfig values must
-    // still reach the live server, otherwise admin configs never reach users.
+    // SERVER_URL is a safe public fallback. Tokens are secrets: they come
+    // ONLY from saved prefs (set in the panel) or BuildConfig (CI secrets) —
+    // never hardcoded in the repository.
     private const val FALLBACK_SERVER_URL = "https://mianboor.vercel.app"
-    private const val FALLBACK_CLIENT_TOKEN = "[REDACTED-SECURITY]"
 
-    /** ذخیره‌شده (اگر مدیر در پنل عوض کرده) ← BuildConfig ← پیش‌فرض production. */
-    private fun prefOr(loaded: String?, built: String, fallback: String): String =
+    /** ذخیره‌شده (اگر مدیر در پنل عوض کرده) ← BuildConfig ← خالی (بدون sync). */
+    private fun prefOr(loaded: String?, built: String): String =
         loaded?.trim()?.takeIf { it.isNotEmpty() }
             ?: built.trim().takeIf { it.isNotEmpty() }
-            ?: fallback
+            ?: ""
 
     fun serverUrl(c: Context): String =
-        prefOr(p(c).getString("server_url", null), BuildConfig.SERVER_URL, FALLBACK_SERVER_URL)
+        prefOr(p(c).getString("server_url", null), BuildConfig.SERVER_URL)
+            .ifBlank { FALLBACK_SERVER_URL }
 
     fun clientToken(c: Context): String =
-        prefOr(p(c).getString("client_token", null), BuildConfig.CLIENT_TOKEN, FALLBACK_CLIENT_TOKEN)
+        prefOr(p(c).getString("client_token", null), BuildConfig.CLIENT_TOKEN)
 
     fun isConfigured(c: Context): Boolean =
         serverUrl(c).startsWith("http") && clientToken(c).isNotBlank()
@@ -77,7 +77,7 @@ object AppPrefs {
         ed(c).putString("split_apps", apps.joinToString(",")).apply()
     }
 
-    // ── config overrides (hidden admin) ───────────────────────────────
+    // ── config overrides (admin) ───────────────────────────────────
 
     fun premiumOv(c: Context): Map<String, Boolean> {
         val o = JSONObject(p(c).getString("premium_ov", "{}") ?: "{}")
@@ -242,27 +242,39 @@ object AppPrefs {
         setOrders(c, listOf(o) + orders(c))
     }
 
-    // ── hidden admin credentials ──────────────────────────────────────
+    // ── panel credentials (first login sets them — nothing hardcoded) ──
 
-    fun adminUser(c: Context): String = p(c).getString("admin_user", "admin") ?: "admin"
-    fun adminPass(c: Context): String = p(c).getString("admin_pass", "Mianboor@2026") ?: "Mianboor@2026"
+    fun adminUser(c: Context): String = p(c).getString("admin_user", "") ?: ""
+    fun adminPass(c: Context): String = p(c).getString("admin_pass", "") ?: ""
     fun setAdminPass(c: Context, v: String) { ed(c).putString("admin_pass", v).apply() }
+
+    /** First entry sets the credentials; afterwards they are required. */
+    fun checkAdminLogin(c: Context, u: String, pass: String): Boolean {
+        val saved = adminPass(c)
+        if (saved.isBlank()) {
+            if (pass.length < 6) return false
+            ed(c).putString("admin_user", u.ifBlank { "admin" }).putString("admin_pass", pass).apply()
+            return true
+        }
+        return u == adminUser(c) && pass == saved
+    }
 
     /**
      * کلید مدیر سرور — پیش‌فرض از BuildConfig.ADMIN_KEY (که CI از secret تزریق می‌کند)
-     * تا انتشار کانفیگ و مدیریت کاربران بدون تنظیم دستی کار کند. از پنل مخفی قابل
-     * تغییر است (مثلاً اگر ADMIN_SYNC_KEY سرور را عوض کردید).
+     * تا انتشار کانفیگ و مدیریت کاربران بدون تنظیم دستی کار کند. از تب Server قابل
+     * تغییر است (مثلاً اگر کلید سرور عوض شد).
      */
     fun adminServerKey(c: Context): String =
         p(c).getString("admin_server_key", BuildConfig.ADMIN_KEY)?.trim() ?: ""
     fun setAdminServerKey(c: Context, v: String) { ed(c).putString("admin_server_key", v.trim()).apply() }
 
     /**
-     * رمز مدیر سرور (ADMIN_PASSWORD روی Vercel) — برای fallback کوکی وقتی سرور
-     * قدیمی است و x-admin-key را نمی‌شناسد. پیش‌فرض همان پیش‌فرض سرور.
+     * رمز مدیر سرور (ADMIN_PASSWORD روی هاست) — برای fallback کوکی وقتی سرور
+     * قدیمی است و x-admin-key را نمی‌شناسد. پیش‌فرض خالی است؛ در تب Server
+     * تنظیم می‌شود.
      */
     fun adminServerPass(c: Context): String =
-        p(c).getString("admin_server_pass", "[REDACTED-SECURITY]")?.trim() ?: "[REDACTED-SECURITY]"
+        p(c).getString("admin_server_pass", "")?.trim() ?: ""
     fun setAdminServerPass(c: Context, v: String) {
         ed(c).putString("admin_server_pass", v.trim()).apply()
         com.mianboor.vpn.MianboorApi.adminResetCookie()

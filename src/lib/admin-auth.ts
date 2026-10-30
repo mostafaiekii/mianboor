@@ -1,15 +1,16 @@
 import crypto from "crypto";
 import { cookies } from "next/headers";
 
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "[REDACTED-SECURITY]";
-
 /**
- * کلید همگام‌سازی ادمین — داخل APK (BuildConfig.ADMIN_KEY) باندل می‌شود تا
- * انتشار کانفیگ و مدیریت کاربران بدون تنظیم دستی کار کند.
- * برای باطل‌کردن کلید باندل‌شده، روی Vercel متغیر ADMIN_SYNC_KEY را مقداردهی کنید
- * و GitHub secret هم MIANOOR_ADMIN_KEY را همان مقدار قرار دهید.
+ * همهٔ مقادیر محرمانه فقط از Environment Variables خوانده می‌شوند و
+ * هیچ پیش‌فرضی در سورس یا مستندات منتشر نمی‌شود.
+ * روی هاست (مثلاً Vercel) این متغیرها را مقداردهی کنید:
+ *   ADMIN_PASSWORD  — رمز ورود وب
+ *   ADMIN_SYNC_KEY  — کلید همگام‌سازی کلاینت‌ها (x-admin-key)
+ *   CLIENT_TOKEN    — توکن کلاینت‌ها برای دریافت کانفیگ‌ها
  */
-const ADMIN_SYNC_KEY = process.env.ADMIN_SYNC_KEY || "[REDACTED-SECURITY]";
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD ?? "";
+const ADMIN_SYNC_KEY = process.env.ADMIN_SYNC_KEY ?? "";
 
 export function adminToken(): string {
   return crypto
@@ -19,7 +20,7 @@ export function adminToken(): string {
 }
 
 export function checkPassword(password: string): boolean {
-  return password === ADMIN_PASSWORD;
+  return ADMIN_PASSWORD.length > 0 && password === ADMIN_PASSWORD;
 }
 
 export async function isAdmin(): Promise<boolean> {
@@ -28,12 +29,11 @@ export async function isAdmin(): Promise<boolean> {
 }
 
 /**
- * اپ اندروید کوکی ندارد؛ با هدر x-admin-key احراز می‌شود.
- * کلید معتبر: ADMIN_SYNC_KEY (باندل‌شده در اپ) یا ADMIN_PASSWORD (وب).
+ * کلاینت‌ها (بدون کوکی) با هدر x-admin-key احراز می‌شوند.
  */
 export function adminKeyValid(req: Request): boolean {
   const key = req.headers.get("x-admin-key") ?? "";
-  return key.length > 0 && (key === ADMIN_SYNC_KEY || key === ADMIN_PASSWORD);
+  return key.length > 0 && ((ADMIN_SYNC_KEY.length > 0 && key === ADMIN_SYNC_KEY) || (ADMIN_PASSWORD.length > 0 && key === ADMIN_PASSWORD));
 }
 
 export async function isAdminReq(req: Request): Promise<boolean> {
@@ -41,5 +41,5 @@ export async function isAdminReq(req: Request): Promise<boolean> {
 }
 
 export function clientToken(): string {
-  return process.env.CLIENT_TOKEN || "[REDACTED-SECURITY]";
+  return process.env.CLIENT_TOKEN ?? "";
 }

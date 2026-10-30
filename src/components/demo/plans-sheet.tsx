@@ -22,7 +22,7 @@ type Step = "pick" | "pay" | "sent";
 
 /**
  * Full purchase flow: pick a tariff → choose payment method → order sent to
- * the admin, who approves it in the hidden panel (Orders tab) to grant premium.
+ * the server, where it is confirmed to grant premium.
  */
 export function PlansSheet({
   lang,

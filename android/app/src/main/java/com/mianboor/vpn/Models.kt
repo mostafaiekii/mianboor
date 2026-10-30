@@ -15,7 +15,7 @@ data class ConfigItem(
     val local: Boolean,
 )
 
-/** Purchase order created from the plans sheet, approved in the hidden panel. */
+/** Purchase order created from the plans sheet, confirmed on the server. */
 data class Order(
     val id: String,
     val plan: String,         // p1 | p3 | p6

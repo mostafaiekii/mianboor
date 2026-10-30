@@ -26,7 +26,7 @@ const manrope = Manrope({
 export const metadata: Metadata = {
   title: "میانبر — Mianboor VPN · دمو",
   description:
-    "دموی رابط کاربری اپ VPN میانبر؛ حلقه پاور نئونی، انتخاب سرور با پرچم و پینگ، و پنل مخفی مدیر با نگه‌داشتن تب Account.",
+    "دموی رابط کاربری اپ VPN میانبر؛ حلقه پاور نئونی، انتخاب سرور با پرچم و پینگ زنده، خرید پلن و ضدچیت.",
   keywords: ["VPN", "میانبر", "Mianboor", "دمو", "اتصال امن"],
   authors: [{ name: "Mianboor VPN" }],
   icons: {
@@ -35,7 +35,7 @@ export const metadata: Metadata = {
   },
   openGraph: {
     title: "میانبر — Mianboor VPN",
-    description: "دموی رابط کاربری اپ VPN میانبر؛ خرید پلن، ضدچیت، تم‌های ملایم و پنل مخفی مدیر.",
+    description: "دموی رابط کاربری اپ VPN میانبر؛ خرید پلن، ضدچیت و تم‌های ملایم.",
     type: "website",
   },
   twitter: {

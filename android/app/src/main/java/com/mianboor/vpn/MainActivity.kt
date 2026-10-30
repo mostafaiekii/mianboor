@@ -837,7 +837,7 @@ private fun MbAppInner(
     }
 
     /**
-     * Add a config from the hidden admin panel.
+     * Add a config from the admin panel.
      * With a server key configured, the config is published to the server so
      * every device in the target category (free/premium) receives it on the
      * next sync. Without a key it stays on this device only.
@@ -1054,7 +1054,7 @@ private fun MbAppInner(
                         onBack = { screen = Screen.ACCOUNT },
                     )
                     Screen.LOGIN -> AdminLogin(
-                        check = { u, p -> u == AppPrefs.adminUser(context) && p == adminPass },
+                        check = { u, p -> AppPrefs.checkAdminLogin(context, u, p) },
                         onSuccess = {
                             adminUnlocked = true
                             screen = Screen.ADMIN
@@ -1165,7 +1165,7 @@ private fun MbAppInner(
 }
 
 // ---------------------------------------------------------------------------
-// Bottom navigation with the hidden 5s hold trigger on the Account tab
+// Bottom navigation with the 5s hold trigger on the Account tab
 // ---------------------------------------------------------------------------
 
 @Composable
