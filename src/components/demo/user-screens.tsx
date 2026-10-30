@@ -238,8 +238,8 @@ export function HomeScreen({
         <Fwd className="size-5 text-dim" />
       </button>
 
-      {/* دانلود | آی‌پی+پرچم مبدا | آپلود — دقیقا وسط */}
-      <div className="mt-3 grid grid-cols-[1fr_auto_1fr] items-stretch gap-2">
+      {/* دانلود و آپلود کنار هم — آی‌پی مبدا زیرشان، دقیقا وسط */}
+      <div className="mt-3 grid grid-cols-2 items-stretch gap-2">
         <div className="rounded-2xl border border-panel-edge bg-panel p-3">
           <div className="flex items-center gap-1.5 text-sm text-dim">
             <ArrowDown className="size-4 text-glow" /> {t.download}
@@ -247,20 +247,6 @@ export function HomeScreen({
           <div className="mt-1.5 whitespace-nowrap font-display text-lg font-bold text-ink tabular-nums">
             {on ? "48.2" : "0.0"} <span className="text-xs font-medium text-dim">Mbps</span>
           </div>
-        </div>
-        <div className="flex min-w-[96px] flex-col items-center justify-center gap-1 rounded-2xl border border-panel-edge bg-panel px-3 py-2">
-          {origin ? (
-            <>
-              <Flag code={origin.country} size={22} />
-              <span dir="ltr" className="max-w-full truncate font-mono text-[11px] font-semibold text-ink">{origin.ip}</span>
-              <span className="text-[10px] text-dim">{COUNTRIES[origin.country] ?? origin.country}</span>
-            </>
-          ) : (
-            <>
-              <Globe className="size-5 text-dim" />
-              <span className="text-[10px] text-dim">{t.yourIp}…</span>
-            </>
-          )}
         </div>
         <div className="rounded-2xl border border-panel-edge bg-panel p-3">
           <div className="flex items-center gap-1.5 text-sm text-dim">
@@ -270,6 +256,21 @@ export function HomeScreen({
             {on ? "12.6" : "0.0"} <span className="text-xs font-medium text-dim">Mbps</span>
           </div>
         </div>
+      </div>
+      <div className="mt-2 flex items-center justify-center gap-2 rounded-2xl border border-panel-edge bg-panel px-3 py-2.5">
+        {origin ? (
+          <>
+            <Flag code={origin.country} size={22} />
+            <span dir="ltr" className="truncate font-mono text-[13px] font-semibold text-ink">{origin.ip}</span>
+            <span className="text-dim">·</span>
+            <span className="text-xs text-dim">{COUNTRIES[origin.country] ?? origin.country}</span>
+          </>
+        ) : (
+          <>
+            <Globe className="size-4 text-dim" />
+            <span className="text-[13px] text-dim">{t.yourIp}…</span>
+          </>
+        )}
       </div>
     </div>
   );
@@ -303,7 +304,10 @@ export function ServersScreen({
   const Back = rtl ? ChevronRight : ChevronLeft;
   const Fwd = rtl ? ChevronLeft : ChevronRight;
   const [q, setQ] = useState("");
-  const list = configs.filter((c) => c.enabled && c.name.toLowerCase().includes(q.toLowerCase()));
+  // کم‌ترین پینگ بالای لیست — مثل اپ واقعی
+  const list = configs
+    .filter((c) => c.enabled && c.name.toLowerCase().includes(q.toLowerCase()))
+    .sort((a, b) => a.ping - b.ping);
   const enabled = configs.filter((c) => c.enabled);
   const freeEnabled = enabled.filter((c) => !c.premium);
   // Smart Connect really measures: lowest live ping among the servers this user can join.

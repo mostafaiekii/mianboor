@@ -67,9 +67,10 @@ fun ServersScreen(
     val rtl = lang == Lang.FA
     var q by remember { mutableStateOf("") }
 
-    val list = configs.filter {
-        it.enabled && it.name.lowercase().contains(q.lowercase())
-    }
+    // کم‌ترین پینگ همیشه بالای لیست — با هر اندازه‌گیری زنده، ترتیب خودکار به‌روز می‌شود
+    val list = configs
+        .filter { it.enabled && it.name.lowercase().contains(q.lowercase()) }
+        .sortedBy { it.ping }
     val enabled = configs.filter { it.enabled }
     val freeEnabled = enabled.filter { !it.premium }
     // Smart Connect really measures: lowest live ping among the servers this user can join.

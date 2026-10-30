@@ -281,38 +281,45 @@ fun HomeScreen(
             }
         }
 
-        // ── speed cards + IP tile ──
+        // ── کارت‌های سرعت — دانلود و آپلود کنار هم ──
         Row(
             Modifier.fillMaxWidth().padding(top = 12.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalAlignment = Alignment.CenterVertically,
         ) {
             SpeedCard(t.download, R.drawable.ic_arrow_down, if (on) downMbps else 0.0, mb.glow, Modifier.weight(1f))
-            // کاشی آی‌پی مبدا (قبل از اتصال گرفته می‌شود) — وسط دو کارت سرعت
-            OriginCard(originIp, originCc, ipLabel = t.yourIp, modifier = Modifier.width(104.dp))
             SpeedCard(t.upload, R.drawable.ic_arrow_up, if (on) upMbps else 0.0, mb.up, Modifier.weight(1f))
         }
+
+        // ── آی‌پی مبدا (قبل از اتصال گرفته می‌شود) — زیر دو کارت، دقیقا وسط ──
+        OriginCard(
+            originIp, originCc, ipLabel = t.yourIp,
+            modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+        )
     }
 }
 
-/** کاشی کوچک آی‌پی مبدا — پرچم + IP مونواسپیس + نام کشور (پورت دموی وب). */
+/** نوار آی‌پی مبدا — زیر کارت‌های سرعت، کاملا وسط‌چین: پرچم + IP مونواسپیس + نام کشور. */
 @Composable
 private fun OriginCard(ip: String?, cc: String, ipLabel: String, modifier: Modifier = Modifier) {
     val mb = LocalMb.current
     PanelCard(modifier) {
-        Column(
-            Modifier.fillMaxWidth().padding(vertical = 10.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically,
         ) {
             if (ip != null) {
                 Flag(cc, 22.dp)
-                Spacer(Modifier.height(4.dp))
-                Text(ip, color = mb.ink, fontSize = 10.sp, fontFamily = FontFamily.Monospace, maxLines = 1)
-                Text(COUNTRIES[cc] ?: cc, color = mb.dim, fontSize = 9.sp)
+                Spacer(Modifier.width(9.dp))
+                Text(ip, color = mb.ink, fontSize = 13.sp, fontFamily = FontFamily.Monospace, maxLines = 1)
+                Spacer(Modifier.width(9.dp))
+                Text("·", color = mb.dim, fontSize = 13.sp)
+                Spacer(Modifier.width(9.dp))
+                Text(COUNTRIES[cc] ?: cc, color = mb.dim, fontSize = 12.sp, maxLines = 1)
             } else {
-                Text("🌐", color = mb.dim, fontSize = 18.sp)
-                Spacer(Modifier.height(4.dp))
-                Text(ipLabel, color = mb.dim, fontSize = 10.sp, maxLines = 1)
+                Text("🌐", color = mb.dim, fontSize = 15.sp)
+                Spacer(Modifier.width(8.dp))
+                Text(ipLabel, color = mb.dim, fontSize = 13.sp, maxLines = 1)
             }
         }
     }
