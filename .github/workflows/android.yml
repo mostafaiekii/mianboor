@@ -74,15 +74,14 @@ jobs:
           MB_KEY_PASSWORD: ${{ secrets.MB_KEY_PASSWORD }}
         run: |
           chmod +x gradlew
-          # Production fallbacks — secrets are OPTIONAL now: if unset/empty the
-          # APK still targets the live server and sync works out of the box.
+          # Secrets come from repo settings only — no defaults, no fallbacks.
           SERVER_URL="${MIANOOR_SERVER_URL:-https://mianboor.vercel.app}"
-          CLIENT_TOKEN="${MIANOOR_CLIENT_TOKEN:-[REDACTED-SECURITY]}"
+          CLIENT_TOKEN="${MIANOOR_CLIENT_TOKEN:-}"
           echo "Building with SERVER_URL=$SERVER_URL"
           ./gradlew :app:assembleRelease --no-daemon --stacktrace \
             -PMIANOOR_SERVER_URL="$SERVER_URL" \
             -PMIANOOR_CLIENT_TOKEN="$CLIENT_TOKEN" \
-            -PMIANOOR_ADMIN_KEY="${MIANOOR_ADMIN_KEY:-[REDACTED-SECURITY]}" \
+            -PMIANOOR_ADMIN_KEY="${MIANOOR_ADMIN_KEY:-}" \
             -PMB_STORE_FILE=android/keystore/release.jks \
             -PMB_STORE_PASSWORD="$MB_STORE_PASSWORD" \
             -PMB_KEY_ALIAS="$MB_KEY_ALIAS" \
@@ -91,7 +90,7 @@ jobs:
       - name: Prepare APK artifact
         run: |
           VER="${GITHUB_REF_NAME#v}"
-          if [ "$VER" = "$GITHUB_REF_NAME" ]; then VER="1.0.1"; fi
+          if [ "$VER" = "$GITHUB_REF_NAME" ]; then VER="1.6.1"; fi
           APK_NAME="Mianboor-v${VER}.apk"
           echo "APK_NAME=$APK_NAME" >> "$GITHUB_ENV"
           cp android/app/build/outputs/apk/release/app-release.apk "$APK_NAME"
@@ -116,7 +115,7 @@ jobs:
         run: |
           VER="${GITHUB_REF_NAME#v}"
           CODE=$(grep -oP 'versionCode\s*=\s*\K\d+' android/app/build.gradle.kts | head -1)
-          KEY="${ADMIN_KEY:-[REDACTED-SECURITY]}"
+          KEY="${ADMIN_KEY:-}"
           echo "Announcing v$VER (code $CODE) to the server…"
           curl -sS -m 20 -X PUT "https://mianboor.vercel.app/api/admin/settings" \
             -H "x-admin-key: $KEY" -H "Content-Type: application/json" \
