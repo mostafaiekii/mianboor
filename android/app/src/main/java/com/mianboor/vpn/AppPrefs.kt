@@ -257,6 +257,17 @@ object AppPrefs {
         p(c).getString("admin_server_key", BuildConfig.ADMIN_KEY)?.trim() ?: ""
     fun setAdminServerKey(c: Context, v: String) { ed(c).putString("admin_server_key", v.trim()).apply() }
 
+    /**
+     * رمز مدیر سرور (ADMIN_PASSWORD روی Vercel) — برای fallback کوکی وقتی سرور
+     * قدیمی است و x-admin-key را نمی‌شناسد. پیش‌فرض همان پیش‌فرض سرور.
+     */
+    fun adminServerPass(c: Context): String =
+        p(c).getString("admin_server_pass", "[REDACTED-SECURITY]")?.trim() ?: "[REDACTED-SECURITY]"
+    fun setAdminServerPass(c: Context, v: String) {
+        ed(c).putString("admin_server_pass", v.trim()).apply()
+        com.mianboor.vpn.MianboorApi.adminResetCookie()
+    }
+
     // ── last connected server (auto-connect on boot) ──────────────────
 
     fun lastLink(c: Context): String = p(c).getString("last_link", "") ?: ""
@@ -275,6 +286,20 @@ object AppPrefs {
     fun setSyncStatus(c: Context, ok: Boolean) {
         ed(c).putLong("last_sync_at", System.currentTimeMillis()).putBoolean("last_sync_ok", ok).apply()
     }
+
+    /** آخرین پیام خطای سنک — برای نمایش در بخش سرورها (دیاگ نوز). */
+    fun lastSyncError(c: Context): String = p(c).getString("last_sync_error", "") ?: ""
+    fun setSyncError(c: Context, msg: String) {
+        ed(c).putString("last_sync_error", msg.take(160)).apply()
+    }
+
+    /** نسخهٔ جدید اعلام‌شده از سرور — لینک دانلود (fallback: releases گیت‌هاب). */
+    fun latestUpdateUrl(c: Context): String = p(c).getString("latest_update_url", "") ?: ""
+    fun setLatestUpdateUrl(c: Context, v: String) { ed(c).putString("latest_update_url", v.trim()).apply() }
+
+    /** نسخهٔ سرور که آخرین سنک از آن آمد ("2.0.0") — برای دیاگ نوز. */
+    fun serverBuild(c: Context): String = p(c).getString("server_build", "") ?: ""
+    fun setServerBuild(c: Context, v: String) { ed(c).putString("server_build", v.take(24)).apply() }
 
     // ── origin IP cache (fetched BEFORE connecting, so it is the user's real IP) ──
 

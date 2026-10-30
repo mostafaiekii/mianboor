@@ -59,6 +59,8 @@ fun ServersScreen(
     onSelect: (String) -> Unit,
     onPremiumTap: () -> Unit,
     onBack: () -> Unit,
+    serverHost: String = "",
+    syncError: String = "",
 ) {
     val t = stringsOf(lang)
     val mb = LocalMb.current
@@ -182,6 +184,35 @@ fun ServersScreen(
             Text(t.livePing, color = mb.dim, fontSize = 13.sp)
             Spacer(Modifier.width(10.dp))
             SyncStatusText(lang, syncing, syncOk, lastSyncAt, Modifier.weight(1f))
+        }
+
+        // دیاگ نوز سنک — آدرس سرور و خطای آخرین تلاش (برای شفافیت کامل)
+        if (syncError.isNotBlank()) {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(top = 10.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(mb.danger.copy(alpha = 0.1f))
+                    .border(1.dp, mb.danger.copy(alpha = 0.35f), RoundedCornerShape(10.dp))
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(ic(R.drawable.ic_shield_alert), null, tint = mb.danger, modifier = Modifier.size(14.dp))
+                Spacer(Modifier.width(8.dp))
+                Column {
+                    Text(t.syncErrorTitle, color = mb.danger, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        syncError, color = mb.dim, fontSize = 10.sp,
+                        maxLines = 2, overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+        } else if (serverHost.isNotBlank()) {
+            Text(
+                serverHost, color = mb.ink.copy(alpha = 0.35f), fontSize = 10.sp,
+                modifier = Modifier.padding(top = 8.dp), maxLines = 1, overflow = TextOverflow.Ellipsis,
+            )
         }
 
         // list

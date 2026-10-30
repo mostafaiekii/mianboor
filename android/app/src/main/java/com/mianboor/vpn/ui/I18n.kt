@@ -24,6 +24,7 @@ interface Strings {
     val locations: String
     val noMatch: String
     val livePing: String
+    val syncErrorTitle: String
     val best: String
     val premiumLockSub: String
     val planFree: String
@@ -170,6 +171,7 @@ object EnStrings : Strings {
     override val locations = "Locations"
     override val noMatch = "No servers match."
     override val livePing = "Live ping"
+    override val syncErrorTitle = "Last sync to server failed"
     override val best = "BEST"
     override val premiumLockSub = "Premium server · tap to unlock"
     override val planFree = "Free Plan"
@@ -336,6 +338,7 @@ object FaStrings : Strings {
     override val locations = "سرور"
     override val noMatch = "سروری پیدا نشد."
     override val livePing = "پینگ زنده"
+    override val syncErrorTitle = "آخرین سنک با سرور ناموفق بود"
     override val best = "برترین"
     override val premiumLockSub = "سرور پرمیوم · برای باز شدن بزن"
     override val planFree = "پلن رایگان"

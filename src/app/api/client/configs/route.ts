@@ -64,9 +64,15 @@ export async function GET(req: Request) {
 
   // اطلاعات پرداخت کارت‌به‌کارت (از تنظیمات پنل ادمین)
   const settings = await db.appSetting.findMany({
-    where: { key: { in: ["pay_card", "pay_holder", "pay_note"] } },
+    where: { key: { in: ["pay_card", "pay_holder", "pay_note", "latest_code", "latest_name", "latest_url"] } },
   }).catch(() => []);
   const get = (k: string) => settings.find((s) => s.key === k)?.value ?? "";
+
+  // نسخهٔ جدید منتشرشده (برای نوتیف درون‌برنامه‌ای اپ) — CI بعد از هر release این را ست می‌کند
+  const latestCode = Number(get("latest_code")) || 0;
+  const latest = latestCode > 0
+    ? { code: latestCode, name: get("latest_name"), url: get("latest_url") }
+    : null;
 
   return NextResponse.json(
     {
@@ -75,6 +81,8 @@ export async function GET(req: Request) {
       plan,
       premiumUntil,
       serverTime: Date.now(),
+      serverBuild: "2.0.0",
+      latest,
       pay: {
         card: get("pay_card") || "6037-9977-XXXX-XXXX",
         holder: get("pay_holder") || "MIANBOOR",

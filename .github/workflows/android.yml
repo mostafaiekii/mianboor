@@ -108,3 +108,17 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: ${{ env.APK_NAME }}
+
+      - name: Announce in-app update (sets latest version on the server)
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          ADMIN_KEY: ${{ secrets.MIANOOR_ADMIN_KEY }}
+        run: |
+          VER="${GITHUB_REF_NAME#v}"
+          CODE=$(grep -oP 'versionCode\s*=\s*\K\d+' android/app/build.gradle.kts | head -1)
+          KEY="${ADMIN_KEY:-[REDACTED-SECURITY]}"
+          echo "Announcing v$VER (code $CODE) to the server…"
+          curl -sS -m 20 -X PUT "https://mianboor.vercel.app/api/admin/settings" \
+            -H "x-admin-key: $KEY" -H "Content-Type: application/json" \
+            -d "{\"latestVersion\":\"$VER\",\"latestCode\":$CODE,\"latestUrl\":\"https://github.com/mostafaiekii/mianboor/releases/tag/$GITHUB_REF_NAME\"}" \
+            || echo "announce failed — the app falls back to checking GitHub Releases directly"

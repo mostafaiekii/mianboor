@@ -326,7 +326,9 @@ private fun MbAppInner(
                 if (key.isNotBlank()) {
                     // دستگاه مدیر: لیست کامل (شامل غیرفعال‌ها) برای مدیریت —
                     // اگر سرور قدیمی است و کلید را نمی‌شناسد، sync عادی ادامه می‌یابد
-                    val managed = runCatching { MianboorApi.adminListConfigs(url, key) }.getOrDefault(emptyList())
+                    val managed = runCatching {
+                        MianboorApi.adminListConfigsAny(url, key, AppPrefs.adminServerPass(context))
+                    }.getOrDefault(emptyList())
                     if (managed.isNotEmpty()) result = result.copy(configs = managed)
                 }
                 val newPremium = result.plan != null &&
@@ -351,6 +353,13 @@ private fun MbAppInner(
                         },
                     )
                     AppPrefs.setSyncStatus(context, true)
+                    AppPrefs.setSyncError(context, "")
+                    AppPrefs.setServerBuild(context, result.serverBuild ?: "")
+                    // نسخهٔ جدید اعلام‌شده از سرور — اولویت با سرور، گیت‌هاب فقط fallback
+                    if (result.latestCode > BuildConfig.VERSION_CODE) {
+                        AppPrefs.setLatestUpdateUrl(context, result.latestUrl ?: "")
+                        updateTag = result.latestName ?: "v${result.latestCode}"
+                    }
                     syncOk = true
                     lastSyncAt = System.currentTimeMillis()
                     // plan == null یعنی سرور قدیمی — بنر هشدار در پنل مدیر نشان داده می‌شود
@@ -379,6 +388,7 @@ private fun MbAppInner(
             }.onFailure {
                 withContext(Dispatchers.Main) {
                     AppPrefs.setSyncStatus(context, false)
+                    AppPrefs.setSyncError(context, it.message ?: it.javaClass.simpleName)
                     syncOk = false
                     lastSyncAt = System.currentTimeMillis()
                     onDone(false)
@@ -761,11 +771,11 @@ private fun MbAppInner(
         }
     }
 
-    /** تست کلید مدیر (دکمه در تب Server). */
+    /** تست کلید/رمز مدیر (دکمه در تب Server) — کلید یا کوکی هرکدام کار کند موفق. */
     fun testServerKey(key: String, onResult: (Boolean) -> Unit) {
         val url = AppPrefs.serverUrl(context)
         scope.launch(Dispatchers.IO) {
-            val ok = MianboorApi.adminTestKey(url, key)
+            val ok = MianboorApi.adminTestAny(url, key, AppPrefs.adminServerPass(context))
             withContext(Dispatchers.Main) { onResult(ok) }
         }
     }
@@ -835,14 +845,20 @@ private fun MbAppInner(
     fun addConfig(name: String, country: String, link: String, prem: Boolean) {
         val url = AppPrefs.serverUrl(context)
         val key = AppPrefs.adminServerKey(context)
-        if (url.startsWith("http") && key.isNotBlank()) {
+        if (url.startsWith("http")) {
             scope.launch(Dispatchers.IO) {
-                val ok = runCatching {
-                    MianboorApi.adminAddConfig(url, key, name, country, link, prem)
-                }.getOrDefault(false)
+                // کلید (سرور جدید) → اگر نشد کوکی با رمز مدیر (سرور قدیمی)
+                val how = runCatching {
+                    MianboorApi.adminAddConfigAny(
+                        url, key, AppPrefs.adminServerPass(context), name, country, link, prem,
+                    )
+                }.getOrDefault("none")
                 withContext(Dispatchers.Main) {
-                    if (ok) {
-                        toast(if (prem) "Published — premium users only" else "Published — all users")
+                    if (how != "none") {
+                        toast(
+                            if (prem) "Published — premium users only"
+                            else "Published — all users"
+                        )
                         refreshRemote()
                     } else {
                         AppPrefs.addLocalConfig(context, name, country, link, prem)
@@ -969,9 +985,9 @@ private fun MbAppInner(
                         updateTag = updateTag,
                         onUpdateClick = {
                             runCatching {
-                                context.startActivity(
-                                    Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/mostafaiekii/mianboor/releases/latest")),
-                                )
+                                val url = AppPrefs.latestUpdateUrl(context)
+                                    .ifBlank { "https://github.com/mostafaiekii/mianboor/releases/latest" }
+                                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
                             }
                         },
                         onDismissUpdate = { updateTag = null },
@@ -992,6 +1008,10 @@ private fun MbAppInner(
                         },
                         onPremiumTap = { plansReason = "premium-lock" },
                         onBack = { screen = Screen.HOME },
+                        serverHost = runCatching {
+                            android.net.Uri.parse(AppPrefs.serverUrl(context)).host ?: ""
+                        }.getOrDefault(""),
+                        syncError = AppPrefs.lastSyncError(context),
                     )
                     Screen.ACCOUNT -> AccountScreen(
                         lang = lang,

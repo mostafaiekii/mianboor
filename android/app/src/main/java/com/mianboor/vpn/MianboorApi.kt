@@ -33,6 +33,10 @@ data class SyncResult(
     val plan: String?,
     val premiumUntil: Long,
     val pay: PayInfo,
+    val serverBuild: String? = null,
+    val latestCode: Int = 0,
+    val latestName: String? = null,
+    val latestUrl: String? = null,
 )
 
 /** ردیف دستگاه برای پنل مدیر (تب Users). */
@@ -122,6 +126,7 @@ object MianboorApi {
     private fun parseSync(obj: JSONObject): SyncResult {
         val configs = parseSyncConfigs(obj.optJSONArray("configs") ?: JSONArray())
         val pay = obj.optJSONObject("pay")
+        val latest = obj.optJSONObject("latest")
         return SyncResult(
             configs = configs,
             plan = if (obj.optString("plan") == "premium") "premium" else "free",
@@ -131,6 +136,10 @@ object MianboorApi {
                 holder = pay?.optString("holder")?.orEmpty() ?: "",
                 note = pay?.optString("note")?.orEmpty() ?: "",
             ),
+            serverBuild = obj.optString("serverBuild").takeIf { it.isNotBlank() },
+            latestCode = latest?.optInt("code", 0) ?: 0,
+            latestName = latest?.optString("name")?.takeIf { it.isNotBlank() },
+            latestUrl = latest?.optString("url")?.takeIf { it.isNotBlank() },
         )
     }
 
@@ -178,6 +187,97 @@ object MianboorApi {
     // Admin API (hidden panel → server)
     // ------------------------------------------------------------------
 
+    // کوکی احراز مدیر سرور — برای سرورهای قدیمی که x-admin-key را نمی‌شناسند.
+    // جریان: اول کلید (سرور جدید) → 401 خورد → لاگین با رمز و کوکی (سرور قدیمی).
+    private var cookieCache: Pair<String, String>? = null
+
+    /** ورود با رمز مدیر سرور (POST /api/admin/auth) و گرفتن کوکی mb_admin. */
+    fun adminCookieLogin(serverUrl: String, password: String): String? {
+        val base = serverUrl.trim().trimEnd('/')
+        if (!base.startsWith("http") || password.isBlank()) return null
+        cookieCache?.takeIf { it.first == base }?.let { return it.second }
+        return try {
+            val conn = URL("$base/api/admin/auth").openConnection() as HttpURLConnection
+            conn.connectTimeout = 8000
+            conn.readTimeout = 12000
+            conn.requestMethod = "POST"
+            conn.setRequestProperty("Content-Type", "application/json")
+            conn.setRequestProperty("Accept", "application/json")
+            conn.doOutput = true
+            conn.outputStream.use {
+                it.write(JSONObject().put("password", password).toString().toByteArray(Charsets.UTF_8))
+            }
+            val ok = conn.responseCode == 200
+            val cookie = if (ok) {
+                conn.headerFields["Set-Cookie"]
+                    ?.firstOrNull { it.startsWith("mb_admin=") }
+                    ?.substringBefore(';')
+            } else null
+            conn.disconnect()
+            if (cookie != null) { cookieCache = base to cookie; cookie } else null
+        } catch (t: Throwable) {
+            null
+        }
+    }
+
+    /** کوکی معتبر برای سرور — کش‌شده یا با لاگین تازه؛ null یعنی هر دو روش شکست. */
+    private fun cookieFor(serverUrl: String, adminKey: String, serverPass: String): String? {
+        adminCookieLogin(serverUrl, serverPass)?.let { return it }
+        // بعضی سرورها پسورد مدیر را همان کلید sync قرار می‌دهند
+        return if (adminKey.isNotBlank() && adminKey != serverPass) adminCookieLogin(serverUrl, adminKey) else null
+    }
+
+    /** حذف کش کوکی (مثلاً بعد از تغییر رمز در پنل). */
+    fun adminResetCookie() { cookieCache = null }
+
+    /** اتصال با کوکی مدیر — بدون هدر کلید (سرور قدیمی). */
+    private fun adminCookieConn(serverUrl: String, cookie: String, path: String, method: String): HttpURLConnection {
+        val base = serverUrl.trim().trimEnd('/')
+        val conn = URL("$base$path").openConnection() as HttpURLConnection
+        conn.connectTimeout = 8000
+        conn.readTimeout = 12000
+        conn.requestMethod = method
+        conn.setRequestProperty("Cookie", cookie)
+        conn.setRequestProperty("Content-Type", "application/json")
+        conn.setRequestProperty("Accept", "application/json")
+        return conn
+    }
+
+    /**
+     * درج کانفیگ با هر دو مکانیزم احراز:
+     * اول x-admin-key (سرور جدید)؛ اگر نشد کوکی با رمز مدیر (سرور قدیمی) —
+     * تا انتشار کانفیگ حتی قبل از به‌روز شدن سرور کار کند.
+     */
+    fun adminAddConfigAny(
+        serverUrl: String,
+        adminKey: String,
+        serverPass: String,
+        name: String,
+        country: String,
+        link: String,
+        premium: Boolean,
+    ): String {
+        // کلید ممکن است خالی باشد (require داخل adminAddConfig) — اینجا امن بگیر
+        val keyOk = runCatching {
+            adminAddConfig(serverUrl, adminKey, name, country, link, premium)
+        }.getOrDefault(false)
+        if (keyOk) return "key"
+        val cookie = cookieFor(serverUrl, adminKey, serverPass) ?: return "none"
+        val payload = JSONObject()
+            .put("name", name)
+            .put("country", country)
+            .put("links", link)
+            .put("premium", premium)
+        val conn = adminCookieConn(serverUrl, cookie, "/api/admin/configs", "POST")
+        return try {
+            sendJson(conn, payload)
+            if (readOk(conn)) "cookie" else "none"
+        } catch (t: Throwable) {
+            runCatching { conn.disconnect() }
+            "none"
+        }
+    }
+
     private fun adminConn(serverUrl: String, adminKey: String, path: String, method: String): HttpURLConnection {
         val base = serverUrl.trim().trimEnd('/')
         require(base.startsWith("http")) { "آدرس سرور معتبر نیست" }
@@ -209,7 +309,7 @@ object MianboorApi {
         conn.disconnect()
     }
 
-    /** تست سریع کلید مدیر — برای دکمه «تست اتصال» پنل. */
+    /** تست سریع کلید مدیر — برای دکمه «تست اتصال» پنل (با fallback کوکی). */
     fun adminTestKey(serverUrl: String, adminKey: String): Boolean {
         if (!serverUrl.trim().startsWith("http") || adminKey.isBlank()) return false
         return try {
@@ -220,6 +320,13 @@ object MianboorApi {
         } catch (t: Throwable) {
             false
         }
+    }
+
+    /** تست اتصال پنل مدیر: کلید یا کوکی هرکدام کار کند موفق است. */
+    fun adminTestAny(serverUrl: String, adminKey: String, serverPass: String): Boolean {
+        if (!serverUrl.trim().startsWith("http")) return false
+        if (adminTestKey(serverUrl, adminKey)) return true
+        return cookieFor(serverUrl, adminKey, serverPass) != null
     }
 
     /** Full config list for the admin panel (incl. inactive). Throws on failure. */
@@ -246,6 +353,40 @@ object MianboorApi {
             }
         } finally {
             conn.disconnect()
+        }
+    }
+
+    /**
+     * لیست کامل کانفیگ‌ها با fallback کوکی — برای سرورهای قدیمی.
+     * اول کلید؛ اگر شکست خورد، لاگین با رمز مدیر و کوکی.
+     */
+    fun adminListConfigsAny(serverUrl: String, adminKey: String, serverPass: String): List<RemoteConfig> {
+        return try {
+            adminListConfigs(serverUrl, adminKey)
+        } catch (t: Throwable) {
+            val cookie = cookieFor(serverUrl, adminKey, serverPass)
+                ?: throw IllegalStateException("no admin auth")
+            val conn = adminCookieConn(serverUrl, cookie, "/api/admin/configs", "GET")
+            try {
+                if (conn.responseCode != 200) throw IllegalStateException("admin list failed: ${conn.responseCode}")
+                val body = conn.inputStream.bufferedReader().use { it.readText() }
+                val arr = JSONObject(body).optJSONArray("configs") ?: JSONArray()
+                (0 until arr.length()).mapNotNull { i ->
+                    val o = arr.getJSONObject(i)
+                    val link = o.optString("link")
+                    if (link.isNullOrBlank()) return@mapNotNull null
+                    RemoteConfig(
+                        id = o.optString("id"),
+                        name = o.optString("name").ifBlank { "سرور" },
+                        country = o.optString("country").ifBlank { "نامشخص" },
+                        link = link,
+                        premium = o.optBoolean("premium", false),
+                        active = o.optBoolean("active", true),
+                    )
+                }
+            } finally {
+                conn.disconnect()
+            }
         }
     }
 
