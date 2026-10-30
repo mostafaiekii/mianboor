@@ -25,18 +25,26 @@ android {
         applicationId = "com.mianboor.vpn"
         minSdk = 26
         targetSdk = 34
-        versionCode = 7
-        versionName = "1.4.1"
+        versionCode = 8
+        versionName = "1.5.0"
 
         ndk {
             abiFilters += "arm64-v8a"
         }
 
-        // Injected at build time from GitHub Actions (or ./gradlew -P...)
-        val serverUrl = (project.findProperty("MIANOOR_SERVER_URL") as String?) ?: ""
-        val clientToken = (project.findProperty("MIANOOR_CLIENT_TOKEN") as String?) ?: ""
+        // Injected at build time from GitHub Actions (or ./gradlew -P...).
+        // PRODUCTION DEFAULTS BELOW — the APK must work with ZERO manual setup:
+        // if a -P prop is absent OR empty (CI secret unset), fall back to the
+        // live server instead of shipping a blank SERVER_URL/CLIENT_TOKEN that
+        // silently disables sync. Values mirror the server defaults in
+        // src/lib/admin-auth.ts — rotate together if ever changed.
+        val serverUrl = (project.findProperty("MIANOOR_SERVER_URL") as String?)
+            ?.takeIf { it.isNotBlank() } ?: "https://mianboor.vercel.app"
+        val clientToken = (project.findProperty("MIANOOR_CLIENT_TOKEN") as String?)
+            ?.takeIf { it.isNotBlank() } ?: "[REDACTED-SECURITY]"
         // کلید همگام‌سازی ادمین — باید با ADMIN_SYNC_KEY سرور یکی باشد
-        val adminKey = (project.findProperty("MIANOOR_ADMIN_KEY") as String?) ?: "[REDACTED-SECURITY]"
+        val adminKey = (project.findProperty("MIANOOR_ADMIN_KEY") as String?)
+            ?.takeIf { it.isNotBlank() } ?: "[REDACTED-SECURITY]"
         buildConfigField("String", "SERVER_URL", "\"$serverUrl\"")
         buildConfigField("String", "CLIENT_TOKEN", "\"$clientToken\"")
         buildConfigField("String", "ADMIN_KEY", "\"$adminKey\"")

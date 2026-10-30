@@ -23,11 +23,23 @@ object AppPrefs {
 
     // ── server / token ────────────────────────────────────────────────
 
+    // Production fallbacks — keep in sync with server defaults (src/lib/admin-auth.ts).
+    // Defense in depth: even an APK built with blank BuildConfig values must
+    // still reach the live server, otherwise admin configs never reach users.
+    private const val FALLBACK_SERVER_URL = "https://mianboor.vercel.app"
+    private const val FALLBACK_CLIENT_TOKEN = "[REDACTED-SECURITY]"
+
+    /** ذخیره‌شده (اگر مدیر در پنل عوض کرده) ← BuildConfig ← پیش‌فرض production. */
+    private fun prefOr(loaded: String?, built: String, fallback: String): String =
+        loaded?.trim()?.takeIf { it.isNotEmpty() }
+            ?: built.trim().takeIf { it.isNotEmpty() }
+            ?: fallback
+
     fun serverUrl(c: Context): String =
-        p(c).getString("server_url", BuildConfig.SERVER_URL)?.trim() ?: ""
+        prefOr(p(c).getString("server_url", null), BuildConfig.SERVER_URL, FALLBACK_SERVER_URL)
 
     fun clientToken(c: Context): String =
-        p(c).getString("client_token", BuildConfig.CLIENT_TOKEN)?.trim() ?: ""
+        prefOr(p(c).getString("client_token", null), BuildConfig.CLIENT_TOKEN, FALLBACK_CLIENT_TOKEN)
 
     fun isConfigured(c: Context): Boolean =
         serverUrl(c).startsWith("http") && clientToken(c).isNotBlank()

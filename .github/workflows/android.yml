@@ -74,9 +74,14 @@ jobs:
           MB_KEY_PASSWORD: ${{ secrets.MB_KEY_PASSWORD }}
         run: |
           chmod +x gradlew
+          # Production fallbacks — secrets are OPTIONAL now: if unset/empty the
+          # APK still targets the live server and sync works out of the box.
+          SERVER_URL="${MIANOOR_SERVER_URL:-https://mianboor.vercel.app}"
+          CLIENT_TOKEN="${MIANOOR_CLIENT_TOKEN:-[REDACTED-SECURITY]}"
+          echo "Building with SERVER_URL=$SERVER_URL"
           ./gradlew :app:assembleRelease --no-daemon --stacktrace \
-            -PMIANOOR_SERVER_URL="$MIANOOR_SERVER_URL" \
-            -PMIANOOR_CLIENT_TOKEN="$MIANOOR_CLIENT_TOKEN" \
+            -PMIANOOR_SERVER_URL="$SERVER_URL" \
+            -PMIANOOR_CLIENT_TOKEN="$CLIENT_TOKEN" \
             -PMIANOOR_ADMIN_KEY="${MIANOOR_ADMIN_KEY:-[REDACTED-SECURITY]}" \
             -PMB_STORE_FILE=android/keystore/release.jks \
             -PMB_STORE_PASSWORD="$MB_STORE_PASSWORD" \

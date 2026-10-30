@@ -48,11 +48,11 @@
 
 ## نصب اپ اندروید
 
-1. به بخش [Releases](https://github.com/mostafaiekii/mianboor/releases) برو و آخرین `Mianboor-vX.Y.Z.apk` را دانلود کن (فعلاً **v1.4.1**).
+1. به بخش [Releases](https://github.com/mostafaiekii/mianboor/releases) برو و آخرین `Mianboor-vX.Y.Z.apk` را دانلود کن (فعلاً **v1.5.0**).
 2. فایل را نصب کن (اجازه «نصب از منابع ناشناس» لازم است).
 3. اگر Play Protect هشدار داد: **More details → Install anyway** را بزن. (چرا؟ پایین را بخوان: «هشدارهای نصب و Play Protect»)
 4. همین! ✅ آدرس سرور و توکن از قبل داخل APK تزریق شده — دکمه پاور را بزن و وصل شو. هیچ کلیدی لازم نیست.
-5. فقط اگر بیلد بدون Secret انجام شده باشد، صفحه «راه‌اندازی اولیه» باز می‌شود و باید آدرس سرور و توکن را یک بار وارد کنی.
+5. کانفیگ‌هایی که مدیر به پنل اضافه می‌کند خودکار در استارت اپ، هنگام باز کردن بخش سرورها و با دکمهٔ رفرش به همهٔ گوشی‌ها می‌رسد.
 
 ### تنظیمات مدیر داخل اپ
 
@@ -79,14 +79,15 @@ bun run dev            # یا deploy روی هر هاست Node
 
 ## تنظیم مقدارهای بیلد اندروید (اختیاری)
 
-می‌توانید آدرس سرور و توکن را در زمان بیلد داخل APK تزریق کنید تا کاربر نیازی به وارد کردن نداشته باشد:
+از نسخهٔ **v1.5.0** آدرس سرور (`https://mianboor.vercel.app`) و توکن کلاینت به‌صورت پیش‌فرض داخل APK تزریق می‌شوند — یعنی حتی بدون هیچ Secret، همگام‌سازی کانفیگ‌ها خودکار کار می‌کند.
 
-- در تنظیمات ریپو → Secrets and variables → Actions → این secret‌ها را بسازید:
-  - `MIANOOR_SERVER_URL` — مثل `https://your-server.com`
-  - `MIANOOR_CLIENT_TOKEN` — همان مقدار `CLIENT_TOKEN` سرور
-  - `MIANOOR_ADMIN_KEY` — همان مقدار `ADMIN_SYNC_KEY` سرور (اگر ست نشود، پیش‌فرض `[REDACTED-SECURITY]` استفاده می‌شود)
+Secretها فقط برای «تغییر سرور» یا «چرخاندن توکن» لازم‌اند (repo → Settings → Secrets and variables → Actions):
 
-اگر ست نشده باشند، کاربر مقادیر را از داخل اپ (تنظیمات مدیر) وارد می‌کند.
+- `MIANOOR_SERVER_URL` — مثل `https://your-server.com` (خالی/تنظیم‌نشده → پیش‌فرض production)
+- `MIANOOR_CLIENT_TOKEN` — همان مقدار `CLIENT_TOKEN` سرور (خالی/تنظیم‌نشده → پیش‌فرض `[REDACTED-SECURITY]`)
+- `MIANOOR_ADMIN_KEY` — همان مقدار `ADMIN_SYNC_KEY` سرور (اگر ست نشود، پیش‌فرض `[REDACTED-SECURITY]` استفاده می‌شود)
+
+⚠️ مهم: اگر `CLIENT_TOKEN` را روی سرور (Vercel) عوض کردید، حتماً secret `MIANOOR_CLIENT_TOKEN` را در GitHub هم همان مقدار بگذارید و تگ جدید بزنید، وگرنه اپ با توکن پیش‌فرض 401 می‌گیرد.
 
 برای امضای release (کاهش هشدارهای Play Protect بین آپدیت‌ها) این secret‌ها هم تنظیم شده‌اند:
 - `MB_KEYSTORE_BASE64` — فایل keystore به‌صورت base64
