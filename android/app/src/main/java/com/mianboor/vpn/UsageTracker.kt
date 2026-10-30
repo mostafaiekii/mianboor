@@ -63,10 +63,12 @@ object UsageTracker {
     fun topApps(context: Context, n: Int = 6): List<Pair<String, Long>> {
         return try {
             val acc = JSONObject(if (AppPrefs.appMonthKey(context) == monthKey()) AppPrefs.appAcc(context) else "{}")
-            acc.keys().asSequence().mapNotNull { k ->
+            val out = ArrayList<Pair<String, Long>>()
+            for (k in acc.keys()) {
                 val v = acc.optLong(k, 0L)
-                if (v > 0L) k to v else null
-            }.sortedByDescending { it.second }.take(n)
+                if (v > 0L) out.add(k to v)
+            }
+            out.sortedByDescending { it.second }.take(n)
         } catch (_: Throwable) { emptyList() }
     }
 
@@ -74,11 +76,13 @@ object UsageTracker {
     fun topServers(context: Context, n: Int = 5): List<Triple<String, String, Long>> {
         return try {
             val acc = JSONObject(if (AppPrefs.srvMonthKey(context) == monthKey()) AppPrefs.srvAcc(context) else "{}")
-            acc.keys().asSequence().mapNotNull { k ->
-                val o = acc.optJSONObject(k) ?: return@mapNotNull null
+            val out = ArrayList<Triple<String, String, Long>>()
+            for (k in acc.keys()) {
+                val o = acc.optJSONObject(k) ?: continue
                 val b = o.optLong("b", 0L)
-                if (b > 0L) Triple(k, o.optString("cc", ""), b) else null
-            }.sortedByDescending { it.third }.take(n)
+                if (b > 0L) out.add(Triple(k, o.optString("cc", ""), b))
+            }
+            out.sortedByDescending { it.third }.take(n)
         } catch (_: Throwable) { emptyList() }
     }
 }
