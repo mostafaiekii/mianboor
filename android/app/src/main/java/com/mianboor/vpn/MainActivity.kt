@@ -317,20 +317,25 @@ private fun MbAppInner(
                 val hint = if (premium) "premium" else "free"
                 var result = MianboorApi.sync(url, AppPrefs.clientToken(context), deviceId, hint)
                 if (key.isNotBlank()) {
-                    // دستگاه مدیر: لیست کامل (شامل غیرفعال‌ها) برای مدیریت
-                    val managed = MianboorApi.adminListConfigs(url, key)
+                    // دستگاه مدیر: لیست کامل (شامل غیرفعال‌ها) برای مدیریت —
+                    // اگر سرور قدیمی است و کلید را نمی‌شناسد، sync عادی ادامه می‌یابد
+                    val managed = runCatching { MianboorApi.adminListConfigs(url, key) }.getOrDefault(emptyList())
                     if (managed.isNotEmpty()) result = result.copy(configs = managed)
                 }
-                val newPremium = result.premiumUntil > System.currentTimeMillis()
+                val newPremium = result.plan != null &&
+                    result.plan == "premium" &&
+                    result.premiumUntil > System.currentTimeMillis()
                 withContext(Dispatchers.Main) {
-                    // سرور مرجع است — پرمیوم فقط از اینجا اعمال/لغو می‌شود
-                    if (entitlement.plan == "free" && newPremium) {
-                        toast(t.orderApprovedToast)
+                    // سرور مرجع است — فقط وقتی سرور جدید (plan != null) جواب داده
+                    if (result.plan != null) {
+                        if (entitlement.plan == "free" && newPremium) {
+                            toast(t.orderApprovedToast)
+                        }
+                        entitlement =
+                            if (newPremium) Entitlement("premium", result.premiumUntil)
+                            else Entitlement("free", 0L)
+                        AppPrefs.setPlan(context, entitlement.plan, entitlement.expiresAt)
                     }
-                    entitlement =
-                        if (newPremium) Entitlement("premium", result.premiumUntil)
-                        else Entitlement("free", 0L)
-                    AppPrefs.setPlan(context, entitlement.plan, entitlement.expiresAt)
                     payInfo = result.pay
                     AppPrefs.setServerCache(
                         context,

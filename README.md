@@ -48,7 +48,7 @@
 
 ## نصب اپ اندروید
 
-1. به بخش [Releases](https://github.com/mostafaiekii/mianboor/releases) برو و آخرین `Mianboor-vX.Y.Z.apk` را دانلود کن (فعلاً **v1.4.0**).
+1. به بخش [Releases](https://github.com/mostafaiekii/mianboor/releases) برو و آخرین `Mianboor-vX.Y.Z.apk` را دانلود کن (فعلاً **v1.4.1**).
 2. فایل را نصب کن (اجازه «نصب از منابع ناشناس» لازم است).
 3. اگر Play Protect هشدار داد: **More details → Install anyway** را بزن. (چرا؟ پایین را بخوان: «هشدارهای نصب و Play Protect»)
 4. همین! ✅ آدرس سرور و توکن از قبل داخل APK تزریق شده — دکمه پاور را بزن و وصل شو. هیچ کلیدی لازم نیست.

@@ -25,12 +25,12 @@ data class PayInfo(
 /**
  * نتیجه‌ی کامل همگام‌سازی با سرور:
  *  - configs: کانفیگ‌های مجاز این دستگاه (free → فقط رایگان‌ها)
- *  - plan / premiumUntil: وضعیت پرمیوم مرجع (سرور تصمیم می‌گیرد)
+ *  - plan / premiumUntil: وضعیت پرمیوم مرجع (سرور تصمیم می‌گیرد) — null یعنی سرور قدیمی
  *  - pay: اطلاعات کارت‌به‌کارت برای صفحه خرید
  */
 data class SyncResult(
     val configs: List<RemoteConfig>,
-    val plan: String,
+    val plan: String?,
     val premiumUntil: Long,
     val pay: PayInfo,
 )
@@ -95,8 +95,7 @@ object MianboorApi {
                 else -> throw IllegalStateException("سرور پاسخ ${conn.responseCode} داد")
             }
             val body = conn.inputStream.bufferedReader().use { it.readText() }
-            val obj = JSONObject(body.trim())
-            return parseSync(obj)
+            return parseBody(body)
         } finally {
             conn.disconnect()
         }
@@ -106,9 +105,8 @@ object MianboorApi {
     fun fetchConfigs(serverUrl: String, clientToken: String, plan: String = "free"): List<RemoteConfig> =
         sync(serverUrl, clientToken, "", plan).configs
 
-    private fun parseSync(obj: JSONObject): SyncResult {
-        val arr = obj.optJSONArray("configs") ?: JSONArray()
-        val configs = (0 until arr.length()).mapNotNull { i ->
+    private fun parseSyncConfigs(arr: JSONArray): List<RemoteConfig> =
+        (0 until arr.length()).mapNotNull { i ->
             val o = arr.getJSONObject(i)
             val link = o.optString("link")
             if (link.isNullOrBlank()) return@mapNotNull null
@@ -120,6 +118,9 @@ object MianboorApi {
                 premium = o.optBoolean("premium", false),
             )
         }
+
+    private fun parseSync(obj: JSONObject): SyncResult {
+        val configs = parseSyncConfigs(obj.optJSONArray("configs") ?: JSONArray())
         val pay = obj.optJSONObject("pay")
         return SyncResult(
             configs = configs,
@@ -131,6 +132,18 @@ object MianboorApi {
                 note = pay?.optString("note")?.orEmpty() ?: "",
             ),
         )
+    }
+
+    /** سازگاری با هر دو شکل پاسخ: آرایه خام (سرورهای قدیمی) و شیء { ok, configs, … }. */
+    private fun parseBody(body: String): SyncResult {
+        val trimmed = body.trim()
+        return if (trimmed.startsWith("[")) {
+            // سرور قدیمی: فقط آرایه کانفیگ — plan=null یعنی سرور درباره پرمیوم تصمیم نمی‌گیرد
+            val arr = JSONArray(trimmed)
+            SyncResult(parseSyncConfigs(arr), null, 0L, PayInfo())
+        } else {
+            parseSync(JSONObject(trimmed))
+        }
     }
 
     /** ثبت سفارش خرید روی سرور تا در تب Orders پنل مدیر ظاهر شود. */
