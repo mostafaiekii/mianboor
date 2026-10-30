@@ -14,6 +14,7 @@ import {
   Copy,
   Crown,
   Fingerprint,
+  Gift,
   GitBranch,
   Globe,
   Info,
@@ -469,6 +470,8 @@ export function AccountScreen({
   onUpgrade,
   onCopyDevice,
   onOpenUsage,
+  onOpenInvite,
+  onOpenSupport,
 }: {
   lang: Lang;
   entitlement: Entitlement;
@@ -480,6 +483,8 @@ export function AccountScreen({
   onUpgrade: () => void;
   onCopyDevice: () => void;
   onOpenUsage: () => void;
+  onOpenInvite: () => void;
+  onOpenSupport: () => void;
 }) {
   const t = tr(lang);
   const rtl = lang === "fa";
@@ -615,21 +620,33 @@ export function AccountScreen({
         {renewOpen && <p className="screen-in border-t border-panel-edge px-4 py-3 text-sm leading-6 text-dim">{t.renewExplain}</p>}
       </div>
 
-      <a
-        href={TG_SUPPORT}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="flex items-center gap-3 rounded-2xl border border-panel-edge bg-panel p-4 transition-colors hover:border-glow/40"
+      {/* invite friends — referral: کد معرف و روز هدیه */}
+      <button
+        type="button"
+        onClick={onOpenInvite}
+        className="flex items-center gap-3 rounded-2xl border border-panel-edge bg-panel p-4 text-start transition-colors hover:border-gold/40"
+      >
+        <Gift className="size-5 shrink-0 text-dim" />
+        <span className="flex-1">
+          <span className="block text-sm font-semibold text-ink">{t.invite}</span>
+          <span className="block text-sm text-dim">{t.inviteSub}</span>
+        </span>
+        <Fwd className="size-5 shrink-0 text-dim" />
+      </button>
+
+      {/* پشتیبانی — چت هوشمند داخل اپ (دمو) */}
+      <button
+        type="button"
+        onClick={onOpenSupport}
+        className="flex items-center gap-3 rounded-2xl border border-panel-edge bg-panel p-4 text-start transition-colors hover:border-glow/40"
       >
         <Send className="size-5 shrink-0 text-dim" />
         <span className="flex-1">
           <span className="block text-sm font-semibold text-ink">{t.support}</span>
-          <span dir="ltr" className="block text-sm text-dim">
-            {t.supportSub}
-          </span>
+          <span className="block text-sm text-dim">{t.supportSubChat}</span>
         </span>
         <Fwd className="size-5 shrink-0 text-dim" />
-      </a>
+      </button>
 
       {/* device id — anti-fraud binding */}
       <button

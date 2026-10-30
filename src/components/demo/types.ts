@@ -2,7 +2,7 @@
 
 export type VpnState = "off" | "connecting" | "on";
 
-export type Screen = "home" | "servers" | "account" | "settings" | "split" | "login" | "admin";
+export type Screen = "home" | "servers" | "account" | "settings" | "split" | "login" | "admin" | "referral" | "support";
 
 export interface ConfigItem {
   id: number;

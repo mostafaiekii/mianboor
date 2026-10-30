@@ -6,6 +6,7 @@ import {
   Eye,
   Fingerprint,
   Gauge,
+  Gift,
   GitBranch,
   Globe,
   Hand,
@@ -21,8 +22,10 @@ import { HomeScreen, ServersScreen, AccountScreen, UsageSheet, type UsageRow } f
 import { SettingsScreen } from "@/components/demo/settings-screen";
 import { SplitScreen } from "@/components/demo/split-screen";
 import { PlansSheet } from "@/components/demo/plans-sheet";
+import { ReferralScreen, type RefFriend, REF_CODE, REF_LINK } from "@/components/demo/referral-screen";
+import { SupportChatScreen } from "@/components/demo/support-chat";
 import { AdminLogin, AdminPanel } from "@/components/demo/admin-screens";
-import { tr, type Lang } from "@/components/demo/i18n";
+import { tr, tpl, type Lang } from "@/components/demo/i18n";
 import { THEMES, type ThemeName } from "@/components/demo/themes";
 import {
   FREE_QUOTA_GB,
@@ -81,6 +84,13 @@ const freshDevices = (): DeviceRecord[] => [
   { id: "MB-9Q3L-77XE", premium: true, premiumUntil: Date.now() + 40 * 86400_000, trialUsed: true, reinstalls: 0, seen: "yesterday" },
 ];
 
+/* دمو: دوستان دعوت‌شده اولیه + روزهای هدیه در انتظار (۱۰ از خرید پرمیوم + ۳ از ورود) */
+const freshFriends = (): RefFriend[] => [
+  { name: "Amir H.", agoMin: 2880, bought: true, days: 10 },
+  { name: "Sara M.", agoMin: 1440, bought: false, days: 3 },
+];
+const SIM_NAMES = ["Ali R.", "Nima K.", "Mahdi S.", "Reza T.", "Hossein F.", "Kian V.", "Pouya J."];
+
 function NavBtn({
   icon: I,
   label,
@@ -128,6 +138,8 @@ export default function VpnDemoPage() {
   const [trialLocked, setTrialLocked] = useState(false);
   const [usedGb, setUsedGb] = useState(1.2);
   const [split, setSplit] = useState<SplitState>({ mode: "exclude", apps: [] });
+  const [friends, setFriends] = useState<RefFriend[]>(freshFriends);
+  const [giftDays, setGiftDays] = useState(13);
   const [toast, setToast] = useState<{ msg: string; k: number } | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [syncOk, setSyncOk] = useState<boolean | null>(null);
@@ -303,6 +315,32 @@ export default function VpnDemoPage() {
     showToast(t.copied);
   };
 
+  /* ── Referral: دریافت روزهای هدیه → به‌شکل زمان پرمیوم به حسابت اضافه می‌شه ── */
+  const claimGift = (days: number) => {
+    setEntitlement((e) =>
+      e.plan === "free"
+        ? { plan: "p1", expiresAt: Date.now() + days * 86400_000 }
+        : { ...e, expiresAt: Math.max(Date.now(), e.expiresAt ?? 0) + days * 86400_000 },
+    );
+    setGiftDays(0);
+    showToast(t.giftClaimedToast);
+  };
+
+  /* ── Referral (دمو): ورود یه دوست جدید → ۳ روز؛ اگه پرمیوم بخره ۱۰ روز ── */
+  const simFriend = () => {
+    const bought = Math.random() < 0.35;
+    const days = bought ? 10 : 3;
+    const name = SIM_NAMES.find((n) => !friends.some((f) => f.name === n)) ?? `Friend #${friends.length + 1}`;
+    setFriends((f) => [{ name, agoMin: 0, bought, days }, ...f]);
+    setGiftDays((g) => g + days);
+    showToast(tpl(t.giftPlusToast, days));
+  };
+
+  const copyRef = (what: "code" | "link") => {
+    navigator.clipboard?.writeText(what === "code" ? REF_CODE : REF_LINK).catch(() => {});
+    showToast(t.copied);
+  };
+
   const tick = () => {
     const p = Math.min(1, (performance.now() - holdStart.current) / HOLD_MS);
     setHold(p);
@@ -350,6 +388,8 @@ export default function VpnDemoPage() {
     setTrialLocked(false);
     setUsedGb(1.2);
     setSplit({ mode: "exclude", apps: [] });
+    setFriends(freshFriends());
+    setGiftDays(13);
     setTheme("midnight");
     setLang("en");
     setSyncOk(null);
@@ -397,6 +437,11 @@ export default function VpnDemoPage() {
       i: Fingerprint,
       t: "تنظیمات → شبیه‌سازی نصب مجدد: ببین حجم رایگان روی دستگاه قفل می‌مونه (ضدچیت)",
       done: trialLocked,
+    },
+    {
+      i: Gift,
+      t: "از Account → دعوت دوستان: «شبیه‌سازی ورود دوست» رو بزن، روز هدیه جمع کن و Claim کن؛ بعد Support رو باز کن و با دستیار هوشمند چت کن",
+      done: friends.length > freshFriends().length && giftDays === 0,
     },
   ];
 
@@ -542,7 +587,23 @@ export default function VpnDemoPage() {
                     onUpgrade={() => setPlans("renew")}
                     onCopyDevice={copyDevice}
                     onOpenUsage={() => setUsageOpen(true)}
+                    onOpenInvite={() => setScreen("referral")}
+                    onOpenSupport={() => setScreen("support")}
                   />
+                )}
+                {screen === "referral" && (
+                  <ReferralScreen
+                    lang={lang}
+                    friends={friends}
+                    giftDays={giftDays}
+                    onClaim={claimGift}
+                    onSimFriend={simFriend}
+                    onCopy={copyRef}
+                    onBack={() => setScreen("account")}
+                  />
+                )}
+                {screen === "support" && (
+                  <SupportChatScreen lang={lang} onBack={() => setScreen("account")} />
                 )}
                 {screen === "settings" && (
                   <SettingsScreen
