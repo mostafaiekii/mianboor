@@ -521,11 +521,14 @@ private fun SecurityTab(
     blockRoot: Boolean,
     onBlockRoot: (Boolean) -> Unit,
     onChangePass: (String) -> Unit,
+    serverKey: String,
+    onServerKey: (String) -> Unit,
     toast: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val mb = LocalMb.current
     var np by remember { mutableStateOf("") }
+    var sk by remember(serverKey) { mutableStateOf(serverKey) }
 
     LazyColumn(
         modifier.fillMaxWidth().padding(top = 12.dp),
@@ -672,6 +675,65 @@ private fun SecurityTab(
             }
         }
         item {
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(mb.panel)
+                    .border(1.dp, mb.panelEdge, RoundedCornerShape(12.dp))
+                    .padding(16.dp),
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(ic(R.drawable.ic_server), null, tint = mb.glow, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Server sync key", color = mb.ink, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                }
+                Text(
+                    "Same value as ADMIN_PASSWORD on the server. When set, new configs publish to every device in their category (free / premium) — otherwise they stay on this phone only.",
+                    color = mb.dim, fontSize = 12.sp, lineHeight = 17.sp,
+                    modifier = Modifier.padding(top = 6.dp),
+                )
+                BasicTextField(
+                    value = sk,
+                    onValueChange = { sk = it },
+                    singleLine = true,
+                    textStyle = TextStyle(color = mb.ink, fontSize = 14.sp),
+                    cursorBrush = SolidColor(mb.gold),
+                    visualTransformation = PasswordVisualTransformation(),
+                    decorationBox = { inner ->
+                        Box(
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(top = 12.dp)
+                                .clip(RoundedCornerShape(9.dp))
+                                .background(mb.night)
+                                .border(1.dp, mb.panelEdge, RoundedCornerShape(9.dp))
+                                .padding(horizontal = 12.dp, vertical = 10.dp),
+                        ) {
+                            if (sk.isEmpty()) Text("ADMIN_PASSWORD of the server", color = mb.dim, fontSize = 13.sp)
+                            inner()
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(top = 12.dp)
+                        .clip(RoundedCornerShape(9.dp))
+                        .background(mb.gold)
+                        .clickable {
+                            onServerKey(sk)
+                            toast(if (sk.isBlank()) "Server sync disabled" else "Server sync enabled")
+                        }
+                        .padding(vertical = 10.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text("Save & sync", color = mb.night, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+        item {
             Text(
                 "Lock after 5 wrong tries · Session ends when app closes · Hidden entry, no visible button.",
                 color = mb.dim, fontSize = 12.sp, lineHeight = 17.sp,
@@ -690,6 +752,8 @@ fun AdminPanel(
     orders: List<Order>,
     devices: List<DeviceRecord>,
     blockRoot: Boolean,
+    serverKey: String,
+    onServerKey: (String) -> Unit,
     onToggleConfig: (String, Boolean) -> Unit,
     onDeleteConfig: (String) -> Unit,
     onTogglePremium: (String) -> Unit,
@@ -828,7 +892,11 @@ fun AdminPanel(
             } else if (tab == "orders") {
                 OrdersTab(orders, onApprove, onReject, Modifier.fillMaxWidth().weight(1f))
             } else {
-                SecurityTab(devices, blockRoot, onBlockRoot, onChangePass, toast, Modifier.fillMaxWidth().weight(1f))
+                SecurityTab(
+                    devices, blockRoot, onBlockRoot, onChangePass,
+                    serverKey, onServerKey, toast,
+                    Modifier.fillMaxWidth().weight(1f),
+                )
             }
         }
 
@@ -870,7 +938,6 @@ fun AdminPanel(
                         onAdd = { name, country, link, premium ->
                             onAddConfig(name, country, link, premium)
                             adding = false
-                            toast("Published to all users")
                         },
                     )
                 }

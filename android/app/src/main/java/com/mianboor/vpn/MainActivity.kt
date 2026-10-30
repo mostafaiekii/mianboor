@@ -105,6 +105,8 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import org.json.JSONObject
 import java.security.MessageDigest
 
 enum class Screen { HOME, SERVERS, ACCOUNT, SETTINGS, SPLIT, LOGIN, ADMIN }
@@ -258,8 +260,8 @@ private fun MbAppInner(
                     ConfigItem(
                         key = key, name = cc.name, country = cc.country,
                         protocol = parsed.protocol, host = parsed.host, port = parsed.port,
-                        ping = 90, premium = cc.premium || premiumOv[key] == true,
-                        enabled = key !in disabledOv, link = cc.link, local = false,
+                        ping = 90, premium = premiumOv[key] ?: cc.premium,
+                        enabled = cc.active && key !in disabledOv, link = cc.link, local = false,
                     ),
                 )
             }
@@ -270,13 +272,65 @@ private fun MbAppInner(
                     ConfigItem(
                         key = key, name = lc.name, country = lc.country,
                         protocol = parsed.protocol, host = parsed.host, port = parsed.port,
-                        ping = 90, premium = lc.premium || premiumOv[key] == true,
+                        ping = 90, premium = premiumOv[key] ?: lc.premium,
                         enabled = lc.enabled, link = lc.link, local = true,
                     ),
                 )
             }
         }
         configs = list
+    }
+
+    /**
+     * Sync configs from the server.
+     *  - Admin device (server key set): full list for management.
+     *  - Regular device: only the configs allowed for its plan category
+     *    (free → free servers, premium → everything).
+     */
+    fun refreshRemote(onDone: (Boolean) -> Unit = {}) {
+        scope.launch(Dispatchers.IO) {
+            if (!AppPrefs.isConfigured(context)) {
+                withContext(Dispatchers.Main) { onDone(false) }
+                return@launch
+            }
+            runCatching {
+                val url = AppPrefs.serverUrl(context)
+                val key = AppPrefs.adminServerKey(context)
+                val remote = if (key.isNotBlank())
+                    MianboorApi.adminListConfigs(url, key)
+                else
+                    MianboorApi.fetchConfigs(
+                        url,
+                        AppPrefs.clientToken(context),
+                        if (premium) "premium" else "free",
+                    )
+                AppPrefs.setServerCache(
+                    context,
+                    remote.map {
+                        AppPrefs.CachedConfig(it.id, it.name, it.country, it.link, it.premium, it.active)
+                    },
+                )
+                withContext(Dispatchers.Main) {
+                    rebuildConfigs()
+                    onDone(true)
+                }
+            }.onFailure {
+                withContext(Dispatchers.Main) { onDone(false) }
+            }
+        }
+    }
+
+    /** Best-effort server-side admin change (toggle/delete/premium). */
+    fun serverAdminSync(id: String, body: JSONObject? = null, delete: Boolean = false) {
+        val url = AppPrefs.serverUrl(context)
+        val key = AppPrefs.adminServerKey(context)
+        if (!url.startsWith("http") || key.isBlank()) return
+        scope.launch(Dispatchers.IO) {
+            runCatching {
+                if (delete) MianboorApi.adminDeleteConfig(url, key, id)
+                else MianboorApi.adminPatchConfig(url, key, id, body ?: JSONObject())
+            }
+        }
     }
 
     val liveConfigs = configs.map { it.copy(ping = pings[it.key] ?: it.ping) }
@@ -320,17 +374,7 @@ private fun MbAppInner(
             }.getOrDefault(emptyList())
             installedApps = apps
         }
-        launch(Dispatchers.IO) {
-            if (!AppPrefs.isConfigured(context)) return@launch
-            runCatching {
-                val remote = MianboorApi.fetchConfigs(AppPrefs.serverUrl(context), AppPrefs.clientToken(context))
-                AppPrefs.setServerCache(
-                    context,
-                    remote.map { AppPrefs.CachedConfig(it.id, it.name, it.country, it.link, it.premium) },
-                )
-                scope.launch { rebuildConfigs() }
-            }
-        }
+        launch(Dispatchers.IO) { refreshRemote() }
     }
 
     // ── live ping engine: re-measure every 3s, one socket pool, no interference ──
@@ -504,6 +548,7 @@ private fun MbAppInner(
         val days = when (o.plan) { "p1" -> 30; "p3" -> 90; else -> 180 }
         entitlement = Entitlement(o.plan, System.currentTimeMillis() + days * 86_400_000L)
         AppPrefs.setPlan(context, o.plan, entitlement.expiresAt)
+        refreshRemote() // premium configs now flow into this device
         toast(t.orderApprovedToast)
     }
 
@@ -535,6 +580,7 @@ private fun MbAppInner(
         if (key.startsWith("srv:")) {
             disabledOv = if (v) disabledOv - key else disabledOv + key
             AppPrefs.setStringSet(context, "disabled_ov", disabledOv)
+            serverAdminSync(key.removePrefix("srv:"), JSONObject().put("active", v))
         } else {
             val locals = AppPrefs.localConfigs(context).map {
                 if ("loc:${it.id}" == key) it.copy(enabled = v) else it
@@ -548,6 +594,7 @@ private fun MbAppInner(
         if (key.startsWith("srv:")) {
             hiddenOv = hiddenOv + key
             AppPrefs.setStringSet(context, "hidden_ov", hiddenOv)
+            serverAdminSync(key.removePrefix("srv:"), delete = true)
         } else {
             AppPrefs.setLocalConfigs(
                 context,
@@ -562,11 +609,41 @@ private fun MbAppInner(
         premiumOv = premiumOv + (key to !cur)
         AppPrefs.setPremiumOv(context, premiumOv)
         rebuildConfigs()
+        if (key.startsWith("srv:")) {
+            serverAdminSync(key.removePrefix("srv:"), JSONObject().put("premium", !cur))
+        }
     }
 
+    /**
+     * Add a config from the hidden admin panel.
+     * With a server key configured, the config is published to the server so
+     * every device in the target category (free/premium) receives it on the
+     * next sync. Without a key it stays on this device only.
+     */
     fun addConfig(name: String, country: String, link: String, prem: Boolean) {
-        AppPrefs.addLocalConfig(context, name, country, link, prem)
-        rebuildConfigs()
+        val url = AppPrefs.serverUrl(context)
+        val key = AppPrefs.adminServerKey(context)
+        if (url.startsWith("http") && key.isNotBlank()) {
+            scope.launch(Dispatchers.IO) {
+                val ok = runCatching {
+                    MianboorApi.adminAddConfig(url, key, name, country, link, prem)
+                }.getOrDefault(false)
+                withContext(Dispatchers.Main) {
+                    if (ok) {
+                        toast(if (prem) "Published — premium users only" else "Published — all users")
+                        refreshRemote()
+                    } else {
+                        AppPrefs.addLocalConfig(context, name, country, link, prem)
+                        rebuildConfigs()
+                        toast("Server publish failed — saved locally")
+                    }
+                }
+            }
+        } else {
+            AppPrefs.addLocalConfig(context, name, country, link, prem)
+            rebuildConfigs()
+            toast("Saved locally — set the server key to publish")
+        }
     }
 
     // ── reinstall simulation (anti-fraud) ──
@@ -598,6 +675,10 @@ private fun MbAppInner(
     }
 
     // ── back handling ──
+    // fresh pull every time the servers list is opened
+    LaunchedEffect(screen) {
+        if (screen == Screen.SERVERS) refreshRemote()
+    }
     BackHandler(enabled = screen in setOf(Screen.SERVERS, Screen.SETTINGS, Screen.SPLIT, Screen.LOGIN, Screen.ACCOUNT)) {
         screen = when (screen) {
             Screen.SERVERS, Screen.SETTINGS -> Screen.HOME
@@ -738,6 +819,12 @@ private fun MbAppInner(
                             DeviceRecord(deviceId, trialUsed, reinstalls, "this device"),
                         ),
                         blockRoot = blockRoot,
+                        serverKey = AppPrefs.adminServerKey(context),
+                        onServerKey = { k ->
+                            AppPrefs.setAdminServerKey(context, k)
+                            if (k.isNotBlank()) refreshRemote()
+                            rebuildConfigs()
+                        },
                         onToggleConfig = { k, v -> toggleConfig(k, v) },
                         onDeleteConfig = { k -> deleteConfig(k) },
                         onTogglePremium = { k -> togglePremium(k) },

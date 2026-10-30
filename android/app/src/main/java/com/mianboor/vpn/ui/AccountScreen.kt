@@ -119,7 +119,7 @@ fun AccountScreen(
                 }
             }
         } else {
-            PanelCard(Modifier.padding(top = 12.dp)) {
+            PanelCard(Modifier.padding(top = 12.dp), onClick = onUpgrade) {
                 Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                     Box(
                         Modifier.size(48.dp).clip(CircleShape).background(mb.ink.copy(alpha = 0.1f)),

@@ -130,7 +130,7 @@ object AppPrefs {
 
     data class CachedConfig(
         val id: String, val name: String, val country: String,
-        val link: String, val premium: Boolean,
+        val link: String, val premium: Boolean, val active: Boolean = true,
     )
 
     fun serverCache(c: Context): List<CachedConfig> {
@@ -140,7 +140,7 @@ object AppPrefs {
             CachedConfig(
                 id = o.optString("id"), name = o.optString("name"),
                 country = o.optString("country"), link = o.optString("link"),
-                premium = o.optBoolean("premium", false),
+                premium = o.optBoolean("premium", false), active = o.optBoolean("active", true),
             )
         }
     }
@@ -150,7 +150,7 @@ object AppPrefs {
         list.forEach { s ->
             a.put(JSONObject()
                 .put("id", s.id).put("name", s.name).put("country", s.country)
-                .put("link", s.link).put("premium", s.premium))
+                .put("link", s.link).put("premium", s.premium).put("active", s.active))
         }
         ed(c).putString("server_cache", a.toString()).apply()
     }
@@ -235,6 +235,13 @@ object AppPrefs {
     fun adminUser(c: Context): String = p(c).getString("admin_user", "admin") ?: "admin"
     fun adminPass(c: Context): String = p(c).getString("admin_pass", "Mianboor@2026") ?: "Mianboor@2026"
     fun setAdminPass(c: Context, v: String) { ed(c).putString("admin_pass", v).apply() }
+
+    /**
+     * کلید مدیر سرور (همان ADMIN_PASSWORD سمت سرور) — با هدر x-admin-key فرستاده می‌شود.
+     * خالی باشد یعنی انتشار روی سرور غیرفعال است و کانفیگ‌ها فقط لوکال ذخیره می‌شوند.
+     */
+    fun adminServerKey(c: Context): String = p(c).getString("admin_server_key", "") ?: ""
+    fun setAdminServerKey(c: Context, v: String) { ed(c).putString("admin_server_key", v.trim()).apply() }
 
     // ── last connected server (auto-connect on boot) ──────────────────
 

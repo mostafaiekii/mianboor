@@ -86,24 +86,9 @@ class MianboorVpnService : VpnService() {
         // 1) Parse the link into an xray outbound (never surfaced in UI)
         val server = XrayConfigBuilder.parseLink(link, name, country)
             ?: throw IllegalStateException("این نوع کانفیگ هنوز پشتیبانی نمی‌شود")
-        val confFile = File(filesDir, "xray.json")
-        confFile.writeText(XrayConfigBuilder.buildConfigJson(server))
 
-        // 2) Launch the bundled xray core
-        val bin = File(applicationInfo.nativeLibraryDir, "libxray.so")
-        val proc = ProcessBuilder(bin.absolutePath, "run", "-c", confFile.absolutePath)
-            .redirectErrorStream(true)
-            .start()
-        xray = proc
-        // Drain output so the process never blocks on a full pipe
-        Thread { runCatching { proc.inputStream.bufferedReader().forEachLine { } } }.start()
-
-        // 3) Wait for the local SOCKS port to come up
-        if (!waitForSocks(XrayConfigBuilder.SOCKS_PORT, timeoutMs = 8000)) {
-            throw IllegalStateException("هسته اتصال راه نیفتاد")
-        }
-
-        // 4) Bring up the TUN interface (with split tunneling rules)
+        // 2) Bring up the TUN interface first (independent of xray boot — saves
+        //    the whole establish() latency out of the critical connect path)
         val builder = Builder()
             .setSession("Mianboor")
             .setMtu(MTU)
@@ -120,6 +105,22 @@ class MianboorVpnService : VpnService() {
         val fd = builder.establish() ?: throw IllegalStateException("اجازه اتصال داده نشد")
         tun = fd
 
+        // 3) Launch the bundled xray core
+        val confFile = File(filesDir, "xray.json")
+        confFile.writeText(XrayConfigBuilder.buildConfigJson(server))
+        val bin = File(applicationInfo.nativeLibraryDir, "libxray.so")
+        val proc = ProcessBuilder(bin.absolutePath, "run", "-c", confFile.absolutePath)
+            .redirectErrorStream(true)
+            .start()
+        xray = proc
+        // Drain output so the process never blocks on a full pipe
+        Thread { runCatching { proc.inputStream.bufferedReader().forEachLine { } } }.start()
+
+        // 4) Wait for the local SOCKS port to come up
+        if (!waitForSocks(XrayConfigBuilder.SOCKS_PORT, timeoutMs = 6000)) {
+            throw IllegalStateException("هسته اتصال راه نیفتاد")
+        }
+
         // 5) Start the socks5 tunnel (TUN -> xray)
         val tunConf = File(filesDir, "tunnel.yaml")
         tunConf.writeText(tunnelYaml())
@@ -127,9 +128,9 @@ class MianboorVpnService : VpnService() {
         if (!started) throw IllegalStateException("تونل امن راه نیفتاد")
 
         var waited = 0
-        while (!TProxyService.isRunning() && waited < 3000) {
-            delay(100)
-            waited += 100
+        while (!TProxyService.isRunning() && waited < 2500) {
+            delay(60)
+            waited += 60
         }
         if (!TProxyService.isRunning()) throw IllegalStateException("تونل امن راه نیفتاد")
 
@@ -244,7 +245,7 @@ class MianboorVpnService : VpnService() {
         val notif = Notification.Builder(this, CHANNEL_ID)
             .setContentTitle(getString(R.string.notif_title))
             .setContentText(getString(R.string.notif_text))
-            .setSmallIcon(R.drawable.ic_power)
+            .setSmallIcon(R.drawable.ic_launcher_monochrome)
             .setContentIntent(pi)
             .setOngoing(true)
             .build()

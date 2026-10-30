@@ -7,6 +7,20 @@ android {
     namespace = "com.mianboor.vpn"
     compileSdk = 34
 
+    // ── release keystore (CI injects via -P props from GitHub secrets) ──
+    // Falls back to the debug key for local builds so they stay installable.
+    val mbStoreFile = (project.findProperty("MB_STORE_FILE") as String?)?.let { file(it) }
+    signingConfigs {
+        if (mbStoreFile != null && mbStoreFile.exists()) {
+            create("mianboorRelease") {
+                storeFile = mbStoreFile
+                storePassword = (project.findProperty("MB_STORE_PASSWORD") as String?) ?: ""
+                keyAlias = (project.findProperty("MB_KEY_ALIAS") as String?) ?: "mianboor"
+                keyPassword = (project.findProperty("MB_KEY_PASSWORD") as String?) ?: ""
+            }
+        }
+    }
+
     defaultConfig {
         applicationId = "com.mianboor.vpn"
         minSdk = 26
@@ -28,9 +42,13 @@ android {
     buildTypes {
         release {
             isMinifyEnabled = false
-            // Signed with the auto-generated debug key so the APK is installable
-            // when distributed via GitHub Releases.
-            signingConfig = signingConfigs.getByName("debug")
+            // Signed with the stable release key (from CI secrets) when present —
+            // a consistent signature lowers Play Protect flags across updates.
+            // Local builds fall back to the debug key so they stay installable.
+            signingConfig = if (mbStoreFile != null && mbStoreFile.exists())
+                signingConfigs.getByName("mianboorRelease")
+            else
+                signingConfigs.getByName("debug")
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }

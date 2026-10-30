@@ -1,21 +1,27 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { isAdmin } from "@/lib/admin-auth";
+import { isAdminReq } from "@/lib/admin-auth";
 
-/** فعال/غیرفعال کردن کانفیگ */
+/** فعال/غیرفعال کردن کانفیگ (و تغییر پرچم premium) */
 export async function PATCH(
   req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  if (!(await isAdmin())) {
+  if (!(await isAdminReq(req))) {
     return NextResponse.json({ ok: false, error: "دسترسی غیرمجاز" }, { status: 401 });
   }
   const { id } = await params;
   try {
-    const { active } = await req.json();
+    const { active, premium } = await req.json();
+    const data: { active?: boolean; premium?: boolean } = {};
+    if (active !== undefined) data.active = Boolean(active);
+    if (premium !== undefined) data.premium = Boolean(premium);
+    if (Object.keys(data).length === 0) {
+      return NextResponse.json({ ok: false, error: "چیزی برای تغییر نیست" }, { status: 400 });
+    }
     const updated = await db.vpnConfig.update({
       where: { id },
-      data: { active: Boolean(active) },
+      data,
     });
     return NextResponse.json({ ok: true, config: updated });
   } catch {
@@ -25,10 +31,10 @@ export async function PATCH(
 
 /** حذف کانفیگ */
 export async function DELETE(
-  _req: Request,
+  req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  if (!(await isAdmin())) {
+  if (!(await isAdminReq(req))) {
     return NextResponse.json({ ok: false, error: "دسترسی غیرمجاز" }, { status: 401 });
   }
   const { id } = await params;

@@ -4,13 +4,19 @@ import { clientToken } from "@/lib/admin-auth";
 
 /**
  * نقطه اتصال اپ اندروید (و سایر کلاینت‌ها)
- * کانفیگ‌های فعال را برمی‌گرداند؛ کاربران هرگز لینک‌ها را در UI نمی‌بینند
- * و لینک خام هرگز داخل اپ باندل نمی‌شود.
- * فراخوانی: GET /api/client/configs?token=CLIENT_TOKEN
+ *
+ * توزیع هدفمند کانفیگ‌ها بر اساس دسته‌ی کاربر:
+ *  - plan=premium → همه‌ی کانفیگ‌های فعال (رایگان + پرمیوم)
+ *  - plan=free یا بدون plan → فقط کانفیگ‌های رایگان
+ * یعنی لینک کانفیگ‌های پرمیوم هرگز به دستگاه کاربران رایگان حتی نمی‌رسد.
+ *
+ * کاربران هرگز لینک‌ها را در UI نمی‌بینند و لینک خام هرگز داخل اپ باندل نمی‌شود.
+ * فراخوانی: GET /api/client/configs?token=CLIENT_TOKEN&plan=free|premium
  */
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const token = searchParams.get("token");
+  const plan = (searchParams.get("plan") ?? "free").toLowerCase();
 
   if (!token || token !== clientToken()) {
     return NextResponse.json(
@@ -20,7 +26,11 @@ export async function GET(req: Request) {
   }
 
   const configs = await db.vpnConfig.findMany({
-    where: { active: true },
+    where: {
+      active: true,
+      // دسته‌بندی توزیع: پرمیوم فقط برای پرمیوم‌ها
+      ...(plan === "premium" ? {} : { premium: false }),
+    },
     select: { id: true, name: true, country: true, link: true, premium: true },
     orderBy: { createdAt: "desc" },
   });

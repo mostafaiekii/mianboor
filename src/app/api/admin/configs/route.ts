@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { isAdmin } from "@/lib/admin-auth";
+import { isAdminReq } from "@/lib/admin-auth";
 
-/** لیست همه کانفیگ‌ها — فقط مدیر */
-export async function GET() {
-  if (!(await isAdmin())) {
+/** لیست همه کانفیگ‌ها — فقط مدیر (کوکی وب یا هدر x-admin-key اپ) */
+export async function GET(req: Request) {
+  if (!(await isAdminReq(req))) {
     return NextResponse.json({ ok: false, error: "دسترسی غیرمجاز" }, { status: 401 });
   }
   const configs = await db.vpnConfig.findMany({
@@ -13,13 +13,13 @@ export async function GET() {
   return NextResponse.json({ ok: true, configs });
 }
 
-/** افزودن کانفیگ‌ها — هر خط یک لینک کانفیگ */
+/** افزودن کانفیگ‌ها — هر خط یک لینک کانفیگ؛ premium یعنی فقط کاربران پرمیوم می‌گیرند */
 export async function POST(req: Request) {
-  if (!(await isAdmin())) {
+  if (!(await isAdminReq(req))) {
     return NextResponse.json({ ok: false, error: "دسترسی غیرمجاز" }, { status: 401 });
   }
   try {
-    const { name, country, links } = await req.json();
+    const { name, country, links, premium } = await req.json();
     const lines = String(links ?? "")
       .split("\n")
       .map((l: string) => l.trim())
@@ -47,6 +47,7 @@ export async function POST(req: Request) {
         name: valid.length > 1 ? `${name || "سرور"} ${i + 1}` : name || "سرور",
         country: country || "نامشخص",
         link,
+        premium: premium === true,
       })),
     });
 

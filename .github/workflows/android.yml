@@ -50,16 +50,36 @@ jobs:
           cp /tmp/xraybin/xray android/app/src/main/jniLibs/arm64-v8a/libxray.so
           file android/app/src/main/jniLibs/arm64-v8a/libxray.so
 
+      - name: Restore release keystore
+        env:
+          MB_KEYSTORE_BASE64: ${{ secrets.MB_KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$MB_KEYSTORE_BASE64" ]; then
+            mkdir -p android/keystore
+            echo "$MB_KEYSTORE_BASE64" | base64 -d > android/keystore/release.jks
+            echo "Keystore restored:"
+            ls -la android/keystore/
+          else
+            echo "MB_KEYSTORE_BASE64 not set — falling back to debug signing."
+          fi
+
       - name: Build release APK
         working-directory: android
         env:
           MIANOOR_SERVER_URL: ${{ secrets.MIANOOR_SERVER_URL }}
           MIANOOR_CLIENT_TOKEN: ${{ secrets.MIANOOR_CLIENT_TOKEN }}
+          MB_STORE_PASSWORD: ${{ secrets.MB_STORE_PASSWORD }}
+          MB_KEY_ALIAS: ${{ secrets.MB_KEY_ALIAS }}
+          MB_KEY_PASSWORD: ${{ secrets.MB_KEY_PASSWORD }}
         run: |
           chmod +x gradlew
           ./gradlew :app:assembleRelease --no-daemon --stacktrace \
             -PMIANOOR_SERVER_URL="$MIANOOR_SERVER_URL" \
-            -PMIANOOR_CLIENT_TOKEN="$MIANOOR_CLIENT_TOKEN"
+            -PMIANOOR_CLIENT_TOKEN="$MIANOOR_CLIENT_TOKEN" \
+            -PMB_STORE_FILE=android/keystore/release.jks \
+            -PMB_STORE_PASSWORD="$MB_STORE_PASSWORD" \
+            -PMB_KEY_ALIAS="$MB_KEY_ALIAS" \
+            -PMB_KEY_PASSWORD="$MB_KEY_PASSWORD"
 
       - name: Prepare APK artifact
         run: |

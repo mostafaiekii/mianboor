@@ -30,19 +30,18 @@ export const metadata: Metadata = {
   keywords: ["VPN", "میانبر", "Mianboor", "دمو", "اتصال امن"],
   authors: [{ name: "Mianboor VPN" }],
   icons: {
-    icon: "https://z-cdn.chatglm.cn/z-ai/static/logo.svg",
+    icon: "/logo-512.png",
+    apple: "/logo-512.png",
   },
   openGraph: {
-    title: "Z.ai Code Scaffold",
-    description: "AI-powered development with modern React stack",
-    url: "https://chat.z.ai",
-    siteName: "Z.ai",
+    title: "میانبر — Mianboor VPN",
+    description: "دموی رابط کاربری اپ VPN میانبر؛ خرید پلن، ضدچیت، تم‌های ملایم و پنل مخفی مدیر.",
     type: "website",
   },
   twitter: {
-    card: "summary_large_image",
-    title: "Z.ai Code Scaffold",
-    description: "AI-powered development with modern React stack",
+    card: "summary",
+    title: "میانبر — Mianboor VPN",
+    description: "دموی رابط کاربری اپ VPN میانبر",
   },
 };
 
