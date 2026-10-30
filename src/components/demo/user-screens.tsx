@@ -101,6 +101,7 @@ export function HomeScreen({
   origin,
   showFlash,
   update,
+  flashOrigin,
 }: {
   lang: Lang;
   state: VpnState;
@@ -112,7 +113,8 @@ export function HomeScreen({
   onOpenSettings: () => void;
   /** آی‌پی و پرچم کشور مبدا کاربر (در اپ واقعی قبل از اتصال از ipwho.is) */
   origin?: { ip: string; country: string } | null;
-  /** فلش لحظه اتصال: «از ایران به آلمان وصل شدی» */
+  /** فلش لحظه اتصال: «از ایران به آلمان وصل شدی» — همیشه آی‌پی واقعی کاربر */
+  flashOrigin?: { ip: string; country: string } | null;
   showFlash?: boolean;
   /** بنر نسخهٔ جدید (اپ واقعی: چکر GitHub Releases) */
   update?: { version: string; url: string; onUpdate: () => void; onDismiss: () => void } | null;
@@ -205,10 +207,10 @@ export function HomeScreen({
         <div className="mt-1 font-display text-base tabular-nums text-dim">{on ? fmt(seconds) : t.tapProtect}</div>
         {showFlash && on && server && (
           <div className="flash-in mx-auto mt-2 flex max-w-[300px] items-center justify-center gap-2 rounded-full border border-glow/40 bg-glow/10 px-3 py-1.5">
-            <Flag code={origin?.country ?? "ir"} size={18} />
+            <Flag code={(flashOrigin ?? origin)?.country ?? "ir"} size={18} />
             <span className="truncate text-xs font-semibold text-ink">
               {t.connectFlash
-                .replace("{from}", COUNTRIES[origin?.country ?? "ir"] ?? origin?.country ?? "—")
+                .replace("{from}", COUNTRIES[(flashOrigin ?? origin)?.country ?? "ir"] ?? (flashOrigin ?? origin)?.country ?? "—")
                 .replace("{to}", COUNTRIES[server.country] ?? server.country)}
             </span>
             <span className="text-xs text-dim">→</span>
@@ -634,7 +636,7 @@ export function AccountScreen({
         <Fwd className="size-5 shrink-0 text-dim" />
       </button>
 
-      {/* پشتیبانی — چت هوشمند داخل اپ (دمو) */}
+      {/* پشتیبانی آنلاین — چت هوشمند داخل اپ + نقطه سبز چشمک‌زن لایو */}
       <button
         type="button"
         onClick={onOpenSupport}
@@ -642,7 +644,13 @@ export function AccountScreen({
       >
         <Send className="size-5 shrink-0 text-dim" />
         <span className="flex-1">
-          <span className="block text-sm font-semibold text-ink">{t.support}</span>
+          <span className="flex items-center gap-2 text-sm font-semibold text-ink">
+            {t.supportOnline}
+            <span className="relative flex size-2" aria-hidden="true">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-glow opacity-75" />
+              <span className="relative inline-flex size-2 rounded-full bg-glow" />
+            </span>
+          </span>
           <span className="block text-sm text-dim">{t.supportSubChat}</span>
         </span>
         <Fwd className="size-5 shrink-0 text-dim" />

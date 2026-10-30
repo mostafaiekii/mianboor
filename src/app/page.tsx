@@ -47,8 +47,11 @@ const PING_MS = 3000;
 const DEVICE_ID = "MB-7F3A-92K1";
 const RELEASES_URL = "https://github.com/mostafaiekii/mianboor/releases/latest";
 
-/** کشور مبدا کاربر — در اپ واقعی قبل از اتصال از ipwho.is گرفته می‌شود؛ اینجا ماک دمو */
+/** کشور و آی‌پی مبدا کاربر — در اپ واقعی قبل از اتصال از ipwho.is گرفته می‌شود؛ اینجا ماک دمو */
 const ORIGIN = { ip: "5.160.42.117", country: "ir" };
+
+/** آی‌پی و کشور مقصد — در اپ واقعی بعد از اتصال، ipwho.is از داخل تونل صدا زده می‌شه */
+const DEST = { ip: "49.12.208.71", country: "de" };
 
 /** مصرف به تفکیک اپ (دمو) — در اپ واقعی: TrafficStats به تفکیک UID */
 const DEMO_BY_APP: UsageRow[] = [
@@ -146,6 +149,8 @@ export default function VpnDemoPage() {
   const [usageOpen, setUsageOpen] = useState(false);
   const [showFlash, setShowFlash] = useState(false);
   const [updateBanner, setUpdateBanner] = useState(false);
+  /* آی‌پی واقعی مقصد — بعد از اتصال، با تاخیر کوتاه «تشخیص» می‌شه (دمو: ipwho.is از داخل تونل) */
+  const [destResolved, setDestResolved] = useState(false);
 
   const t = tr(lang);
   const holdStart = useRef(0);
@@ -206,10 +211,18 @@ export default function VpnDemoPage() {
 
   /* ── فلش لحظه اتصال: «از ایران به آلمان وصل شدی» — چند ثانیه بعد محو می‌شه ── */
   useEffect(() => {
-    if (vpn !== "on") return;
+    if (vpn !== "on") {
+      setDestResolved(false);
+      return;
+    }
     setShowFlash(true);
-    const id = setTimeout(() => setShowFlash(false), 4500);
-    return () => clearTimeout(id);
+    /* شبیه‌سازی تشخیص آی‌پی جدید: بعد از ۲ ثانیه نوار آی‌پی → آی‌پی و کشور مقصد */
+    const destId = setTimeout(() => setDestResolved(true), 2000);
+    const flashId = setTimeout(() => setShowFlash(false), 4500);
+    return () => {
+      clearTimeout(destId);
+      clearTimeout(flashId);
+    };
   }, [vpn]);
 
   /* ── بنر نسخهٔ جدید (دمو: بعد از چند ثانیه می‌آید؛ اپ واقعی: چکر GitHub Releases) ── */
@@ -549,7 +562,8 @@ export default function VpnDemoPage() {
                     warn={!premium && trialLocked ? t.trialOverUpsell : null}
                     onPickServer={() => setScreen("servers")}
                     onOpenSettings={() => setScreen("settings")}
-                    origin={ORIGIN}
+                    origin={vpn === "on" && destResolved ? DEST : ORIGIN}
+                    flashOrigin={ORIGIN}
                     showFlash={showFlash}
                     update={
                       updateBanner

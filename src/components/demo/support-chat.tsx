@@ -60,7 +60,11 @@ export function SupportChatScreen({ lang, onBack }: { lang: Lang; onBack: () => 
         <span className="min-w-0 flex-1">
           <span className="block font-display text-xl font-bold text-ink">{t.chatWith}</span>
           <span className="mt-0.5 flex items-center gap-1.5 text-xs text-dim">
-            <span className="size-2 rounded-full bg-glow" /> {t.aiOnline}
+            <span className="relative flex size-2" aria-hidden="true">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-glow opacity-75" />
+              <span className="relative inline-flex size-2 rounded-full bg-glow" />
+            </span>
+            {t.aiOnline}
           </span>
         </span>
         <a
