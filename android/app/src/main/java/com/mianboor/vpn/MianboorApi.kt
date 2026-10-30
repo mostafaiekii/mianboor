@@ -130,7 +130,7 @@ object MianboorApi {
         return SyncResult(
             configs = configs,
             plan = if (obj.optString("plan") == "premium") "premium" else "free",
-            premiumUntil = if (obj.isNull("premiumUntil")) 0L else obj.optLong("premiumUntil", 0L),
+            premiumUntil = parseEpochMillis(obj.opt("premiumUntil")),
             pay = PayInfo(
                 card = pay?.optString("card")?.orEmpty() ?: "",
                 holder = pay?.optString("holder")?.orEmpty() ?: "",
@@ -153,6 +153,20 @@ object MianboorApi {
         } else {
             parseSync(JSONObject(trimmed))
         }
+    }
+
+    /**
+     * premiumUntil ممکن است عدد (epoch ms — سرور جدید) یا رشتهٔ ISO (فرمت‌های دیگر)
+     * باشد — هر دو را به میلی‌ثانیه تبدیل می‌کنیم تا پرمیوم هرگز به‌خاطر فرمت دور ریخته نشود.
+     */
+    private fun parseEpochMillis(v: Any?): Long = when (v) {
+        is Number -> v.toLong()
+        is String -> v.toLongOrNull() ?: runCatching {
+            val f = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", java.util.Locale.US)
+            f.timeZone = java.util.TimeZone.getTimeZone("UTC")
+            f.parse(v.trim())?.time ?: 0L
+        }.getOrDefault(0L)
+        else -> 0L
     }
 
     /** ثبت سفارش خرید روی سرور تا در تب Orders پنل مدیر ظاهر شود. */

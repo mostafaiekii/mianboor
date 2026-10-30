@@ -32,7 +32,8 @@ export async function GET(req: Request) {
 
   // وضعیت پرمیوم دستگاه از سرور (مرجع نهایی)
   let premium = false;
-  let premiumUntil: string | null = null;
+  // تاریخ انقضا به‌صورت epoch-millisecond (عدد) — اپ اندروید این را عددی می‌خواند
+  let premiumUntil: number | null = null;
   if (device) {
     const dev = await db.device
       .upsert({
@@ -43,7 +44,7 @@ export async function GET(req: Request) {
       .catch(() => null);
     if (dev?.premiumUntil && dev.premiumUntil.getTime() > Date.now()) {
       premium = true;
-      premiumUntil = dev.premiumUntil.toISOString();
+      premiumUntil = dev.premiumUntil.getTime();
     } else if (dev?.premiumUntil) {
       // انقضا گذشته — وضعیت به روز شود
       premiumUntil = null;
