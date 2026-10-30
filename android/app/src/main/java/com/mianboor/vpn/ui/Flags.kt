@@ -24,6 +24,7 @@ val COUNTRIES: Map<String, String> = mapOf(
     "us" to "USA",
     "fr" to "France",
     "ae" to "UAE",
+    "ir" to "Iran",
 )
 
 private val F_RED = Color(0xFFBB061E)
@@ -110,6 +111,12 @@ fun Flag(code: String, side: Dp, modifier: Modifier = Modifier) {
                 rect(0f, 12f, 36f, 12f, F_WHITE)
                 rect(0f, 24f, 36f, 12f, F_BLACK)
                 rect(0f, 0f, 10f, 36f, F_ORANGE)
+            }
+            "ir" -> {
+                rect(0f, 0f, 36f, 12f, F_GREEN)
+                rect(0f, 12f, 36f, 12f, F_WHITE)
+                rect(0f, 24f, 36f, 12f, F_RED)
+                circle(18f, 18f, 4.6f, F_RED)
             }
             else -> {
                 // Unknown country — dim circle with the code initial.

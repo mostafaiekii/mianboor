@@ -62,6 +62,23 @@ const en = {
   upgrade: "Go Premium",
   renewBtn: "Renew / Extend plan",
   trialOverUpsell: "Free quota is finished on this device — pick a plan to continue.",
+  // ip tile + connect flash
+  yourIp: "Your IP",
+  connectFlash: "Connected from {from} to {to}",
+  // usage details sheet
+  usageDetails: "Usage details",
+  usageThisMonth: "This month",
+  usageByApp: "By app",
+  usageAppSub: "Apps that used the VPN tunnel",
+  usageByServer: "By server",
+  usageSrvSub: "Data routed through each server",
+  // update banner
+  updateTitle: "New version available",
+  updateSub: "Mianboor v{v} is out — updated servers & fixes.",
+  updateBtn: "Update now",
+  updateLater: "Later",
+  // admin orders badge
+  pendingOrders: "You have {n} pending orders",
   // plans
   plansTitle: "Go Premium",
   currentPlan: "Current plan",
@@ -186,6 +203,23 @@ const fa: typeof en = {
   upgrade: "خرید پرمیوم",
   renewBtn: "تمدید / افزایش پلن",
   trialOverUpsell: "حجم رایگان این دستگاه تموم شده — برای ادامه یه پلن انتخاب کن.",
+  // ip tile + connect flash
+  yourIp: "آی‌پی تو",
+  connectFlash: "از {from} به {to} وصل شدی",
+  // usage details sheet
+  usageDetails: "جزئیات مصرف",
+  usageThisMonth: "این ماه",
+  usageByApp: "به تفکیک اپ",
+  usageAppSub: "اپ‌هایی که از تونل استفاده کردن",
+  usageByServer: "به تفکیک سرور",
+  usageSrvSub: "دیتای ردشده از هر سرور",
+  // update banner
+  updateTitle: "نسخهٔ جدید اومده!",
+  updateSub: "میانبر نسخهٔ {v} منتشر شده — سرورها و فیکس‌های تازه.",
+  updateBtn: "همین حالا آپدیت کن",
+  updateLater: "بعداً",
+  // admin orders badge
+  pendingOrders: "{n} سفارش در انتظار تأیید داری",
   plansTitle: "ارتقا به پرمیوم",
   currentPlan: "پلن فعلی تو",
   freeFeat: "۵ گیگ در ماه · سرورهای استاندارد",

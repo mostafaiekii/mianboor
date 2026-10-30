@@ -17,7 +17,7 @@ import {
   User,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import { HomeScreen, ServersScreen, AccountScreen } from "@/components/demo/user-screens";
+import { HomeScreen, ServersScreen, AccountScreen, UsageSheet, type UsageRow } from "@/components/demo/user-screens";
 import { SettingsScreen } from "@/components/demo/settings-screen";
 import { SplitScreen } from "@/components/demo/split-screen";
 import { PlansSheet } from "@/components/demo/plans-sheet";
@@ -42,6 +42,26 @@ const DEMO_USER = "admin";
 const DEMO_PASS = "Mianboor@2026";
 const PING_MS = 3000;
 const DEVICE_ID = "MB-7F3A-92K1";
+const RELEASES_URL = "https://github.com/mostafaiekii/mianboor/releases/latest";
+
+/** کشور مبدا کاربر — در اپ واقعی قبل از اتصال از ipwho.is گرفته می‌شود؛ اینجا ماک دمو */
+const ORIGIN = { ip: "5.160.42.117", country: "ir" };
+
+/** مصرف به تفکیک اپ (دمو) — در اپ واقعی: TrafficStats به تفکیک UID */
+const DEMO_BY_APP: UsageRow[] = [
+  { label: "Telegram", mb: 612, icon: "tg" },
+  { label: "Chrome", mb: 348, icon: "web" },
+  { label: "Instagram", mb: 214, icon: "cam" },
+  { label: "YouTube", mb: 88, icon: "play" },
+  { label: "System", mb: 31, icon: "sys" },
+];
+
+/** مصرف به تفکیک سرور (دمو) — در اپ واقعی: آمار سشن VPN هر سرور */
+const DEMO_BY_SERVER: UsageRow[] = [
+  { label: "Germany - Frankfurt", mb: 842, flag: "de" },
+  { label: "Netherlands - Amsterdam", mb: 244, flag: "nl" },
+  { label: "Finland - Helsinki", mb: 157, flag: "fi" },
+];
 
 const SEED: ConfigItem[] = [
   { id: 1, name: "Netherlands - Amsterdam", country: "nl", protocol: "VLESS", host: "nl1.mianboor.app", ping: 28, premium: false, enabled: true },
@@ -111,6 +131,9 @@ export default function VpnDemoPage() {
   const [toast, setToast] = useState<{ msg: string; k: number } | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [syncOk, setSyncOk] = useState<boolean | null>(null);
+  const [usageOpen, setUsageOpen] = useState(false);
+  const [showFlash, setShowFlash] = useState(false);
+  const [updateBanner, setUpdateBanner] = useState(false);
 
   const t = tr(lang);
   const holdStart = useRef(0);
@@ -168,6 +191,20 @@ export default function VpnDemoPage() {
     }, 1000);
     return () => clearInterval(id);
   }, [vpn, premium]);
+
+  /* ── فلش لحظه اتصال: «از ایران به آلمان وصل شدی» — چند ثانیه بعد محو می‌شه ── */
+  useEffect(() => {
+    if (vpn !== "on") return;
+    setShowFlash(true);
+    const id = setTimeout(() => setShowFlash(false), 4500);
+    return () => clearTimeout(id);
+  }, [vpn]);
+
+  /* ── بنر نسخهٔ جدید (دمو: بعد از چند ثانیه می‌آید؛ اپ واقعی: چکر GitHub Releases) ── */
+  useEffect(() => {
+    const id = setTimeout(() => setUpdateBanner(true), 2500);
+    return () => clearTimeout(id);
+  }, []);
 
   useEffect(() => {
     if (!configs.find((c) => c.id === selectedId && c.enabled)) {
@@ -316,6 +353,9 @@ export default function VpnDemoPage() {
     setTheme("midnight");
     setLang("en");
     setSyncOk(null);
+    setUsageOpen(false);
+    setShowFlash(false);
+    setUpdateBanner(false);
   };
 
   const isAdmin = screen === "login" || screen === "admin";
@@ -464,6 +504,13 @@ export default function VpnDemoPage() {
                     warn={!premium && trialLocked ? t.trialOverUpsell : null}
                     onPickServer={() => setScreen("servers")}
                     onOpenSettings={() => setScreen("settings")}
+                    origin={ORIGIN}
+                    showFlash={showFlash}
+                    update={
+                      updateBanner
+                        ? { version: "1.6.0", url: RELEASES_URL, onUpdate: () => setUpdateBanner(false), onDismiss: () => setUpdateBanner(false) }
+                        : null
+                    }
                   />
                 )}
                 {screen === "servers" && (
@@ -494,6 +541,7 @@ export default function VpnDemoPage() {
                     onOpenSplit={() => setScreen("split")}
                     onUpgrade={() => setPlans("renew")}
                     onCopyDevice={copyDevice}
+                    onOpenUsage={() => setUsageOpen(true)}
                   />
                 )}
                 {screen === "settings" && (
@@ -517,6 +565,9 @@ export default function VpnDemoPage() {
                     onSuccess={() => {
                       setUnlocked(true);
                       setScreen("admin");
+                      /* ادمین که وارد می‌شه، سفارش‌های در انتظار بهش اعلام می‌شه */
+                      const n = orders.filter((o) => o.status === "pending").length;
+                      if (n > 0) showToast(t.pendingOrders.replace("{n}", String(n)));
                     }}
                     onCancel={() => setScreen("account")}
                   />
@@ -542,6 +593,17 @@ export default function VpnDemoPage() {
 
               {plans && (
                 <PlansSheet lang={lang} reason={plans} onClose={() => setPlans(null)} onCreateOrder={createOrder} />
+              )}
+
+              {usageOpen && (
+                <UsageSheet
+                  lang={lang}
+                  usedGb={usedGb}
+                  totalText={premium ? t.unlimited : `${FREE_QUOTA_GB} GB`}
+                  byApp={DEMO_BY_APP}
+                  byServer={DEMO_BY_SERVER}
+                  onClose={() => setUsageOpen(false)}
+                />
               )}
 
               {toast && (

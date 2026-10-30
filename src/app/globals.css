@@ -153,6 +153,22 @@
 }
 .breathe { animation: breathe 3.2s ease-in-out infinite; }
 
+/* ضربان نئون دکمهٔ اتصال — وقتی وصل است حلقه نور کمرنگ↔پررنگ می‌شود */
+@keyframes pulse-ring {
+  0%, 100% { opacity: 0.85; transform: scale(1); box-shadow: 0 0 24px var(--mb-glow); }
+  50% { opacity: 0.25; transform: scale(1.1); box-shadow: 0 0 6px var(--mb-glow); }
+}
+.pulse-ring { animation: pulse-ring 2.1s ease-in-out infinite; }
+
+/* فلش لحظه اتصال — باز و محو شدن نرم */
+@keyframes flashIn {
+  0% { opacity: 0; transform: translateY(-6px) scale(0.94); }
+  12% { opacity: 1; transform: none; }
+  80% { opacity: 1; }
+  100% { opacity: 0; transform: translateY(-4px); }
+}
+.flash-in { animation: flashIn 4.5s ease forwards; }
+
 @keyframes demo-spin { to { transform: rotate(360deg); } }
 .spin-ring { animation: demo-spin 1s linear infinite; }
 .unspin { animation: demo-spin 1s linear infinite reverse; }

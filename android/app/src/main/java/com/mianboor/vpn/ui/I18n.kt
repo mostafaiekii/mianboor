@@ -136,6 +136,20 @@ interface Strings {
     val setupDesc: String
     val saveBtn: String
     val savedToast: String
+    val yourIp: String
+    fun connectFlash(from: String, to: String): String
+    val usageDetails: String
+    val usageThisMonth: String
+    val usageByApp: String
+    val usageAppSub: String
+    val usageByServer: String
+    val usageSrvSub: String
+    val updateTitle: String
+    fun updateSub(v: String): String
+    val updateBtn: String
+    val updateLater: String
+    fun pendingOrders(n: Int): String
+    val serverOldWarn: String
 }
 
 object EnStrings : Strings {
@@ -287,6 +301,21 @@ object EnStrings : Strings {
     override val setupDesc = "Enter the Mianboor server address and client token once."
     override val saveBtn = "Save"
     override val savedToast = "Saved"
+    override val yourIp = "Your IP"
+    override fun connectFlash(from: String, to: String) = "Connected from $from to $to"
+    override val usageDetails = "Usage details"
+    override val usageThisMonth = "This month"
+    override val usageByApp = "By app"
+    override val usageAppSub = "Apps that used the VPN tunnel"
+    override val usageByServer = "By server"
+    override val usageSrvSub = "Data routed through each server"
+    override val updateTitle = "New version available"
+    override fun updateSub(v: String) = "Mianboor v$v is out — updated servers & fixes."
+    override val updateBtn = "Update now"
+    override val updateLater = "Later"
+    override fun pendingOrders(n: Int) = "You have $n pending orders"
+    override val serverOldWarn =
+        "Server runs an old version — publishing configs & orders won't reach it. Redeploy the project on Vercel."
 }
 
 object FaStrings : Strings {
@@ -438,6 +467,21 @@ object FaStrings : Strings {
     override val setupDesc = "آدرس سرور میانبر و توکن کلاینت رو یک بار وارد کن."
     override val saveBtn = "ذخیره"
     override val savedToast = "ذخیره شد"
+    override val yourIp = "آی‌پی تو"
+    override fun connectFlash(from: String, to: String) = "از $from به $to وصل شدی"
+    override val usageDetails = "جزئیات مصرف"
+    override val usageThisMonth = "این ماه"
+    override val usageByApp = "به تفکیک اپ"
+    override val usageAppSub = "اپ‌هایی که از تونل استفاده کردن"
+    override val usageByServer = "به تفکیک سرور"
+    override val usageSrvSub = "دیتای ردشده از هر سرور"
+    override val updateTitle = "نسخهٔ جدید اومده!"
+    override fun updateSub(v: String) = "میانبر نسخهٔ $v منتشر شده — سرورها و فیکس‌های تازه."
+    override val updateBtn = "همین حالا آپدیت کن"
+    override val updateLater = "بعداً"
+    override fun pendingOrders(n: Int) = "$n سفارش در انتظار تأیید داری"
+    override val serverOldWarn =
+        "سرور نسخهٔ قدیمی است — انتشار کانفیگ و سفارش‌ها به سرور نمی‌رسد. لطفاً پروژه را روی Vercel دوباره Deploy کن."
 }
 
 fun stringsOf(lang: Lang): Strings = if (lang == Lang.FA) FaStrings else EnStrings

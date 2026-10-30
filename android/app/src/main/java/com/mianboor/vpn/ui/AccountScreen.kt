@@ -67,6 +67,7 @@ fun AccountScreen(
     val rtl = lang == Lang.FA
     val clipboard = LocalClipboardManager.current
     var renewOpen by remember { mutableStateOf(false) }
+    var showUsage by remember { mutableStateOf(false) }
 
     val pct = if (premium) 1f else (usedGb / FREE_QUOTA_GB).toFloat()
     val usedStr = if (premium) "∞" else String.format(java.util.Locale.US, "%.1f", usedGb)
@@ -75,217 +76,229 @@ fun AccountScreen(
     val splitSub = if (splitCount == 0) t.splitSubOff
     else t.splitSubOn(splitCount, if (splitMode == "exclude") t.modeExcl else t.modeIncl)
 
-    Column(
-        Modifier
-            .fillMaxWidth()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 20.dp),
-    ) {
-        Text(t.account, color = mb.ink, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+    Box(Modifier.fillMaxWidth()) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 20.dp),
+        ) {
+            Text(t.account, color = mb.ink, fontSize = 24.sp, fontWeight = FontWeight.Bold)
 
-        // ── plan card ──
-        if (premium) {
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .padding(top = 12.dp)
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(mb.gold.copy(alpha = 0.1f))
-                    .border(1.dp, mb.gold.copy(alpha = 0.4f), RoundedCornerShape(16.dp))
-                    .padding(16.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Box(
-                    Modifier.size(48.dp).clip(CircleShape).background(mb.gold.copy(alpha = 0.2f)),
-                    contentAlignment = Alignment.Center,
+            // ── plan card ──
+            if (premium) {
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(top = 12.dp)
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(mb.gold.copy(alpha = 0.1f))
+                        .border(1.dp, mb.gold.copy(alpha = 0.4f), RoundedCornerShape(16.dp))
+                        .padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Icon(ic(R.drawable.ic_crown), null, tint = mb.gold, modifier = Modifier.size(24.dp))
-                }
-                Spacer(Modifier.width(16.dp))
-                Column(Modifier.weight(1f)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(t.planPremium, color = mb.ink, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                        Spacer(Modifier.width(6.dp))
-                        Icon(ic(R.drawable.ic_badge_check), null, tint = mb.gold, modifier = Modifier.size(16.dp))
-                    }
-                    Text(t.planPremiumSub, color = mb.dim, fontSize = 13.sp)
-                    if (until.isNotEmpty()) {
-                        Text(
-                            "${t.validUntil} $until",
-                            color = mb.gold, fontSize = 13.sp, fontWeight = FontWeight.Medium,
-                            modifier = Modifier.padding(top = 2.dp),
-                        )
-                    }
-                }
-            }
-        } else {
-            PanelCard(Modifier.padding(top = 12.dp), onClick = onUpgrade) {
-                Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                     Box(
-                        Modifier.size(48.dp).clip(CircleShape).background(mb.ink.copy(alpha = 0.1f)),
+                        Modifier.size(48.dp).clip(CircleShape).background(mb.gold.copy(alpha = 0.2f)),
                         contentAlignment = Alignment.Center,
                     ) {
-                        Icon(ic(R.drawable.ic_user), null, tint = mb.ink, modifier = Modifier.size(24.dp))
+                        Icon(ic(R.drawable.ic_crown), null, tint = mb.gold, modifier = Modifier.size(24.dp))
                     }
                     Spacer(Modifier.width(16.dp))
                     Column(Modifier.weight(1f)) {
-                        Text(t.planFree, color = mb.ink, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
-                        Text(t.planFreeSub, color = mb.dim, fontSize = 13.sp)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(t.planPremium, color = mb.ink, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                            Spacer(Modifier.width(6.dp))
+                            Icon(ic(R.drawable.ic_badge_check), null, tint = mb.gold, modifier = Modifier.size(16.dp))
+                        }
+                        Text(t.planPremiumSub, color = mb.dim, fontSize = 13.sp)
+                        if (until.isNotEmpty()) {
+                            Text(
+                                "${t.validUntil} $until",
+                                color = mb.gold, fontSize = 13.sp, fontWeight = FontWeight.Medium,
+                                modifier = Modifier.padding(top = 2.dp),
+                            )
+                        }
+                    }
+                }
+            } else {
+                PanelCard(Modifier.padding(top = 12.dp), onClick = onUpgrade) {
+                    Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            Modifier.size(48.dp).clip(CircleShape).background(mb.ink.copy(alpha = 0.1f)),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Icon(ic(R.drawable.ic_user), null, tint = mb.ink, modifier = Modifier.size(24.dp))
+                        }
+                        Spacer(Modifier.width(16.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(t.planFree, color = mb.ink, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                            Text(t.planFreeSub, color = mb.dim, fontSize = 13.sp)
+                        }
+                        FwdChevron(rtl)
+                    }
+                }
+            }
+
+            // ── usage ── (لمس → شیت جزئیات مصرف)
+            PanelCard(Modifier.padding(top = 12.dp), onClick = { showUsage = true }) {
+                Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(t.dataUsage, color = mb.dim, fontSize = 13.sp)
+                        when {
+                            premium -> Row(Modifier.padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Icon(ic(R.drawable.ic_crown), null, tint = mb.gold, modifier = Modifier.size(15.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text(t.unlimited, color = mb.gold, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                            }
+                            trialLocked -> Text(
+                                t.trialUsedTitle, color = mb.danger,
+                                fontSize = 13.sp, fontWeight = FontWeight.Medium, modifier = Modifier.padding(top = 8.dp),
+                            )
+                            else -> Text(t.resetsOn, color = mb.dim, fontSize = 13.sp, modifier = Modifier.padding(top = 8.dp))
+                        }
+                    }
+                    UsageRing(
+                        pct = pct,
+                        stroke = if (premium) mb.gold else if (trialLocked) mb.danger else mb.glow,
+                        big = if (premium) "∞" else "$usedStr GB",
+                        small = if (premium) t.unlimited else totalStr,
+                    )
+                }
+            }
+            if (trialLocked && !premium) {
+                Text(
+                    t.trialUsedSub,
+                    color = mb.danger, fontSize = 12.sp, lineHeight = 18.sp,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 8.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(mb.danger.copy(alpha = 0.1f))
+                        .border(1.dp, mb.danger.copy(alpha = 0.3f), RoundedCornerShape(12.dp))
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                )
+            }
+
+            // ── switches ──
+            SwitchRow(R.drawable.ic_shield_check, t.killSwitch, t.killSwitchSub, killSwitch, onKillSwitch,
+                Modifier.padding(top = 12.dp))
+            SwitchRow(R.drawable.ic_wifi, t.autoConnect, t.autoConnectSub, autoConnect, onAutoConnect,
+                Modifier.padding(top = 12.dp))
+
+            // ── split tunneling ──
+            PanelCard(Modifier.padding(top = 12.dp), onClick = onOpenSplit) {
+                Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(ic(R.drawable.ic_git_branch), null, tint = mb.dim, modifier = Modifier.size(20.dp))
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(t.split, color = mb.ink, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                        Text(splitSub, color = mb.dim, fontSize = 13.sp)
                     }
                     FwdChevron(rtl)
                 }
             }
-        }
 
-        // ── usage ──
-        PanelCard(Modifier.padding(top = 12.dp)) {
-            Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text(t.dataUsage, color = mb.dim, fontSize = 13.sp)
-                    when {
-                        premium -> Row(Modifier.padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Icon(ic(R.drawable.ic_crown), null, tint = mb.gold, modifier = Modifier.size(15.dp))
-                            Spacer(Modifier.width(6.dp))
-                            Text(t.unlimited, color = mb.gold, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+            // ── renew subscription explainer ──
+            PanelCard(Modifier.padding(top = 12.dp)) {
+                Column {
+                    Row(
+                        Modifier.fillMaxWidth().clickable { renewOpen = !renewOpen }.padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(ic(R.drawable.ic_info), null, tint = mb.dim, modifier = Modifier.size(20.dp))
+                        Spacer(Modifier.width(12.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(t.renewRow, color = mb.ink, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                            Text(t.renewWhat, color = mb.dim, fontSize = 13.sp)
                         }
-                        trialLocked -> Text(
-                            t.trialUsedTitle, color = mb.danger,
-                            fontSize = 13.sp, fontWeight = FontWeight.Medium, modifier = Modifier.padding(top = 8.dp),
+                        Icon(
+                            ic(R.drawable.ic_chevron_down), null, tint = mb.dim,
+                            modifier = Modifier.size(20.dp),
                         )
-                        else -> Text(t.resetsOn, color = mb.dim, fontSize = 13.sp, modifier = Modifier.padding(top = 8.dp))
+                    }
+                    AnimatedVisibility(
+                        visible = renewOpen,
+                        enter = fadeIn() + expandVertically(),
+                        exit = fadeOut() + shrinkVertically(),
+                    ) {
+                        Text(
+                            t.renewExplain,
+                            color = mb.dim, fontSize = 13.sp, lineHeight = 20.sp,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(start = 16.dp, end = 16.dp, bottom = 16.dp),
+                        )
                     }
                 }
-                UsageRing(
-                    pct = pct,
-                    stroke = if (premium) mb.gold else if (trialLocked) mb.danger else mb.glow,
-                    big = if (premium) "∞" else "$usedStr GB",
-                    small = if (premium) t.unlimited else totalStr,
-                )
             }
-        }
-        if (trialLocked && !premium) {
-            Text(
-                t.trialUsedSub,
-                color = mb.danger, fontSize = 12.sp, lineHeight = 18.sp,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 8.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(mb.danger.copy(alpha = 0.1f))
-                    .border(1.dp, mb.danger.copy(alpha = 0.3f), RoundedCornerShape(12.dp))
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
-            )
-        }
 
-        // ── switches ──
-        SwitchRow(R.drawable.ic_shield_check, t.killSwitch, t.killSwitchSub, killSwitch, onKillSwitch,
-            Modifier.padding(top = 12.dp))
-        SwitchRow(R.drawable.ic_wifi, t.autoConnect, t.autoConnectSub, autoConnect, onAutoConnect,
-            Modifier.padding(top = 12.dp))
-
-        // ── split tunneling ──
-        PanelCard(Modifier.padding(top = 12.dp), onClick = onOpenSplit) {
-            Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                Icon(ic(R.drawable.ic_git_branch), null, tint = mb.dim, modifier = Modifier.size(20.dp))
-                Spacer(Modifier.width(12.dp))
-                Column(Modifier.weight(1f)) {
-                    Text(t.split, color = mb.ink, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                    Text(splitSub, color = mb.dim, fontSize = 13.sp)
-                }
-                FwdChevron(rtl)
-            }
-        }
-
-        // ── renew subscription explainer ──
-        PanelCard(Modifier.padding(top = 12.dp)) {
-            Column {
-                Row(
-                    Modifier.fillMaxWidth().clickable { renewOpen = !renewOpen }.padding(16.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Icon(ic(R.drawable.ic_info), null, tint = mb.dim, modifier = Modifier.size(20.dp))
+            // ── support ──
+            PanelCard(Modifier.padding(top = 12.dp), onClick = onSupport) {
+                Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(ic(R.drawable.ic_send), null, tint = mb.dim, modifier = Modifier.size(20.dp))
                     Spacer(Modifier.width(12.dp))
                     Column(Modifier.weight(1f)) {
-                        Text(t.renewRow, color = mb.ink, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                        Text(t.renewWhat, color = mb.dim, fontSize = 13.sp)
+                        Text(t.support, color = mb.ink, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                        Text(t.supportSub, color = mb.dim, fontSize = 13.sp)
                     }
-                    Icon(
-                        ic(R.drawable.ic_chevron_down), null, tint = mb.dim,
-                        modifier = Modifier.size(20.dp),
-                    )
+                    FwdChevron(rtl)
                 }
-                AnimatedVisibility(
-                    visible = renewOpen,
-                    enter = fadeIn() + expandVertically(),
-                    exit = fadeOut() + shrinkVertically(),
-                ) {
+            }
+
+            // ── device id ──
+            PanelCard(Modifier.padding(top = 12.dp), onClick = {
+                clipboard.setText(AnnotatedString(deviceId))
+                toast(t.copied)
+            }) {
+                Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(ic(R.drawable.ic_fingerprint), null, tint = mb.dim, modifier = Modifier.size(20.dp))
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(t.deviceId, color = mb.ink, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                        Text(t.deviceIdSub, color = mb.dim, fontSize = 13.sp)
+                    }
                     Text(
-                        t.renewExplain,
-                        color = mb.dim, fontSize = 13.sp, lineHeight = 20.sp,
+                        deviceId,
+                        color = mb.dim, fontSize = 12.sp,
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(start = 16.dp, end = 16.dp, bottom = 16.dp),
+                            .clip(RoundedCornerShape(50))
+                            .background(mb.night)
+                            .padding(horizontal = 10.dp, vertical = 4.dp),
                     )
+                    Spacer(Modifier.width(8.dp))
+                    Icon(ic(R.drawable.ic_copy), null, tint = mb.dim, modifier = Modifier.size(16.dp))
                 }
             }
-        }
 
-        // ── support ──
-        PanelCard(Modifier.padding(top = 12.dp), onClick = onSupport) {
-            Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                Icon(ic(R.drawable.ic_send), null, tint = mb.dim, modifier = Modifier.size(20.dp))
-                Spacer(Modifier.width(12.dp))
-                Column(Modifier.weight(1f)) {
-                    Text(t.support, color = mb.ink, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                    Text(t.supportSub, color = mb.dim, fontSize = 13.sp)
-                }
-                FwdChevron(rtl)
-            }
-        }
-
-        // ── device id ──
-        PanelCard(Modifier.padding(top = 12.dp), onClick = {
-            clipboard.setText(AnnotatedString(deviceId))
-            toast(t.copied)
-        }) {
-            Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                Icon(ic(R.drawable.ic_fingerprint), null, tint = mb.dim, modifier = Modifier.size(20.dp))
-                Spacer(Modifier.width(12.dp))
-                Column(Modifier.weight(1f)) {
-                    Text(t.deviceId, color = mb.ink, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                    Text(t.deviceIdSub, color = mb.dim, fontSize = 13.sp)
-                }
+            // ── upgrade CTA ──
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(top = 14.dp)
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(mb.glow)
+                    .clickable { onUpgrade() }
+                    .padding(vertical = 14.dp),
+                contentAlignment = Alignment.Center,
+            ) {
                 Text(
-                    deviceId,
-                    color = mb.dim, fontSize = 12.sp,
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(50))
-                        .background(mb.night)
-                        .padding(horizontal = 10.dp, vertical = 4.dp),
+                    if (premium) t.renewBtn else t.upgrade,
+                    color = mb.onGlow, fontSize = 16.sp, fontWeight = FontWeight.Bold,
+                    textAlign = TextAlign.Center,
                 )
-                Spacer(Modifier.width(8.dp))
-                Icon(ic(R.drawable.ic_copy), null, tint = mb.dim, modifier = Modifier.size(16.dp))
             }
+            Spacer(Modifier.height(14.dp))
         }
 
-        // ── upgrade CTA ──
-        Box(
-            Modifier
-                .fillMaxWidth()
-                .padding(top = 14.dp)
-                .clip(RoundedCornerShape(16.dp))
-                .background(mb.glow)
-                .clickable { onUpgrade() }
-                .padding(vertical = 14.dp),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text(
-                if (premium) t.renewBtn else t.upgrade,
-                color = mb.onGlow, fontSize = 16.sp, fontWeight = FontWeight.Bold,
-                textAlign = TextAlign.Center,
+        // ── شیت جزئیات مصرف (اپ‌ها و سرورها) ──
+        if (showUsage) {
+            UsageSheet(
+                lang = lang,
+                usedGb = usedGb,
+                totalText = totalStr,
+                onDismiss = { showUsage = false },
             )
         }
-        Spacer(Modifier.height(14.dp))
     }
 }
 

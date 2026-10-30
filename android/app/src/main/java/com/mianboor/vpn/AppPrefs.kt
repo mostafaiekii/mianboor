@@ -275,4 +275,42 @@ object AppPrefs {
     fun setSyncStatus(c: Context, ok: Boolean) {
         ed(c).putLong("last_sync_at", System.currentTimeMillis()).putBoolean("last_sync_ok", ok).apply()
     }
+
+    // ── origin IP cache (fetched BEFORE connecting, so it is the user's real IP) ──
+
+    fun ipInfo(c: Context): Pair<String, String>? {
+        val raw = p(c).getString("ip_info", null) ?: return null
+        val a = raw.split("|")
+        return if (a.size == 2 && a[0].isNotBlank()) a[0] to a[1] else null
+    }
+
+    fun setIpInfo(c: Context, ip: String, cc: String) {
+        ed(c).putString("ip_info", "$ip|$cc").putLong("ip_at", System.currentTimeMillis()).apply()
+    }
+
+    fun ipInfoAge(c: Context): Long = p(c).getLong("ip_at", 0L)
+
+    // ── update checker throttle ──
+
+    fun lastUpdateCheck(c: Context): Long = p(c).getLong("update_check_at", 0L)
+    fun setUpdateChecked(c: Context) { ed(c).putLong("update_check_at", System.currentTimeMillis()).apply() }
+
+    // ── monthly per-app traffic (UsageTracker) ──
+
+    fun appSnap(c: Context): String = p(c).getString("app_snap", "{}") ?: "{}"
+    fun setAppSnap(c: Context, v: String) { ed(c).putString("app_snap", v).apply() }
+    fun appMonthKey(c: Context): String = p(c).getString("app_month", "") ?: ""
+    fun setAppMonth(c: Context, key: String, acc: String) { ed(c).putString("app_month", key).putString("app_acc", acc).apply() }
+    fun appAcc(c: Context): String = p(c).getString("app_acc", "{}") ?: "{}"
+
+    // ── monthly per-server traffic ──
+
+    fun srvMonthKey(c: Context): String = p(c).getString("srv_month", "") ?: ""
+    fun srvAcc(c: Context): String = p(c).getString("srv_acc", "{}") ?: "{}"
+    fun setSrvAcc(c: Context, key: String, acc: String) { ed(c).putString("srv_month", key).putString("srv_acc", acc).apply() }
+
+    // ── order outbox: orders that failed to reach the server — retried on every sync ──
+
+    fun unsentOrders(c: Context): JSONArray = JSONArray(p(c).getString("unsent_orders", "[]") ?: "[]")
+    fun setUnsentOrders(c: Context, a: JSONArray) { ed(c).putString("unsent_orders", a.toString()).apply() }
 }

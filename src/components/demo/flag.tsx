@@ -9,6 +9,7 @@ export const COUNTRIES: Record<string, string> = {
   us: "USA",
   fr: "France",
   ae: "UAE",
+  ir: "Iran",
 };
 
 const BODIES: Record<string, React.ReactNode> = {
@@ -76,6 +77,15 @@ const BODIES: Record<string, React.ReactNode> = {
       <rect y="12" width="36" height="12" fill="oklch(0.98 0 0)" />
       <rect y="24" width="36" height="12" fill="oklch(0.18 0 0)" />
       <rect width="10" height="36" fill="oklch(0.55 0.22 27)" />
+    </>
+  ),
+  ir: (
+    <>
+      <rect width="36" height="12" fill="oklch(0.55 0.15 150)" />
+      <rect y="12" width="36" height="12" fill="oklch(0.98 0 0)" />
+      <rect y="24" width="36" height="12" fill="oklch(0.55 0.22 27)" />
+      <circle cx="18" cy="18" r="4.6" fill="oklch(0.55 0.22 27)" />
+      <path d="M18 13.6a4.4 4.4 0 0 1 0 8.8" fill="none" stroke="oklch(0.55 0.22 27)" strokeWidth="1.6" />
     </>
   ),
 };

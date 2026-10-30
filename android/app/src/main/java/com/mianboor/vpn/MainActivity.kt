@@ -212,6 +212,13 @@ private fun MbAppInner(
     var reinstalls by remember { mutableIntStateOf(AppPrefs.reinstalls(context)) }
     var deviceId by remember { mutableStateOf(AppPrefs.deviceId(context)) }
 
+    // ── آی‌پی مبدا / فلش اتصال / بنر آپدیت / وضعیت نسخهٔ سرور ──
+    var originIp by remember { mutableStateOf(AppPrefs.ipInfo(context)?.first) }
+    var originCc by remember { mutableStateOf(AppPrefs.ipInfo(context)?.second ?: "ir") }
+    var showFlash by remember { mutableStateOf(false) }
+    var updateTag by remember { mutableStateOf<String?>(null) }
+    var serverOld by remember { mutableStateOf(false) }
+
     var splitMode by remember { mutableStateOf(AppPrefs.splitMode(context)) }
     var splitApps by remember { mutableStateOf(AppPrefs.splitApps(context)) }
     var killSwitch by remember { mutableStateOf(AppPrefs.killSwitch(context)) }
@@ -346,8 +353,28 @@ private fun MbAppInner(
                     AppPrefs.setSyncStatus(context, true)
                     syncOk = true
                     lastSyncAt = System.currentTimeMillis()
+                    // plan == null یعنی سرور قدیمی — بنر هشدار در پنل مدیر نشان داده می‌شود
+                    serverOld = result.plan == null
                     rebuildConfigs()
                     onDone(true)
+                    // سفارش‌های ارسال‌نشدهٔ قبلی را دوباره بفرست
+                    val unsent = AppPrefs.unsentOrders(context)
+                    if (unsent.length() > 0) {
+                        scope.launch(Dispatchers.IO) {
+                            val keep = org.json.JSONArray()
+                            for (i in 0 until unsent.length()) {
+                                val o = unsent.optJSONObject(i) ?: continue
+                                val okId = runCatching {
+                                    MianboorApi.submitOrder(
+                                        AppPrefs.serverUrl(context), AppPrefs.clientToken(context), deviceId,
+                                        o.optString("plan"), o.optString("via"),
+                                    )
+                                }.getOrNull()
+                                if (okId == null) keep.put(o)
+                            }
+                            AppPrefs.setUnsentOrders(context, keep)
+                        }
+                    }
                 }
             }.onFailure {
                 withContext(Dispatchers.Main) {
@@ -374,6 +401,8 @@ private fun MbAppInner(
                 serverOrders = orders
                 serverDevices = devices
                 adminBusy = false
+                val pending = orders.count { it.status == "pending" }
+                if (pending > 0) toast(t.pendingOrders(pending))
             }
         }
     }
@@ -475,6 +504,7 @@ private fun MbAppInner(
         if (phase == Phase.CONNECTED) {
             lastRx = 0L; lastTx = 0L; tick = 0
             var pendingBytes = 0L
+            var sessionBytes = 0L
             while (true) {
                 delay(1000)
                 val drx = (rxBytes - lastRx).coerceAtLeast(0L)
@@ -483,6 +513,7 @@ private fun MbAppInner(
                     downMbps = drx * 8.0 / 1_000_000.0
                     upMbps = dtx * 8.0 / 1_000_000.0
                     if (!premium) pendingBytes += drx + dtx
+                    sessionBytes += drx + dtx
                 }
                 lastRx = rxBytes; lastTx = txBytes
                 tick++
@@ -495,6 +526,51 @@ private fun MbAppInner(
                         AppPrefs.setTrialUsed(context, true)
                     }
                 }
+                // مصرف هر سرور (برای پرمیوم هم) — هویت سرور از آخرین اتصال ذخیره‌شده خوانده می‌شود
+                if (tick % 5 == 0 && sessionBytes > 0L) {
+                    UsageTracker.addServerBytes(
+                        context, AppPrefs.lastName(context), AppPrefs.lastCountry(context), sessionBytes,
+                    )
+                    sessionBytes = 0L
+                }
+                // نمونه‌گیری مصرف به تفکیک اپ هر ۲۰ ثانیه
+                if (tick % 20 == 0) withContext(Dispatchers.IO) { UsageTracker.samplePerApp(context) }
+            }
+        }
+    }
+
+    // ── آی‌پی و کشور مبدا: قبل از اتصال (تا IP واقعی کاربر باشد)، کش ۶ ساعته ──
+    LaunchedEffect(Unit) {
+        if (phase == Phase.CONNECTED) return@LaunchedEffect
+        if (System.currentTimeMillis() - AppPrefs.ipInfoAge(context) < 6 * 3_600_000L && AppPrefs.ipInfo(context) != null) return@LaunchedEffect
+        withContext(Dispatchers.IO) {
+            val o = fetchIpWhoIs()
+            if (o != null) {
+                AppPrefs.setIpInfo(context, o.first, o.second)
+                withContext(Dispatchers.Main) {
+                    originIp = o.first; originCc = o.second.lowercase()
+                }
+            }
+        }
+    }
+
+    // ── فلش لحظه اتصال ──
+    LaunchedEffect(phase) {
+        if (phase == Phase.CONNECTED) {
+            showFlash = true
+            delay(4500)
+            showFlash = false
+        }
+    }
+
+    // ── چکر نسخهٔ جدید (GitHub Releases) — هر ۶ ساعت یک بار ──
+    LaunchedEffect(Unit) {
+        if (System.currentTimeMillis() - AppPrefs.lastUpdateCheck(context) < 6 * 3_600_000L) return@LaunchedEffect
+        AppPrefs.setUpdateChecked(context)
+        withContext(Dispatchers.IO) {
+            val tag = fetchLatestReleaseTag()
+            if (tag != null && isNewerVersion(tag, BuildConfig.VERSION_NAME)) {
+                withContext(Dispatchers.Main) { updateTag = tag }
             }
         }
     }
@@ -608,6 +684,10 @@ private fun MbAppInner(
                     orders = listOf(Order(id, plan, price, deviceId, via, System.currentTimeMillis(), "pending")) + orders
                     AppPrefs.setOrders(context, orders)
                 }
+                // در صندوق ارسال هم بگذار تا با sync بعدی دوباره به سرور فرستاده شود
+                val unsent = AppPrefs.unsentOrders(context)
+                unsent.put(org.json.JSONObject().put("plan", plan).put("via", via))
+                AppPrefs.setUnsentOrders(context, unsent)
             }
             withContext(Dispatchers.Main) {
                 toast(t.orderPlacedToast)
@@ -883,6 +963,18 @@ private fun MbAppInner(
                         onSupport = { openTelegram() },
                         downMbps = downMbps,
                         upMbps = upMbps,
+                        originIp = originIp,
+                        originCc = originCc,
+                        showFlash = showFlash,
+                        updateTag = updateTag,
+                        onUpdateClick = {
+                            runCatching {
+                                context.startActivity(
+                                    Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/mostafaiekii/mianboor/releases/latest")),
+                                )
+                            }
+                        },
+                        onDismissUpdate = { updateTag = null },
                     )
                     Screen.SERVERS -> ServersScreen(
                         lang = lang,
@@ -981,6 +1073,7 @@ private fun MbAppInner(
                             adminUnlocked = false
                             screen = Screen.ACCOUNT
                         },
+                        serverOld = serverOld,
                         toast = { toast(it) },
                     )
                 }
@@ -1268,4 +1361,40 @@ private fun SetupField(
         },
         modifier = modifier.fillMaxWidth(),
     )
+}
+
+/** https://ipwho.is/ → (ip, country_code) */
+private fun fetchIpWhoIs(): Pair<String, String>? = runCatching {
+    val conn = java.net.URL("https://ipwho.is/").openConnection() as java.net.HttpURLConnection
+    conn.connectTimeout = 8000; conn.readTimeout = 10_000
+    conn.setRequestProperty("Accept", "application/json")
+    try {
+        if (conn.responseCode !in 200..299) return@runCatching null
+        val o = org.json.JSONObject(conn.inputStream.bufferedReader().use { it.readText() })
+        val ip = o.optString("ip"); val cc = o.optString("country_code")
+        if (ip.isBlank() || cc.isBlank()) null else ip to cc
+    } finally { conn.disconnect() }
+}.getOrNull()
+
+/** آخرین ریلیز گیت‌هاب → tag مثل "v1.6.0" */
+private fun fetchLatestReleaseTag(): String? = runCatching {
+    val conn = java.net.URL("https://api.github.com/repos/mostafaiekii/mianboor/releases/latest").openConnection() as java.net.HttpURLConnection
+    conn.connectTimeout = 8000; conn.readTimeout = 10_000
+    conn.setRequestProperty("Accept", "application/vnd.github+json")
+    conn.setRequestProperty("User-Agent", "Mianboor-Vpn") // گیت‌هاب بدون User-Agent 403 می‌دهد
+    try {
+        if (conn.responseCode !in 200..299) return@runCatching null
+        org.json.JSONObject(conn.inputStream.bufferedReader().use { it.readText() }).optString("tag_name").takeIf { it.isNotBlank() }
+    } finally { conn.disconnect() }
+}.getOrNull()
+
+/** مقایسهٔ عددی نسخه: "v1.6.0" > "1.5.0" */
+private fun isNewerVersion(remote: String, current: String): Boolean {
+    fun parts(s: String) = s.trim().removePrefix("v").split(".").map { it.filter { c -> c.isDigit() }.ifEmpty { "0" }.toInt() }
+    val a = parts(remote); val b = parts(current)
+    for (i in 0 until maxOf(a.size, b.size)) {
+        val x = a.getOrElse(i) { 0 }; val y = b.getOrElse(i) { 0 }
+        if (x != y) return x > y
+    }
+    return false
 }

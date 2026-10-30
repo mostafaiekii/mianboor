@@ -39,6 +39,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -46,6 +47,7 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.mianboor.vpn.AppPrefs
 import com.mianboor.vpn.ConfigItem
 import com.mianboor.vpn.PayInfo
 import com.mianboor.vpn.R
@@ -746,8 +748,11 @@ private fun ServerTab(
     onSavePayInfo: (PayInfo) -> Unit,
     toast: (String) -> Unit,
     modifier: Modifier = Modifier,
+    serverOld: Boolean = false,
 ) {
     val mb = LocalMb.current
+    val context = LocalContext.current
+    val t = stringsOf(if (AppPrefs.lang(context) == "fa") Lang.FA else Lang.EN)
     var np by remember { mutableStateOf("") }
     var sk by remember(serverKey) { mutableStateOf(serverKey) }
     var testing by remember { mutableStateOf(false) }
@@ -759,6 +764,24 @@ private fun ServerTab(
         modifier.fillMaxWidth().padding(top = 12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
+        // ── هشدار نسخهٔ قدیمی سرور — انتشار کانفیگ/سفارش به سرور نمی‌رسد ──
+        if (serverOld) {
+            item {
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(mb.danger.copy(alpha = 0.12f))
+                        .border(1.dp, mb.danger.copy(alpha = 0.45f), RoundedCornerShape(12.dp))
+                        .padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text("⚠", color = mb.danger, fontSize = 20.sp)
+                    Spacer(Modifier.width(10.dp))
+                    Text(t.serverOldWarn, color = mb.danger, fontSize = 12.sp, lineHeight = 17.sp)
+                }
+            }
+        }
         // ── server sync key ──
         item {
             Column(
@@ -1040,6 +1063,7 @@ fun AdminPanel(
     onChangePass: (String) -> Unit,
     onExit: () -> Unit,
     toast: (String) -> Unit,
+    serverOld: Boolean = false,
 ) {
     val mb = LocalMb.current
     var tab by remember { mutableStateOf("configs") }
@@ -1110,6 +1134,20 @@ fun AdminPanel(
                             color = if (tab == tb) mb.ink else mb.dim,
                             fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
                         )
+                        // نشان تعداد سفارش‌های در انتظار روی تب Orders
+                        if (tb == "orders" && pending > 0) {
+                            Box(
+                                Modifier
+                                    .align(Alignment.TopEnd)
+                                    .padding(top = 2.dp, end = 10.dp)
+                                    .size(16.dp)
+                                    .clip(CircleShape)
+                                    .background(mb.gold),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Text("$pending", color = mb.night, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
                     }
                 }
             }
@@ -1204,6 +1242,7 @@ fun AdminPanel(
                     serverKey, onServerKey, onTestKey,
                     payInfo, onSavePayInfo, toast,
                     Modifier.fillMaxWidth().weight(1f),
+                    serverOld = serverOld,
                 )
             }
         }

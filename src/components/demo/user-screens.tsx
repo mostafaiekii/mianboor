@@ -5,17 +5,21 @@ import {
   ArrowDown,
   ArrowUp,
   BadgeCheck,
+  Camera,
   Check,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
+  Cog,
   Copy,
   Crown,
   Fingerprint,
   GitBranch,
+  Globe,
   Info,
   Loader2,
   Lock,
+  Play,
   Power,
   RotateCcw,
   Search,
@@ -24,12 +28,16 @@ import {
   ShieldAlert,
   ShieldCheck,
   User,
+  X,
   Zap,
 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
-import { Flag } from "./flag";
+import { COUNTRIES, Flag } from "./flag";
 import { TG_SUPPORT, tr, type Lang } from "./i18n";
 import { FREE_QUOTA_GB, type ConfigItem, type Entitlement, type SplitState, type VpnState } from "./types";
+
+/** یک ردیف مصرف — اپ یا سرور. در اپ واقعی از TrafficStats/VpnService می‌آید. */
+export type UsageRow = { label: string; mb: number; icon?: "tg" | "web" | "cam" | "play" | "sys"; flag?: string };
 
 export function pingTone(p: number): string {
   return p < 60 ? "text-glow" : p < 100 ? "text-gold" : "text-danger";
@@ -89,6 +97,9 @@ export function HomeScreen({
   warn,
   onPickServer,
   onOpenSettings,
+  origin,
+  showFlash,
+  update,
 }: {
   lang: Lang;
   state: VpnState;
@@ -98,6 +109,12 @@ export function HomeScreen({
   warn?: string | null;
   onPickServer: () => void;
   onOpenSettings: () => void;
+  /** آی‌پی و پرچم کشور مبدا کاربر (در اپ واقعی قبل از اتصال از ipwho.is) */
+  origin?: { ip: string; country: string } | null;
+  /** فلش لحظه اتصال: «از ایران به آلمان وصل شدی» */
+  showFlash?: boolean;
+  /** بنر نسخهٔ جدید (اپ واقعی: چکر GitHub Releases) */
+  update?: { version: string; url: string; onUpdate: () => void; onDismiss: () => void } | null;
 }) {
   const t = tr(lang);
   const rtl = lang === "fa";
@@ -107,7 +124,32 @@ export function HomeScreen({
   const Fwd = rtl ? ChevronLeft : ChevronRight;
 
   return (
-    <div dir={rtl ? "rtl" : "ltr"} className="flex flex-1 flex-col px-6 pt-2">
+    <div dir={rtl ? "rtl" : "ltr"} className="flex flex-1 flex-col overflow-y-auto scroll-hide px-6 pt-2">
+      {update && (
+        <div className="screen-in mt-2 flex items-start gap-3 rounded-2xl border border-gold/40 bg-gold/10 p-3">
+          <span className="grid size-9 shrink-0 place-items-center rounded-full bg-gold/20">
+            <Crown className="size-4 fill-gold text-gold" />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-sm font-bold text-ink">{t.updateTitle}</span>
+            <span dir="ltr" className="block truncate text-xs text-dim">{t.updateSub.replace("{v}", update.version)}</span>
+          </span>
+          <span className="flex shrink-0 flex-col items-stretch gap-1">
+            <a
+              href={update.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={update.onUpdate}
+              className="rounded-full bg-gold px-3 py-1 text-center text-xs font-bold text-night"
+            >
+              {t.updateBtn}
+            </a>
+            <button type="button" onClick={update.onDismiss} className="text-center text-[11px] text-dim hover:text-ink">
+              {t.updateLater}
+            </button>
+          </span>
+        </div>
+      )}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <ShieldCheck className="size-7 shrink-0 text-glow" />
@@ -136,7 +178,9 @@ export function HomeScreen({
       </div>
 
       <div className="relative mt-7 flex h-48 items-center justify-center">
+        {/* هالهٔ نئون — موقع اتصال با ضربان زنده (کمرنگ↔پررنگ) */}
         <div className={on ? "breathe absolute size-56 rounded-full bg-glow/30 blur-3xl" : "absolute size-56 rounded-full bg-transparent"} />
+        {on && <span className="pulse-ring absolute size-44 rounded-full border-2 border-glow/70" aria-hidden="true" />}
         <button
           type="button"
           onClick={onToggle}
@@ -158,6 +202,18 @@ export function HomeScreen({
       <div className="mt-4 text-center">
         <div className={on ? "font-display text-2xl font-bold text-glow" : "font-display text-2xl font-bold text-ink"}>{label}</div>
         <div className="mt-1 font-display text-base tabular-nums text-dim">{on ? fmt(seconds) : t.tapProtect}</div>
+        {showFlash && on && server && (
+          <div className="flash-in mx-auto mt-2 flex max-w-[300px] items-center justify-center gap-2 rounded-full border border-glow/40 bg-glow/10 px-3 py-1.5">
+            <Flag code={origin?.country ?? "ir"} size={18} />
+            <span className="truncate text-xs font-semibold text-ink">
+              {t.connectFlash
+                .replace("{from}", COUNTRIES[origin?.country ?? "ir"] ?? origin?.country ?? "—")
+                .replace("{to}", COUNTRIES[server.country] ?? server.country)}
+            </span>
+            <span className="text-xs text-dim">→</span>
+            <Flag code={server.country} size={18} />
+          </div>
+        )}
         {warn && !on && (
           <div className="mx-auto mt-2 flex max-w-[280px] items-center justify-center gap-1.5 rounded-full border border-danger/40 bg-danger/10 px-3 py-1.5 text-xs font-medium text-danger">
             <ShieldAlert className="size-3.5 shrink-0" /> {warn}
@@ -182,21 +238,36 @@ export function HomeScreen({
         <Fwd className="size-5 text-dim" />
       </button>
 
-      <div className="mt-3 grid grid-cols-2 gap-3">
-        <div className="rounded-2xl border border-panel-edge bg-panel p-4">
-          <div className="flex items-center gap-2 text-sm text-dim">
+      {/* دانلود | آی‌پی+پرچم مبدا | آپلود — دقیقا وسط */}
+      <div className="mt-3 grid grid-cols-[1fr_auto_1fr] items-stretch gap-2">
+        <div className="rounded-2xl border border-panel-edge bg-panel p-3">
+          <div className="flex items-center gap-1.5 text-sm text-dim">
             <ArrowDown className="size-4 text-glow" /> {t.download}
           </div>
-          <div className="mt-2 font-display text-2xl font-bold text-ink tabular-nums">
-            {on ? "48.2" : "0.0"} <span className="text-sm font-medium text-dim">Mbps</span>
+          <div className="mt-1.5 whitespace-nowrap font-display text-lg font-bold text-ink tabular-nums">
+            {on ? "48.2" : "0.0"} <span className="text-xs font-medium text-dim">Mbps</span>
           </div>
         </div>
-        <div className="rounded-2xl border border-panel-edge bg-panel p-4">
-          <div className="flex items-center gap-2 text-sm text-dim">
+        <div className="flex min-w-[96px] flex-col items-center justify-center gap-1 rounded-2xl border border-panel-edge bg-panel px-3 py-2">
+          {origin ? (
+            <>
+              <Flag code={origin.country} size={22} />
+              <span dir="ltr" className="max-w-full truncate font-mono text-[11px] font-semibold text-ink">{origin.ip}</span>
+              <span className="text-[10px] text-dim">{COUNTRIES[origin.country] ?? origin.country}</span>
+            </>
+          ) : (
+            <>
+              <Globe className="size-5 text-dim" />
+              <span className="text-[10px] text-dim">{t.yourIp}…</span>
+            </>
+          )}
+        </div>
+        <div className="rounded-2xl border border-panel-edge bg-panel p-3">
+          <div className="flex items-center gap-1.5 text-sm text-dim">
             <ArrowUp className="size-4 text-up" /> {t.upload}
           </div>
-          <div className="mt-2 font-display text-2xl font-bold text-ink tabular-nums">
-            {on ? "12.6" : "0.0"} <span className="text-sm font-medium text-dim">Mbps</span>
+          <div className="mt-1.5 whitespace-nowrap font-display text-lg font-bold text-ink tabular-nums">
+            {on ? "12.6" : "0.0"} <span className="text-xs font-medium text-dim">Mbps</span>
           </div>
         </div>
       </div>
@@ -393,6 +464,7 @@ export function AccountScreen({
   onOpenSplit,
   onUpgrade,
   onCopyDevice,
+  onOpenUsage,
 }: {
   lang: Lang;
   entitlement: Entitlement;
@@ -403,6 +475,7 @@ export function AccountScreen({
   onOpenSplit: () => void;
   onUpgrade: () => void;
   onCopyDevice: () => void;
+  onOpenUsage: () => void;
 }) {
   const t = tr(lang);
   const rtl = lang === "fa";
@@ -468,10 +541,19 @@ export function AccountScreen({
         </button>
       )}
 
-      {/* usage */}
-      <div className="flex items-center justify-between rounded-2xl border border-panel-edge bg-panel p-4">
+      {/* usage — با کلیک، جزئیات مصرف به تفکیک اپ و سرور باز می‌شه */}
+      <button
+        type="button"
+        onClick={onOpenUsage}
+        aria-label={t.usageDetails}
+        className="flex items-center justify-between rounded-2xl border border-panel-edge bg-panel p-4 text-start transition-colors hover:border-glow/40"
+      >
         <div className="min-w-0">
-          <div className="text-sm text-dim">{t.dataUsage}</div>
+          <div className="flex items-center gap-1.5 text-sm text-dim">
+            {t.dataUsage}
+            <ChevronRight className="size-3.5 rtl:hidden" />
+            <ChevronLeft className="size-3.5 hidden rtl:block" />
+          </div>
           {premium ? (
             <div className="mt-2 flex items-center gap-1.5 text-sm font-medium text-gold">
               <Crown className="size-4 shrink-0 fill-gold text-gold" /> {t.unlimited}
@@ -488,7 +570,7 @@ export function AccountScreen({
           premium ? "∞" : `${usedStr} GB`,
           premium ? t.unlimited : totalStr,
         )}
-      </div>
+      </button>
       {trialLocked && !premium && <div className="-mt-1 rounded-xl border border-danger/30 bg-danger/10 px-3 py-2 text-xs leading-5 text-danger">{t.trialUsedSub}</div>}
 
       {rows.map(({ icon: I, t: title, d, v, set }) => (
@@ -569,6 +651,115 @@ export function AccountScreen({
       >
         {premium ? t.renewBtn : t.upgrade}
       </button>
+    </div>
+  );
+}
+
+function fmtMb(mb: number): string {
+  return mb >= 1024 ? `${(mb / 1024).toFixed(1)} GB` : `${Math.round(mb)} MB`;
+}
+
+function UsageBar({ row, max }: { row: UsageRow; max: number }) {
+  const pct = Math.round((row.mb / max) * 100);
+  return (
+    <div className="flex items-center gap-3">
+      <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-ink/10">
+        {row.flag ? (
+          <Flag code={row.flag} size={22} />
+        ) : row.icon === "tg" ? (
+          <Send className="size-4 text-ink" />
+        ) : row.icon === "web" ? (
+          <Globe className="size-4 text-ink" />
+        ) : row.icon === "cam" ? (
+          <Camera className="size-4 text-ink" />
+        ) : row.icon === "play" ? (
+          <Play className="size-4 text-ink" />
+        ) : (
+          <Cog className="size-4 text-ink" />
+        )}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="flex items-center justify-between gap-2">
+          <span className="truncate text-sm font-semibold text-ink">{row.label}</span>
+          <span className="shrink-0 text-xs font-medium tabular-nums text-dim">{fmtMb(row.mb)}</span>
+        </span>
+        <span className="mt-1 block h-1.5 overflow-hidden rounded-full bg-ink/10">
+          <span className="block h-full rounded-full bg-glow" style={{ width: `${pct}%` }} />
+        </span>
+      </span>
+    </div>
+  );
+}
+
+/**
+ * جزئیات مصرف — با لمس کارت «مصرف دیتا» باز می‌شود:
+ * کاربر می‌بیند کدام اپ و کدام سرور چقدر مصرف کرده.
+ * در اپ اندروید: نمونه‌گیری TrafficStats به تفکیک UID + آمار سشن هر سرور.
+ */
+export function UsageSheet({
+  lang,
+  usedGb,
+  totalText,
+  byApp,
+  byServer,
+  onClose,
+}: {
+  lang: Lang;
+  usedGb: number;
+  totalText: string;
+  byApp: UsageRow[];
+  byServer: UsageRow[];
+  onClose: () => void;
+}) {
+  const t = tr(lang);
+  const rtl = lang === "fa";
+  const maxApp = Math.max(...byApp.map((r) => r.mb), 1);
+  const maxSrv = Math.max(...byServer.map((r) => r.mb), 1);
+  return (
+    <div
+      className="absolute inset-0 z-20 flex flex-col justify-end bg-night/70 backdrop-blur-sm"
+      onClick={onClose}
+      role="presentation"
+    >
+      <div
+        dir={rtl ? "rtl" : "ltr"}
+        className="sheet-in flex max-h-[88%] flex-col rounded-t-3xl border-t border-glow/30 bg-panel px-5 pt-4 pb-6"
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-label={t.usageDetails}
+      >
+        <div className="flex items-center justify-between">
+          <h3 className="font-display text-xl font-bold text-ink">{t.usageDetails}</h3>
+          <button type="button" onClick={onClose} aria-label="Close" className="grid size-8 place-items-center rounded-full text-dim hover:text-ink">
+            <X className="size-5" />
+          </button>
+        </div>
+        <div className="mt-0.5 text-sm text-dim">
+          {t.usageThisMonth} · <span className="font-semibold text-ink">{usedGb.toFixed(1)} GB</span> / {totalText}
+        </div>
+
+        <div className="scroll-hide mt-4 flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto">
+          <section>
+            <div className="text-sm font-bold text-ink">{t.usageByApp}</div>
+            <div className="text-xs text-dim">{t.usageAppSub}</div>
+            <div className="mt-2.5 flex flex-col gap-3">
+              {byApp.map((r) => (
+                <UsageBar key={r.label} row={r} max={maxApp} />
+              ))}
+            </div>
+          </section>
+
+          <section>
+            <div className="text-sm font-bold text-ink">{t.usageByServer}</div>
+            <div className="text-xs text-dim">{t.usageSrvSub}</div>
+            <div className="mt-2.5 flex flex-col gap-3">
+              {byServer.map((r) => (
+                <UsageBar key={r.label} row={r} max={maxSrv} />
+              ))}
+            </div>
+          </section>
+        </div>
+      </div>
     </div>
   );
 }
