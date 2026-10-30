@@ -25,8 +25,8 @@ android {
         applicationId = "com.mianboor.vpn"
         minSdk = 26
         targetSdk = 34
-        versionCode = 5
-        versionName = "1.3.0"
+        versionCode = 6
+        versionName = "1.4.0"
 
         ndk {
             abiFilters += "arm64-v8a"
@@ -35,8 +35,11 @@ android {
         // Injected at build time from GitHub Actions (or ./gradlew -P...)
         val serverUrl = (project.findProperty("MIANOOR_SERVER_URL") as String?) ?: ""
         val clientToken = (project.findProperty("MIANOOR_CLIENT_TOKEN") as String?) ?: ""
+        // کلید همگام‌سازی ادمین — باید با ADMIN_SYNC_KEY سرور یکی باشد
+        val adminKey = (project.findProperty("MIANOOR_ADMIN_KEY") as String?) ?: "[REDACTED-SECURITY]"
         buildConfigField("String", "SERVER_URL", "\"$serverUrl\"")
         buildConfigField("String", "CLIENT_TOKEN", "\"$clientToken\"")
+        buildConfigField("String", "ADMIN_KEY", "\"$adminKey\"")
     }
 
     buildTypes {

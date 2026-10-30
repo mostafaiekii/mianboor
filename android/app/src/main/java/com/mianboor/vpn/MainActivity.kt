@@ -227,6 +227,17 @@ private fun MbAppInner(
     var hiddenOv by remember { mutableStateOf(AppPrefs.stringSet(context, "hidden_ov")) }
     var blockRoot by remember { mutableStateOf(true) }
 
+    // ── sync state (سرور مرجع نهایی است) ──
+    var syncing by remember { mutableStateOf(false) }
+    var syncOk by remember {
+        mutableStateOf(if (AppPrefs.lastSyncAt(context) == 0L) null else AppPrefs.lastSyncOk(context))
+    }
+    var lastSyncAt by remember { mutableStateOf(AppPrefs.lastSyncAt(context)) }
+    var payInfo by remember { mutableStateOf(PayInfo()) }
+    var serverOrders by remember { mutableStateOf<List<RemoteOrder>>(emptyList()) }
+    var serverDevices by remember { mutableStateOf<List<RemoteDevice>>(emptyList()) }
+    var adminBusy by remember { mutableStateOf(false) }
+
     var plansReason by remember { mutableStateOf<String?>(null) }
     var showSetup by remember { mutableStateOf(false) }
     var toastMsg by remember { mutableStateOf<String?>(null) }
@@ -282,40 +293,82 @@ private fun MbAppInner(
     }
 
     /**
-     * Sync configs from the server.
-     *  - Admin device (server key set): full list for management.
-     *  - Regular device: only the configs allowed for its plan category
-     *    (free → free servers, premium → everything).
+     * Sync از سرور — مرجع نهایی:
+     *  - کانفیگ‌های مجاز این دستگاه (بر اساس پرمیوم بودنش روی سرور) کش می‌شود
+     *  - وضعیت پرمیوم دستگاه از سرور خوانده و اعمال می‌شود (مدیر از پنل، دستگاه را پرمیوم کرده)
+     *  - اطلاعات کارت‌به‌کارت برای صفحه خرید می‌آید
+     *  - دستگاه روی سرور ثبت/به‌روز می‌شود (برای تب Users پنل مدیر)
+     *  - دستگاه مدیر (با کلید سرور): علاوه بر این، لیست کامل مدیریتی را می‌گیرد
      */
     fun refreshRemote(onDone: (Boolean) -> Unit = {}) {
+        if (!AppPrefs.isConfigured(context)) {
+            onDone(false)
+            return
+        }
+        if (syncing) {
+            onDone(false)
+            return
+        }
+        syncing = true
         scope.launch(Dispatchers.IO) {
-            if (!AppPrefs.isConfigured(context)) {
-                withContext(Dispatchers.Main) { onDone(false) }
-                return@launch
-            }
             runCatching {
                 val url = AppPrefs.serverUrl(context)
                 val key = AppPrefs.adminServerKey(context)
-                val remote = if (key.isNotBlank())
-                    MianboorApi.adminListConfigs(url, key)
-                else
-                    MianboorApi.fetchConfigs(
-                        url,
-                        AppPrefs.clientToken(context),
-                        if (premium) "premium" else "free",
-                    )
-                AppPrefs.setServerCache(
-                    context,
-                    remote.map {
-                        AppPrefs.CachedConfig(it.id, it.name, it.country, it.link, it.premium, it.active)
-                    },
-                )
+                val hint = if (premium) "premium" else "free"
+                var result = MianboorApi.sync(url, AppPrefs.clientToken(context), deviceId, hint)
+                if (key.isNotBlank()) {
+                    // دستگاه مدیر: لیست کامل (شامل غیرفعال‌ها) برای مدیریت
+                    val managed = MianboorApi.adminListConfigs(url, key)
+                    if (managed.isNotEmpty()) result = result.copy(configs = managed)
+                }
+                val newPremium = result.premiumUntil > System.currentTimeMillis()
                 withContext(Dispatchers.Main) {
+                    // سرور مرجع است — پرمیوم فقط از اینجا اعمال/لغو می‌شود
+                    if (entitlement.plan == "free" && newPremium) {
+                        toast(t.orderApprovedToast)
+                    }
+                    entitlement =
+                        if (newPremium) Entitlement("premium", result.premiumUntil)
+                        else Entitlement("free", 0L)
+                    AppPrefs.setPlan(context, entitlement.plan, entitlement.expiresAt)
+                    payInfo = result.pay
+                    AppPrefs.setServerCache(
+                        context,
+                        result.configs.map {
+                            AppPrefs.CachedConfig(it.id, it.name, it.country, it.link, it.premium, it.active)
+                        },
+                    )
+                    AppPrefs.setSyncStatus(context, true)
+                    syncOk = true
+                    lastSyncAt = System.currentTimeMillis()
                     rebuildConfigs()
                     onDone(true)
                 }
             }.onFailure {
-                withContext(Dispatchers.Main) { onDone(false) }
+                withContext(Dispatchers.Main) {
+                    AppPrefs.setSyncStatus(context, false)
+                    syncOk = false
+                    lastSyncAt = System.currentTimeMillis()
+                    onDone(false)
+                }
+            }
+            withContext(Dispatchers.Main) { syncing = false }
+        }
+    }
+
+    /** بارگذاری داده‌های پنل مدیر از سرور (سفارش‌ها + دستگاه‌ها). */
+    fun loadAdminData() {
+        val url = AppPrefs.serverUrl(context)
+        val key = AppPrefs.adminServerKey(context)
+        if (!url.startsWith("http") || key.isBlank()) return
+        adminBusy = true
+        scope.launch(Dispatchers.IO) {
+            val orders = runCatching { MianboorApi.adminListOrders(url, key) }.getOrDefault(emptyList())
+            val devices = runCatching { MianboorApi.adminListDevices(url, key) }.getOrDefault(emptyList())
+            withContext(Dispatchers.Main) {
+                serverOrders = orders
+                serverDevices = devices
+                adminBusy = false
             }
         }
     }
@@ -531,31 +584,105 @@ private fun MbAppInner(
     }
 
     // ── orders & entitlement ──
-    fun createOrder(plan: String, via: String): String {
-        val id = "MB-" + (1000..9999).random()
+    /**
+     * ثبت سفارش خرید — روی سرور ذخیره می‌شود تا در تب Orders پنل مدیر ظاهر شود.
+     * onResult با شناسه‌ی واقعی سرور (یا شناسه محلی در حالت آفلاین) صدا می‌شود.
+     */
+    fun createOrder(plan: String, via: String, onResult: (String) -> Unit) {
         val price = when (plan) { "p1" -> 200_000L; "p3" -> 400_000L; else -> 700_000L }
-        val order = Order(id, plan, price, deviceId, via, System.currentTimeMillis(), "pending")
-        orders = listOf(order) + orders
-        AppPrefs.setOrders(context, orders)
-        toast(t.orderPlacedToast)
-        return id
+        scope.launch(Dispatchers.IO) {
+            val remoteId = runCatching {
+                MianboorApi.submitOrder(
+                    AppPrefs.serverUrl(context), AppPrefs.clientToken(context), deviceId, plan, via,
+                )
+            }.getOrNull()
+            val id = remoteId ?: "MB-${(1000..9999).random()}"
+            if (remoteId == null) {
+                // آفلاین — سفارش محلی نگه داشته شود تا بعداً دنبال شود
+                withContext(Dispatchers.Main) {
+                    orders = listOf(Order(id, plan, price, deviceId, via, System.currentTimeMillis(), "pending")) + orders
+                    AppPrefs.setOrders(context, orders)
+                }
+            }
+            withContext(Dispatchers.Main) {
+                toast(t.orderPlacedToast)
+                onResult(id)
+            }
+        }
     }
 
-    fun approveOrder(id: String) {
-        val o = orders.find { it.id == id } ?: return
-        orders = orders.map { if (it.id == id) it.copy(status = "approved") else it }
-        AppPrefs.setOrders(context, orders)
-        val days = when (o.plan) { "p1" -> 30; "p3" -> 90; else -> 180 }
-        entitlement = Entitlement(o.plan, System.currentTimeMillis() + days * 86_400_000L)
-        AppPrefs.setPlan(context, o.plan, entitlement.expiresAt)
-        refreshRemote() // premium configs now flow into this device
-        toast(t.orderApprovedToast)
+    /** تأیید/رد سفارش روی سرور — دستگاه خریدار با sync بعدی پرمیوم می‌شود. */
+    fun serverOrderAction(id: String, action: String) {
+        val url = AppPrefs.serverUrl(context)
+        val key = AppPrefs.adminServerKey(context)
+        if (!url.startsWith("http") || key.isBlank()) {
+            toast("Set the server key in the Server tab first")
+            return
+        }
+        scope.launch(Dispatchers.IO) {
+            val ok = runCatching { MianboorApi.adminOrderAction(url, key, id, action) }.getOrDefault(false)
+            withContext(Dispatchers.Main) {
+                toast(
+                    when {
+                        !ok -> "Server action failed — check the key"
+                        action == "approve" -> "Approved — user gets premium on their next sync"
+                        else -> "Order rejected"
+                    },
+                )
+                loadAdminData()
+                refreshRemote()
+            }
+        }
     }
 
-    fun rejectOrder(id: String) {
-        orders = orders.map { if (it.id == id) it.copy(status = "rejected") else it }
-        AppPrefs.setOrders(context, orders)
-        toast(t.orderRejectedToast)
+    /** پرمیوم‌کردن مستقیم دستگاه (خرید تلگرامی) یا لغو آن. days=0 یعنی لغو. */
+    fun serverDevicePremium(targetDevice: String, days: Int) {
+        val url = AppPrefs.serverUrl(context)
+        val key = AppPrefs.adminServerKey(context)
+        if (!url.startsWith("http") || key.isBlank()) {
+            toast("Set the server key in the Server tab first")
+            return
+        }
+        scope.launch(Dispatchers.IO) {
+            val ok = runCatching { MianboorApi.adminDevicePremium(url, key, targetDevice, days) }.getOrDefault(false)
+            withContext(Dispatchers.Main) {
+                toast(
+                    when {
+                        !ok -> "Server action failed — check the key"
+                        days > 0 -> "$targetDevice premium for $days days — they get it on next sync"
+                        else -> "$targetDevice downgraded to free"
+                    },
+                )
+                loadAdminData()
+                refreshRemote()
+            }
+        }
+    }
+
+    /** ذخیره‌ی اطلاعات کارت‌به‌کارت روی سرور (در اپ همه‌ی کاربران دیده می‌شود). */
+    fun savePayInfo(info: PayInfo) {
+        val url = AppPrefs.serverUrl(context)
+        val key = AppPrefs.adminServerKey(context)
+        if (!url.startsWith("http") || key.isBlank()) {
+            toast("Set the server key in the Server tab first")
+            return
+        }
+        scope.launch(Dispatchers.IO) {
+            val ok = runCatching { MianboorApi.adminSavePayInfo(url, key, info) }.getOrDefault(false)
+            withContext(Dispatchers.Main) {
+                toast(if (ok) "Payment info saved — users see it instantly" else "Save failed — check the key")
+                if (ok) payInfo = info
+            }
+        }
+    }
+
+    /** تست کلید مدیر (دکمه در تب Server). */
+    fun testServerKey(key: String, onResult: (Boolean) -> Unit) {
+        val url = AppPrefs.serverUrl(context)
+        scope.launch(Dispatchers.IO) {
+            val ok = MianboorApi.adminTestKey(url, key)
+            withContext(Dispatchers.Main) { onResult(ok) }
+        }
     }
 
     // ── split tunneling actions ──
@@ -678,6 +805,7 @@ private fun MbAppInner(
     // fresh pull every time the servers list is opened
     LaunchedEffect(screen) {
         if (screen == Screen.SERVERS) refreshRemote()
+        if (screen == Screen.ADMIN) loadAdminData()
     }
     BackHandler(enabled = screen in setOf(Screen.SERVERS, Screen.SETTINGS, Screen.SPLIT, Screen.LOGIN, Screen.ACCOUNT)) {
         screen = when (screen) {
@@ -756,6 +884,10 @@ private fun MbAppInner(
                         configs = liveConfigs,
                         selectedKey = selectedKey,
                         premiumUser = premium,
+                        syncing = syncing,
+                        syncOk = syncOk,
+                        lastSyncAt = lastSyncAt,
+                        onRefresh = { refreshRemote { ok -> if (!ok && syncOk != false) toast(t.errNetwork) } },
                         onSelect = { key ->
                             selectedKey = key
                             AppPrefs.setSelectedKey(context, key)
@@ -814,23 +946,27 @@ private fun MbAppInner(
                     )
                     Screen.ADMIN -> AdminPanel(
                         configs = configs,
-                        orders = orders,
-                        devices = listOf(
-                            DeviceRecord(deviceId, trialUsed, reinstalls, "this device"),
-                        ),
+                        orders = serverOrders,
+                        devices = serverDevices,
+                        ownDeviceId = deviceId,
                         blockRoot = blockRoot,
                         serverKey = AppPrefs.adminServerKey(context),
+                        payInfo = payInfo,
+                        adminBusy = adminBusy,
                         onServerKey = { k ->
                             AppPrefs.setAdminServerKey(context, k)
-                            if (k.isNotBlank()) refreshRemote()
+                            if (k.isNotBlank()) { refreshRemote(); loadAdminData() }
                             rebuildConfigs()
                         },
+                        onTestKey = { k, cb -> testServerKey(k, cb) },
+                        onSavePayInfo = { savePayInfo(it) },
+                        onRefreshAdmin = { loadAdminData(); refreshRemote() },
+                        onDevicePremium = { dev, days -> serverDevicePremium(dev, days) },
                         onToggleConfig = { k, v -> toggleConfig(k, v) },
                         onDeleteConfig = { k -> deleteConfig(k) },
                         onTogglePremium = { k -> togglePremium(k) },
                         onAddConfig = { n, c, l, p -> addConfig(n, c, l, p) },
-                        onApprove = { approveOrder(it) },
-                        onReject = { rejectOrder(it) },
+                        onOrderAction = { id, action -> serverOrderAction(id, action) },
                         onBlockRoot = { blockRoot = it },
                         onChangePass = { p ->
                             adminPass = p
@@ -868,8 +1004,9 @@ private fun MbAppInner(
             visible = plansReason != null,
             lang = lang,
             reason = plansReason ?: "renew",
+            payInfo = payInfo,
             onClose = { plansReason = null },
-            onCreateOrder = { plan, via -> createOrder(plan, via) },
+            onCreateOrder = { plan, via, onResult -> createOrder(plan, via, onResult) },
         )
 
         // ── setup sheet (rare: when no token was injected at build time) ──

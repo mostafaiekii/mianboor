@@ -20,7 +20,12 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -29,6 +34,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.VisualTransformation
@@ -44,6 +52,10 @@ fun ServersScreen(
     configs: List<ConfigItem>,
     selectedKey: String?,
     premiumUser: Boolean,
+    syncing: Boolean,
+    syncOk: Boolean?,
+    lastSyncAt: Long,
+    onRefresh: () -> Unit,
     onSelect: (String) -> Unit,
     onPremiumTap: () -> Unit,
     onBack: () -> Unit,
@@ -63,15 +75,41 @@ fun ServersScreen(
     val best = pool.minByOrNull { it.ping }
 
     Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
-        Icon(
-            ic(if (rtl) R.drawable.ic_chevron_right else R.drawable.ic_chevron_left),
-            "back", tint = mb.dim,
-            modifier = Modifier.size(24.dp).clickable { onBack() },
-        )
-        Text(
-            t.selectLocation, color = mb.ink, fontSize = 24.sp,
-            fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 12.dp),
-        )
+        Row(
+            Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                ic(if (rtl) R.drawable.ic_chevron_right else R.drawable.ic_chevron_left),
+                "back", tint = mb.dim,
+                modifier = Modifier.size(24.dp).clickable { onBack() },
+            )
+            Text(
+                t.selectLocation, color = mb.ink, fontSize = 24.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(start = 12.dp).weight(1f),
+            )
+            // ── دکمه به‌روزرسانی از سرور ──
+            Box(
+                Modifier
+                    .size(38.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(mb.panel)
+                    .border(1.dp, mb.panelEdge, RoundedCornerShape(12.dp))
+                    .clickable(enabled = !syncing) { onRefresh() },
+                contentAlignment = Alignment.Center,
+            ) {
+                if (syncing) {
+                    SyncSpinner(Modifier.size(18.dp))
+                } else {
+                    Icon(
+                        ic(R.drawable.ic_rotate_ccw), "refresh",
+                        tint = if (syncOk == false) mb.danger else mb.glow,
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
+            }
+        }
 
         // search
         Row(
@@ -132,7 +170,7 @@ fun ServersScreen(
             FwdChevron(rtl, Modifier.size(16.dp))
         }
 
-        // meta row
+        // meta row + sync status
         Row(
             Modifier.fillMaxWidth().padding(top = 16.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -142,6 +180,8 @@ fun ServersScreen(
             PingDot()
             Spacer(Modifier.width(6.dp))
             Text(t.livePing, color = mb.dim, fontSize = 13.sp)
+            Spacer(Modifier.width(10.dp))
+            SyncStatusText(lang, syncing, syncOk, lastSyncAt, Modifier.weight(1f))
         }
 
         // list
@@ -256,5 +296,57 @@ fun PingDot() {
     )
     Box(
         Modifier.size(8.dp).clip(CircleShape).background(mb.glow.copy(alpha = alpha)),
+    )
+}
+
+/** چرخنده‌ی همگام‌سازی. */
+@Composable
+private fun SyncSpinner(modifier: Modifier = Modifier) {
+    val mb = LocalMb.current
+    val trans = rememberInfiniteTransition(label = "syncspin")
+    val angle by trans.animateFloat(
+        0f, 360f,
+        infiniteRepeatable(tween(900, easing = LinearEasing)),
+        label = "sa",
+    )
+    androidx.compose.foundation.Canvas(modifier) {
+        rotate(angle) {
+            drawArc(
+                mb.glow, startAngle = 0f, sweepAngle = 270f, useCenter = false,
+                style = Stroke(
+                    2.dp.toPx(), cap = androidx.compose.ui.graphics.StrokeCap.Round,
+                ),
+                topLeft = Offset.Zero,
+            )
+        }
+    }
+}
+
+/** خط وضعیت همگام‌سازی — موفق/ناموفق/هرگز. */
+@Composable
+private fun SyncStatusText(
+    lang: Lang,
+    syncing: Boolean,
+    syncOk: Boolean?,
+    lastSyncAt: Long,
+    modifier: Modifier = Modifier,
+) {
+    val t = stringsOf(lang)
+    val mb = LocalMb.current
+    val (text, color) = when {
+        syncing -> t.syncing to mb.glow
+        syncOk == null -> t.syncNever to mb.dim
+        syncOk == true -> {
+            val mins = ((System.currentTimeMillis() - lastSyncAt) / 60_000L).coerceAtLeast(0L)
+            val minsStr = if (mins < 1) (if (lang == Lang.FA) "<۱" else "<1") else mins.toString()
+            t.syncOkAgo(minsStr) to mb.dim
+        }
+        else -> t.syncFail to mb.danger
+    }
+    Text(
+        text, color = color, fontSize = 12.sp,
+        modifier = modifier,
+        textAlign = androidx.compose.ui.text.style.TextAlign.End,
+        maxLines = 1, overflow = TextOverflow.Ellipsis,
     )
 }

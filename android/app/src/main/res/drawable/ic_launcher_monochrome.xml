@@ -1,17 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Monochrome (themed) launcher icon: the Mianboor gateway arch + shortcut road -->
+<!-- Monochrome (themed) launcher icon: the Mianboor M-gateway -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
+    <!-- M به‌عنوان دروازه -->
     <path
-        android:pathData="M40,72 L40,44 A14,14 0 0 1 68,44 L68,72"
+        android:pathData="M38,70 L38,42 A2,2 0 0 1 41.5,40.5 L54,54 L66.5,40.5 A2,2 0 0 1 70,42 L70,70"
         android:strokeColor="#FFFFFFFF"
         android:strokeWidth="7"
-        android:strokeLineCap="round"/>
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"/>
+    <!-- نور میان‌بر که از دروازه رد می‌شود -->
     <path
-        android:pathData="M54,41 C47,49 61,53 54,61 C49,67 52,70 54,72"
+        android:pathData="M54,58 C50,63 58,66 54,71"
         android:strokeColor="#FFFFFFFF"
         android:strokeWidth="4.5"
         android:strokeLineCap="round"/>

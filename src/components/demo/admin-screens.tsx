@@ -16,6 +16,7 @@ import {
   LogOut,
   Plus,
   ReceiptText,
+  Search,
   Server,
   ShieldCheck,
   Trash2,
@@ -354,26 +355,29 @@ function OrdersTab({
   );
 }
 
-/* ── Security tab ── */
+/* ── Users tab — devices, premium management (Telegram purchases) ── */
 
 const HARDENING = [
   "R8 + ProGuard — code, strings & APIs obfuscated",
-  "Client token sealed in a native lib (JNI) — not in strings.xml",
-  "TLS certificate pinning to mianboor APIs",
-  "EncryptedSharedPreferences + Android Keystore",
-  "Play Integrity check · root & emulator detection",
-  "HMAC-signed requests · server-side rate limiting",
-  "Config links never leave the server as raw text",
+  "Client token sealed at build time (CI secrets)",
+  "TLS-protected calls to mianboor APIs",
+  "No config link is ever rendered in the UI",
+  "Config raw links kept only in private app storage",
 ];
 
-function SecurityTab({
+function UsersTab({
   devices,
+  ownDeviceId,
+  onDevicePremium,
   onChangePass,
 }: {
   devices: DeviceRecord[];
+  ownDeviceId: string;
+  onDevicePremium: (id: string, days: number) => void;
   onChangePass: (p: string) => void;
 }) {
   const [np, setNp] = useState("");
+  const [q, setQ] = useState("");
   const [blockRoot, setBlockRoot] = useState(true);
   const [toast, setToast] = useState("");
 
@@ -383,36 +387,89 @@ function SecurityTab({
     return () => clearTimeout(t);
   }, [toast]);
 
+  const list = devices.filter((d) => d.id.toLowerCase().includes(q.toLowerCase()));
+
   return (
     <div className="scroll-hide mt-3 flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-5 pb-20">
-      {/* anti-fraud ledger */}
+      {/* users — premium management */}
       <div className="rounded-xl border border-panel-edge bg-panel p-4">
         <div className="flex items-center gap-2 text-sm font-semibold text-ink">
-          <Fingerprint className="size-4 text-glow" /> Anti-fraud · device ledger
+          <Users className="size-4 text-glow" /> Users · devices
         </div>
+        <div className="mt-1 text-xs leading-5 text-dim">
+          خرید تلگرامی؟ کد دستگاه کاربر رو (صفحه حساب) بگیر، اینجا سرچ کن و روز پرمیوم بده — با sync بعدی فعال می‌شه.
+        </div>
+        <label className="mt-3 flex items-center gap-2 rounded-lg bg-night px-3 py-2">
+          <Search className="size-3.5 text-dim" />
+          <input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="MB-…"
+            dir="ltr"
+            aria-label="Search device"
+            className="w-full bg-transparent font-mono text-sm text-ink outline-none placeholder:text-dim"
+          />
+        </label>
         <div className="mt-3 flex flex-col gap-2">
-          {devices.map((d) => (
-            <div key={d.id} className="flex items-center gap-2 rounded-lg bg-night px-3 py-2.5">
-              <span dir="ltr" className="min-w-0 flex-1 truncate font-mono text-xs text-ink">
-                {d.id}
-              </span>
-              <span
-                className={
-                  d.trialUsed
-                    ? "shrink-0 rounded-full bg-danger/15 px-2 py-0.5 text-[10px] font-bold text-danger"
-                    : "shrink-0 rounded-full bg-glow/15 px-2 py-0.5 text-[10px] font-bold text-glow"
-                }
-              >
-                {d.trialUsed ? "TRIAL USED" : "TRIAL ACTIVE"}
-              </span>
-              <span className="shrink-0 rounded-full bg-ink/10 px-2 py-0.5 text-[10px] font-bold text-dim" dir="ltr">
-                reinstalls: {d.reinstalls}
-              </span>
+          {list.map((d) => (
+            <div key={d.id} className="rounded-lg bg-night px-3 py-2.5">
+              <div className="flex items-center gap-2">
+                <span dir="ltr" className="min-w-0 flex-1 truncate font-mono text-xs text-ink">
+                  {d.id}
+                </span>
+                {d.id === ownDeviceId && (
+                  <span className="shrink-0 rounded-full bg-glow/15 px-2 py-0.5 text-[10px] font-bold text-glow">THIS DEVICE</span>
+                )}
+                <span
+                  className={
+                    d.premium
+                      ? "shrink-0 rounded-full bg-gold/15 px-2 py-0.5 text-[10px] font-bold text-gold"
+                      : "shrink-0 rounded-full bg-ink/10 px-2 py-0.5 text-[10px] font-bold text-dim"
+                  }
+                >
+                  {d.premium ? "PREMIUM" : "FREE"}
+                </span>
+              </div>
+              <div className="mt-1 flex items-center gap-2 text-[11px] text-dim">
+                <span>seen {d.seen}</span>
+                {d.premium && d.premiumUntil && (
+                  <span>· until {new Date(d.premiumUntil).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</span>
+                )}
+              </div>
+              <div className="mt-2 flex items-center gap-1.5">
+                {[30, 90, 180].map((days) => (
+                  <button
+                    key={days}
+                    type="button"
+                    onClick={() => {
+                      onDevicePremium(d.id, days);
+                      setToast(`${d.id} → premium +${days}d`);
+                    }}
+                    className="rounded-md border border-glow/40 bg-glow/10 px-2 py-1 text-[11px] font-bold text-glow hover:bg-glow/20"
+                  >
+                    +{days}d
+                  </button>
+                ))}
+                {d.premium && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onDevicePremium(d.id, 0);
+                      setToast(`${d.id} → free`);
+                    }}
+                    className="rounded-md border border-danger/40 px-2 py-1 text-[11px] font-bold text-danger hover:bg-danger/10"
+                  >
+                    Revoke
+                  </button>
+                )}
+              </div>
             </div>
           ))}
-        </div>
-        <div className="mt-2 text-xs leading-5 text-dim">
-          Every install is fingerprinted server-side (ANDROID_ID + hardware hash). A factory reset or reinstall can never mint a new free tier.
+          {list.length === 0 && (
+            <div className="rounded-lg bg-night px-3 py-4 text-center text-xs text-dim">
+              دستگاهی پیدا نشد — دستگاه‌ها با باز شدن اپ کاربران اینجا ثبت می‌شن.
+            </div>
+          )}
         </div>
       </div>
 
@@ -479,8 +536,10 @@ export function AdminPanel({
   setConfigs,
   orders,
   devices,
+  ownDeviceId,
   onApprove,
   onReject,
+  onDevicePremium,
   onExit,
   onChangePass,
 }: {
@@ -488,12 +547,14 @@ export function AdminPanel({
   setConfigs: React.Dispatch<React.SetStateAction<ConfigItem[]>>;
   orders: Order[];
   devices: DeviceRecord[];
+  ownDeviceId: string;
   onApprove: (id: string) => void;
   onReject: (id: string) => void;
+  onDevicePremium: (id: string, days: number) => void;
   onExit: () => void;
   onChangePass: (p: string) => void;
 }) {
-  const [tab, setTab] = useState<"configs" | "orders" | "security">("configs");
+  const [tab, setTab] = useState<"configs" | "orders" | "users">("configs");
   const [adding, setAdding] = useState(false);
   const [toast, setToast] = useState("");
 
@@ -525,32 +586,33 @@ export function AdminPanel({
         </button>
       </div>
 
-      <div className="mx-5 mt-4 grid grid-cols-3 gap-2">
+      <div className="mx-5 mt-4 grid grid-cols-4 gap-2">
         {[
           { i: Server, v: configs.length, l: "Configs" },
           { i: Server, v: active, l: "Live" },
           { i: Users, v: orders.length, l: "Orders" },
+          { i: Users, v: devices.filter((d) => d.premium).length, l: "Premium" },
         ].map((s) => (
           <div key={s.l} className="rounded-xl border border-panel-edge bg-panel px-3 py-2">
             <div className="font-display text-xl font-bold text-ink tabular-nums">{s.v}</div>
-            <div className="text-sm text-dim">{s.l}</div>
+            <div className="text-xs text-dim">{s.l}</div>
           </div>
         ))}
       </div>
 
       <div className="mx-5 mt-4 grid grid-cols-3 rounded-xl bg-panel p-1">
-        {(["configs", "orders", "security"] as const).map((tb) => (
+        {(["configs", "orders", "users"] as const).map((tb) => (
           <button
             type="button"
             key={tb}
             onClick={() => setTab(tb)}
             className={
               tab === tb
-                ? "relative rounded-lg bg-night py-2 text-sm font-semibold capitalize text-ink"
-                : "relative rounded-lg py-2 text-sm capitalize text-dim"
+                ? "relative rounded-lg bg-night py-2 text-sm font-semibold text-ink"
+                : "relative rounded-lg py-2 text-sm text-dim"
             }
           >
-            {tb}
+            {tb === "configs" ? "Configs" : tb === "orders" ? "Orders" : "Users"}
             {tb === "orders" && pending > 0 && (
               <span className="absolute -top-1.5 -end-1 grid size-5 place-items-center rounded-full bg-gold text-[10px] font-bold text-night">
                 {pending}
@@ -602,7 +664,7 @@ export function AdminPanel({
       )}
 
       {tab === "orders" && <OrdersTab orders={orders} onApprove={onApprove} onReject={onReject} />}
-      {tab === "security" && <SecurityTab devices={devices} onChangePass={onChangePass} />}
+      {tab === "users" && <UsersTab devices={devices} ownDeviceId={ownDeviceId} onDevicePremium={onDevicePremium} onChangePass={onChangePass} />}
 
       {tab === "configs" && (
         <button

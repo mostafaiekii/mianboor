@@ -43,6 +43,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.drawscope.Stroke
 import com.mianboor.vpn.AppPrefs
+import com.mianboor.vpn.PayInfo
 import com.mianboor.vpn.R
 
 data class PlanDef(
@@ -59,16 +60,19 @@ val PLANS = listOf(
 )
 
 /**
- * Full purchase flow — pick a tariff → choose payment method → order goes to
- * the hidden admin panel (Orders tab) where the admin approves premium.
+ * Full purchase flow — pick a tariff → choose payment method (card-to-card or
+ * Telegram) → the order is registered on the server and lands in the hidden
+ * admin panel (Orders tab); the admin approves it and the device becomes
+ * premium on its next sync.
  */
 @Composable
 fun PlansSheet(
     visible: Boolean,
     lang: Lang,
     reason: String,           // "renew" | "premium-lock" | "trial-over"
+    payInfo: PayInfo,
     onClose: () -> Unit,
-    onCreateOrder: (planId: String, via: String) -> String,
+    onCreateOrder: (planId: String, via: String, onResult: (String) -> Unit) -> Unit,
 ) {
     val t = stringsOf(lang)
     val mb = LocalMb.current
@@ -101,26 +105,22 @@ fun PlansSheet(
 
     fun tagStr(tag: String) = if (tag == "popular") t.popular else t.bestValue
 
-    fun payTelegram() {
-        val sel = PLANS.first { it.id == plan }
-        orderId = onCreateOrder(sel.id, "telegram")
-        step = "sent"
-        // copy the order summary so the user can paste it to the admin
-        val summary = "Mianboor Order $orderId · ${planStr(sel.key)} · ${
-            when (sel.id) { "p1" -> "200,000"; "p3" -> "400,000"; else -> "700,000" }
-        } Toman · device ${AppPrefs.deviceId(context)}"
-        val clip = context.getSystemService(android.content.ClipboardManager::class.java)
-        clip.setPrimaryClip(android.content.ClipData.newPlainText("mianboor-order", summary))
-    }
-
-    fun payGateway() {
+    fun submit(via: String) {
+        if (busy) return
         busy = true
-        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
-            val sel = PLANS.first { it.id == plan }
-            orderId = onCreateOrder(sel.id, "gateway")
+        onCreateOrder(plan, via) { id ->
+            orderId = id
             busy = false
             step = "sent"
-        }, 1600)
+            if (via == "telegram") {
+                // خلاصه سفارش برای چسباندن در چت تلگرام ادمین
+                val summary = "Mianboor Order $orderId · ${planStr(PLANS.first { it.id == plan }.key)} · " +
+                    when (plan) { "p1" -> "200,000"; "p3" -> "400,000"; else -> "700,000" } +
+                    " Toman · device ${AppPrefs.deviceId(context)}"
+                val clip = context.getSystemService(android.content.ClipboardManager::class.java)
+                clip.setPrimaryClip(android.content.ClipData.newPlainText("mianboor-order", summary))
+            }
+        }
     }
 
     AnimatedVisibility(
@@ -304,7 +304,7 @@ fun PlansSheet(
                         t.payTitle, color = mb.ink, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
                         modifier = Modifier.padding(top = 12.dp),
                     )
-                    // gateway
+                    // card to card
                     Row(
                         Modifier
                             .fillMaxWidth()
@@ -312,7 +312,7 @@ fun PlansSheet(
                             .clip(RoundedCornerShape(12.dp))
                             .background(mb.night)
                             .border(1.dp, mb.panelEdge, RoundedCornerShape(12.dp))
-                            .clickable(enabled = !busy) { payGateway() }
+                            .clickable(enabled = !busy) { submit("gateway") }
                             .padding(16.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
@@ -324,8 +324,7 @@ fun PlansSheet(
                         Spacer(Modifier.width(12.dp))
                         Column(Modifier.weight(1f)) {
                             Text(
-                                if (busy) t.processing else t.payGateway,
-                                color = mb.ink, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
+                                t.payGateway, color = mb.ink, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
                             )
                             Text(t.payGatewaySub, color = mb.dim, fontSize = 13.sp)
                         }
@@ -338,11 +337,15 @@ fun PlansSheet(
                             .clip(RoundedCornerShape(12.dp))
                             .background(mb.night)
                             .border(1.dp, mb.panelEdge, RoundedCornerShape(12.dp))
-                            .clickable(enabled = !busy) { payTelegram() }
+                            .clickable(enabled = !busy) { submit("telegram") }
                             .padding(16.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Icon(ic(R.drawable.ic_send), null, tint = mb.glow, modifier = Modifier.size(20.dp))
+                        if (busy) {
+                            SpinningLoader()
+                        } else {
+                            Icon(ic(R.drawable.ic_send), null, tint = mb.glow, modifier = Modifier.size(20.dp))
+                        }
                         Spacer(Modifier.width(12.dp))
                         Column(Modifier.weight(1f)) {
                             Text(t.viaTelegram, color = mb.ink, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
@@ -370,25 +373,84 @@ fun PlansSheet(
                             Icon(ic(R.drawable.ic_sparkles), null, tint = mb.glow, modifier = Modifier.size(26.dp))
                         }
                         Text(
-                            t.paySuccess, color = mb.ink, fontSize = 17.sp, fontWeight = FontWeight.Bold,
+                            t.orderPlaced, color = mb.ink, fontSize = 16.sp, fontWeight = FontWeight.Bold,
                             modifier = Modifier.padding(top = 10.dp),
+                            textAlign = TextAlign.Center,
                         )
                         Text(
-                            orderId,
+                            "${t.payOrderId}: $orderId",
                             color = mb.dim, fontSize = 13.sp,
                             modifier = Modifier
                                 .padding(top = 6.dp)
                                 .background(mb.night, RoundedCornerShape(50))
                                 .padding(horizontal = 12.dp, vertical = 4.dp),
                         )
-                        Text(
-                            t.orderPlaced, color = mb.ink, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
-                            modifier = Modifier.padding(top = 8.dp), textAlign = TextAlign.Center,
-                        )
+
+                        // ── اطلاعات کارت‌به‌کارت (از سرور) ──
+                        if (payInfo.card.isNotBlank()) {
+                            Column(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = 12.dp)
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(mb.night)
+                                    .border(1.dp, mb.glow.copy(alpha = 0.3f), RoundedCornerShape(12.dp))
+                                    .clickable {
+                                        val clip = context.getSystemService(android.content.ClipboardManager::class.java)
+                                        clip.setPrimaryClip(
+                                            android.content.ClipData.newPlainText("mianboor-card", payInfo.card),
+                                        )
+                                        android.widget.Toast.makeText(context, t.payCopiedCard, android.widget.Toast.LENGTH_SHORT).show()
+                                    }
+                                    .padding(14.dp),
+                            ) {
+                                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(ic(R.drawable.ic_credit_card), null, tint = mb.glow, modifier = Modifier.size(15.dp))
+                                    Spacer(Modifier.width(6.dp))
+                                    Text(t.payCardLabel, color = mb.dim, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                                    Spacer(Modifier.weight(1f))
+                                    Icon(ic(R.drawable.ic_copy), null, tint = mb.dim, modifier = Modifier.size(14.dp))
+                                }
+                                Text(
+                                    payInfo.card, color = mb.ink, fontSize = 17.sp, fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.padding(top = 6.dp),
+                                    textAlign = TextAlign.Center,
+                                    letterSpacing = 1.sp,
+                                    style = androidx.compose.ui.text.TextStyle(
+                                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                                    ),
+                                )
+                                if (payInfo.holder.isNotBlank()) {
+                                    Text(
+                                        "${t.payHolderLabel}: ${payInfo.holder}",
+                                        color = mb.dim, fontSize = 12.sp,
+                                        modifier = Modifier.padding(top = 4.dp).align(Alignment.CenterHorizontally),
+                                    )
+                                }
+                                Text(
+                                    "${t.payAmountLabel}: ${priceStr(PLANS.first { it.id == plan }.key)}",
+                                    color = mb.gold, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+                                    modifier = Modifier.padding(top = 4.dp).align(Alignment.CenterHorizontally),
+                                )
+                                if (payInfo.note.isNotBlank()) {
+                                    Text(
+                                        payInfo.note, color = mb.dim, fontSize = 11.sp, lineHeight = 16.sp,
+                                        modifier = Modifier.padding(top = 6.dp),
+                                        textAlign = TextAlign.Center,
+                                    )
+                                }
+                            }
+                            Text(
+                                t.payCardHint, color = mb.dim, fontSize = 12.sp, lineHeight = 18.sp,
+                                modifier = Modifier.padding(top = 8.dp),
+                                textAlign = TextAlign.Center,
+                            )
+                        }
+
                         Text(
                             t.orderPlacedSub, color = mb.dim, fontSize = 13.sp,
                             lineHeight = 20.sp, textAlign = TextAlign.Center,
-                            modifier = Modifier.padding(top = 4.dp),
+                            modifier = Modifier.padding(top = 8.dp),
                         )
                         Row(
                             Modifier

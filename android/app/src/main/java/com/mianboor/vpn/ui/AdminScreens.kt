@@ -47,9 +47,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.mianboor.vpn.ConfigItem
-import com.mianboor.vpn.DeviceRecord
-import com.mianboor.vpn.Order
+import com.mianboor.vpn.PayInfo
 import com.mianboor.vpn.R
+import com.mianboor.vpn.RemoteDevice
+import com.mianboor.vpn.RemoteOrder
 import com.mianboor.vpn.XrayConfigBuilder
 
 // ---------------------------------------------------------------------------
@@ -384,7 +385,7 @@ private fun AddConfigSheet(
 }
 
 // ---------------------------------------------------------------------------
-// Orders tab
+// Orders tab — server-wide orders (every device)
 // ---------------------------------------------------------------------------
 
 private fun planLabel(plan: String): String = when (plan) {
@@ -395,115 +396,333 @@ private fun planPrice(plan: String): Long = when (plan) {
     "p1" -> 200_000L; "p3" -> 400_000L; else -> 700_000L
 }
 
+private fun planDaysOf(plan: String): Int = when (plan) {
+    "p1" -> 30; "p3" -> 90; else -> 180
+}
+
+private fun timeAgo(ts: Long): String {
+    if (ts <= 0L) return "—"
+    val s = (System.currentTimeMillis() - ts) / 1000L
+    return when {
+        s < 60 -> "just now"
+        s < 3600 -> "${s / 60}m ago"
+        s < 86400 -> "${s / 3600}h ago"
+        else -> "${s / 86400}d ago"
+    }
+}
+
 @Composable
 private fun OrdersTab(
-    orders: List<Order>,
-    onApprove: (String) -> Unit,
-    onReject: (String) -> Unit,
+    orders: List<RemoteOrder>,
+    busy: Boolean,
+    onAction: (String, String) -> Unit,
+    onRefresh: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val mb = LocalMb.current
     val list = orders.sortedWith(
-        compareByDescending<Order> { it.status == "pending" }.thenByDescending { it.at },
+        compareByDescending<RemoteOrder> { it.status == "pending" }.thenByDescending { it.createdAt },
     )
-    LazyColumn(
-        modifier.fillMaxWidth().padding(top = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        if (list.isEmpty()) {
-            item {
+    Column(modifier.fillMaxWidth()) {
+        Row(
+            Modifier.fillMaxWidth().padding(top = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                if (busy) "Loading orders…" else "${list.count { it.status == "pending" }} pending · ${list.size} total",
+                color = mb.dim, fontSize = 12.sp, modifier = Modifier.weight(1f),
+            )
+            Icon(
+                ic(R.drawable.ic_rotate_ccw), "refresh", tint = mb.glow,
+                modifier = Modifier.size(18.dp).clickable { onRefresh() },
+            )
+        }
+        LazyColumn(
+            Modifier.fillMaxWidth().weight(1f).padding(top = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            if (list.isEmpty() && !busy) {
+                item {
+                    Column(
+                        Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(mb.panel)
+                            .border(1.dp, mb.panelEdge, RoundedCornerShape(12.dp))
+                            .padding(16.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        Icon(ic(R.drawable.ic_receipt_text), null, tint = mb.dim, modifier = Modifier.size(30.dp))
+                        Text("No orders yet", color = mb.ink, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.padding(top = 8.dp))
+                        Text(
+                            "When a user buys a plan (card-to-card or Telegram), the order lands here — approve it and their device turns premium on the next sync.",
+                            color = mb.dim, fontSize = 13.sp, lineHeight = 20.sp,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                            modifier = Modifier.padding(top = 4.dp),
+                        )
+                    }
+                }
+            }
+            items(list, key = { it.id }) { o ->
                 Column(
                     Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(12.dp))
-                        .background(mb.panel)
-                        .border(1.dp, mb.panelEdge, RoundedCornerShape(12.dp))
-                        .padding(16.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
+                        .background(if (o.status == "pending") mb.panel else mb.panel.copy(alpha = 0.6f))
+                        .border(
+                            1.dp,
+                            if (o.status == "pending") mb.gold.copy(alpha = 0.4f) else mb.panelEdge,
+                            RoundedCornerShape(12.dp),
+                        )
+                        .padding(12.dp),
                 ) {
-                    Icon(ic(R.drawable.ic_receipt_text), null, tint = mb.dim, modifier = Modifier.size(30.dp))
-                    Text("No orders yet", color = mb.ink, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier.padding(top = 8.dp))
-                    Text(
-                        "When a user taps “Go Premium” and pays, the order lands here — approve it to make them premium instantly.",
-                        color = mb.dim, fontSize = 13.sp, lineHeight = 20.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                        modifier = Modifier.padding(top = 4.dp),
-                    )
-                }
-            }
-        }
-        items(list, key = { it.id }) { o ->
-            Column(
-                Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(if (o.status == "pending") mb.panel else mb.panel.copy(alpha = 0.6f))
-                    .border(
-                        1.dp,
-                        if (o.status == "pending") mb.gold.copy(alpha = 0.4f) else mb.panelEdge,
-                        RoundedCornerShape(12.dp),
-                    )
-                    .padding(12.dp),
-            ) {
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text(o.id, color = mb.ink, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
-                    StatusChip(o.status)
-                }
-                Row(
-                    Modifier.fillMaxWidth().padding(top = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    Text(planLabel(o.plan), color = mb.ink, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                    Text("%,d T".format(planPrice(o.plan)).replace(",", "٬"), color = mb.dim, fontSize = 13.sp)
-                    Icon(ic(R.drawable.ic_fingerprint), null, tint = mb.dim, modifier = Modifier.size(13.dp))
-                    Text(o.device, color = mb.dim, fontSize = 13.sp)
-                    Text("· ${o.via}", color = mb.dim, fontSize = 13.sp)
-                }
-                if (o.status == "pending") {
-                    Row(Modifier.fillMaxWidth().padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Row(
-                            Modifier
-                                .weight(1f)
-                                .clip(RoundedCornerShape(9.dp))
-                                .background(mb.gold)
-                                .clickable { onApprove(o.id) }
-                                .padding(vertical = 9.dp),
-                            horizontalArrangement = Arrangement.Center,
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Icon(ic(R.drawable.ic_crown), null, tint = mb.night, modifier = Modifier.size(15.dp))
-                            Spacer(Modifier.width(6.dp))
-                            Text("Approve premium", color = mb.night, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                        }
-                        Row(
-                            Modifier
-                                .clip(RoundedCornerShape(9.dp))
-                                .border(1.dp, mb.danger.copy(alpha = 0.5f), RoundedCornerShape(9.dp))
-                                .clickable { onReject(o.id) }
-                                .padding(horizontal = 16.dp, vertical = 9.dp),
-                        ) {
-                            Text("Reject", color = mb.danger, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text(o.id, color = mb.ink, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                        Text(timeAgo(o.createdAt), color = mb.dim, fontSize = 11.sp)
+                        Spacer(Modifier.width(8.dp))
+                        StatusChip(o.status)
+                    }
+                    Row(
+                        Modifier.fillMaxWidth().padding(top = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Text(planLabel(o.plan), color = mb.ink, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                        Text("%,d T".format(planPrice(o.plan)).replace(",", "٬"), color = mb.dim, fontSize = 13.sp)
+                        Icon(ic(R.drawable.ic_fingerprint), null, tint = mb.dim, modifier = Modifier.size(13.dp))
+                        Text(o.deviceId, color = mb.glow, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                        Text("· ${o.via}", color = mb.dim, fontSize = 13.sp)
+                    }
+                    if (o.status == "pending") {
+                        Row(Modifier.fillMaxWidth().padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Row(
+                                Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(9.dp))
+                                    .background(mb.gold)
+                                    .clickable { onAction(o.id, "approve") }
+                                    .padding(vertical = 9.dp),
+                                horizontalArrangement = Arrangement.Center,
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Icon(ic(R.drawable.ic_crown), null, tint = mb.night, modifier = Modifier.size(15.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text("Approve premium", color = mb.night, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                            }
+                            Row(
+                                Modifier
+                                    .clip(RoundedCornerShape(9.dp))
+                                    .border(1.dp, mb.danger.copy(alpha = 0.5f), RoundedCornerShape(9.dp))
+                                    .clickable { onAction(o.id, "reject") }
+                                    .padding(horizontal = 16.dp, vertical = 9.dp),
+                            ) {
+                                Text("Reject", color = mb.danger, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                            }
                         }
                     }
-                }
-                if (o.status == "approved") {
-                    Text(
-                        "Premium active on ${o.device} · ${planDaysOf(o.plan)} days",
-                        color = mb.dim, fontSize = 12.sp, modifier = Modifier.padding(top = 8.dp),
-                    )
+                    if (o.status == "approved") {
+                        Text(
+                            "Premium +${planDaysOf(o.plan)} days for ${o.deviceId}",
+                            color = mb.dim, fontSize = 12.sp, modifier = Modifier.padding(top = 8.dp),
+                        )
+                    }
                 }
             }
         }
     }
 }
 
-private fun planDaysOf(plan: String): Int = when (plan) {
-    "p1" -> 30; "p3" -> 90; else -> 180
+// ---------------------------------------------------------------------------
+// Users tab — devices & premium management (Telegram purchases)
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Users tab — devices & premium management (Telegram purchases)
+// ---------------------------------------------------------------------------
+
+@Composable
+private fun UsersTab(
+    devices: List<RemoteDevice>,
+    ownDeviceId: String,
+    busy: Boolean,
+    onDevicePremium: (String, Int) -> Unit,
+    onRefresh: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val mb = LocalMb.current
+    var q by remember { mutableStateOf("") }
+    val list = devices.filter { it.id.contains(q, ignoreCase = true) }
+    val premiumCount = devices.count { it.premium }
+
+    Column(modifier.fillMaxWidth()) {
+        Row(
+            Modifier.fillMaxWidth().padding(top = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                if (busy) "Loading devices…" else "$premiumCount premium · ${devices.size} devices",
+                color = mb.dim, fontSize = 12.sp, modifier = Modifier.weight(1f),
+            )
+            Icon(
+                ic(R.drawable.ic_rotate_ccw), "refresh", tint = mb.glow,
+                modifier = Modifier.size(18.dp).clickable { onRefresh() },
+            )
+        }
+        Text(
+            "Telegram purchase? Ask for their device code (Account → device ID), search it here and grant days.",
+            color = mb.dim, fontSize = 12.sp, lineHeight = 17.sp,
+            modifier = Modifier.padding(top = 6.dp),
+        )
+        // search
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .padding(top = 8.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(mb.panel)
+                .border(1.dp, mb.panelEdge, RoundedCornerShape(12.dp))
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(ic(R.drawable.ic_search), null, tint = mb.dim, modifier = Modifier.size(15.dp))
+            Spacer(Modifier.width(8.dp))
+            BasicTextField(
+                value = q,
+                onValueChange = { q = it },
+                singleLine = true,
+                textStyle = TextStyle(color = mb.ink, fontSize = 13.sp),
+                cursorBrush = SolidColor(mb.glow),
+                decorationBox = { inner ->
+                    Box {
+                        if (q.isEmpty()) Text("MB-…", color = mb.dim, fontSize = 13.sp)
+                        inner()
+                    }
+                },
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+        LazyColumn(
+            Modifier.fillMaxWidth().weight(1f).padding(top = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            if (list.isEmpty() && !busy) {
+                item {
+                    Column(
+                        Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(mb.panel)
+                            .border(1.dp, mb.panelEdge, RoundedCornerShape(12.dp))
+                            .padding(16.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        Icon(ic(R.drawable.ic_users), null, tint = mb.dim, modifier = Modifier.size(30.dp))
+                        Text("No devices yet", color = mb.ink, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.padding(top = 8.dp))
+                        Text(
+                            "Devices appear here automatically once they open the app and sync.",
+                            color = mb.dim, fontSize = 13.sp, lineHeight = 20.sp,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                            modifier = Modifier.padding(top = 4.dp),
+                        )
+                    }
+                }
+            }
+            items(list, key = { it.id }) { d ->
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(mb.panel)
+                        .border(
+                            1.dp,
+                            if (d.premium) mb.gold.copy(alpha = 0.4f) else mb.panelEdge,
+                            RoundedCornerShape(12.dp),
+                        )
+                        .padding(12.dp),
+                ) {
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(ic(R.drawable.ic_fingerprint), null, tint = if (d.premium) mb.gold else mb.dim, modifier = Modifier.size(14.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            d.id,
+                            color = mb.ink, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        )
+                        if (d.id == ownDeviceId) {
+                            Text(
+                                "THIS DEVICE",
+                                color = mb.glow, fontSize = 9.sp, fontWeight = FontWeight.Bold,
+                                modifier = Modifier
+                                    .background(mb.glow.copy(alpha = 0.15f), RoundedCornerShape(50))
+                                    .padding(horizontal = 6.dp, vertical = 2.dp),
+                            )
+                            Spacer(Modifier.width(6.dp))
+                        }
+                        Text(
+                            if (d.premium) "PREMIUM" else "FREE",
+                            color = if (d.premium) mb.gold else mb.dim,
+                            fontSize = 10.sp, fontWeight = FontWeight.Bold,
+                            modifier = Modifier
+                                .background(
+                                    (if (d.premium) mb.gold else mb.dim).copy(alpha = 0.15f),
+                                    RoundedCornerShape(50),
+                                )
+                                .padding(horizontal = 8.dp, vertical = 2.dp),
+                        )
+                    }
+                    if (d.premium && d.premiumUntil > 0L) {
+                        Text(
+                            "until " + java.text.SimpleDateFormat("d MMM yyyy", java.util.Locale.US).format(java.util.Date(d.premiumUntil)),
+                            color = mb.dim, fontSize = 11.sp, modifier = Modifier.padding(top = 4.dp),
+                        )
+                    }
+                    Text(
+                        "last seen " + timeAgo(d.lastSeenAt),
+                        color = mb.dim, fontSize = 11.sp, modifier = Modifier.padding(top = 2.dp),
+                    )
+                    Row(
+                        Modifier.fillMaxWidth().padding(top = 10.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        GrantBtn("+30d", mb) { onDevicePremium(d.id, 30) }
+                        GrantBtn("+90d", mb) { onDevicePremium(d.id, 90) }
+                        GrantBtn("+180d", mb) { onDevicePremium(d.id, 180) }
+                        if (d.premium) {
+                            Box(
+                                Modifier
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .border(1.dp, mb.danger.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
+                                    .clickable { onDevicePremium(d.id, 0) }
+                                    .padding(horizontal = 10.dp, vertical = 6.dp),
+                            ) {
+                                Text("Revoke", color = mb.danger, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun GrantBtn(label: String, mb: com.mianboor.vpn.ui.MbColors, onClick: () -> Unit) {
+    Box(
+        Modifier
+            .clip(RoundedCornerShape(8.dp))
+            .background(mb.glow.copy(alpha = 0.15f))
+            .border(1.dp, mb.glow.copy(alpha = 0.4f), RoundedCornerShape(8.dp))
+            .clickable { onClick() }
+            .padding(horizontal = 10.dp, vertical = 6.dp),
+    ) {
+        Text(label, color = mb.glow, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+    }
 }
 
 // ---------------------------------------------------------------------------
-// Security tab
+// Server tab — sync key, payment info, hardening
 // ---------------------------------------------------------------------------
 
 private val HARDENING = listOf(
@@ -516,24 +735,31 @@ private val HARDENING = listOf(
 )
 
 @Composable
-private fun SecurityTab(
-    devices: List<DeviceRecord>,
+private fun ServerTab(
     blockRoot: Boolean,
     onBlockRoot: (Boolean) -> Unit,
     onChangePass: (String) -> Unit,
     serverKey: String,
     onServerKey: (String) -> Unit,
+    onTestKey: (String, (Boolean) -> Unit) -> Unit,
+    payInfo: PayInfo,
+    onSavePayInfo: (PayInfo) -> Unit,
     toast: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val mb = LocalMb.current
     var np by remember { mutableStateOf("") }
     var sk by remember(serverKey) { mutableStateOf(serverKey) }
+    var testing by remember { mutableStateOf(false) }
+    var card by remember(payInfo) { mutableStateOf(payInfo.card) }
+    var holder by remember(payInfo) { mutableStateOf(payInfo.holder) }
+    var note by remember(payInfo) { mutableStateOf(payInfo.note) }
 
     LazyColumn(
         modifier.fillMaxWidth().padding(top = 12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
+        // ── server sync key ──
         item {
             Column(
                 Modifier
@@ -544,46 +770,116 @@ private fun SecurityTab(
                     .padding(16.dp),
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(ic(R.drawable.ic_fingerprint), null, tint = mb.glow, modifier = Modifier.size(16.dp))
+                    Icon(ic(R.drawable.ic_server), null, tint = mb.glow, modifier = Modifier.size(16.dp))
                     Spacer(Modifier.width(8.dp))
-                    Text("Anti-fraud · device ledger", color = mb.ink, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                }
-                Column(Modifier.padding(top = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    devices.forEach { d ->
-                        Row(
-                            Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(9.dp))
-                                .background(mb.night)
-                                .padding(horizontal = 12.dp, vertical = 10.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Text(
-                                d.id, color = mb.ink, fontSize = 12.sp,
-                                modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis,
-                            )
-                            Text(
-                                if (d.trialUsed) "TRIAL USED" else "TRIAL ACTIVE",
-                                color = if (d.trialUsed) mb.danger else mb.glow,
-                                fontSize = 10.sp, fontWeight = FontWeight.Bold,
-                                modifier = Modifier
-                                    .background(
-                                        (if (d.trialUsed) mb.danger else mb.glow).copy(alpha = 0.15f),
-                                        RoundedCornerShape(50),
-                                    )
-                                    .padding(horizontal = 8.dp, vertical = 2.dp),
-                            )
-                            Spacer(Modifier.width(6.dp))
-                            Text("reinstalls: ${d.reinstalls}", color = mb.dim, fontSize = 10.sp)
-                        }
-                    }
+                    Text("Server sync key", color = mb.ink, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                 }
                 Text(
-                    "Every install is fingerprinted (ANDROID_ID + hardware hash). A factory reset or reinstall can never mint a new free tier.",
-                    color = mb.dim, fontSize = 12.sp, lineHeight = 17.sp, modifier = Modifier.padding(top = 10.dp),
+                    "Must match ADMIN_SYNC_KEY (or ADMIN_PASSWORD) on the server. With it, configs you add are published to every device and user management goes online. Shipped by default — change only if you rotated the server key.",
+                    color = mb.dim, fontSize = 12.sp, lineHeight = 17.sp,
+                    modifier = Modifier.padding(top = 6.dp),
                 )
+                BasicTextField(
+                    value = sk,
+                    onValueChange = { sk = it },
+                    singleLine = true,
+                    textStyle = TextStyle(color = mb.ink, fontSize = 14.sp),
+                    cursorBrush = SolidColor(mb.gold),
+                    visualTransformation = PasswordVisualTransformation(),
+                    decorationBox = { inner ->
+                        Box(
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(top = 12.dp)
+                                .clip(RoundedCornerShape(9.dp))
+                                .background(mb.night)
+                                .border(1.dp, mb.panelEdge, RoundedCornerShape(9.dp))
+                                .padding(horizontal = 12.dp, vertical = 10.dp),
+                        ) {
+                            if (sk.isEmpty()) Text("ADMIN_SYNC_KEY of the server", color = mb.dim, fontSize = 13.sp)
+                            inner()
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Row(
+                    Modifier.fillMaxWidth().padding(top = 12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Box(
+                        Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(9.dp))
+                            .background(mb.gold)
+                            .clickable {
+                                onServerKey(sk)
+                                toast(if (sk.isBlank()) "Server sync disabled" else "Server sync enabled")
+                            }
+                            .padding(vertical = 10.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text("Save & sync", color = mb.night, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                    }
+                    Box(
+                        Modifier
+                            .clip(RoundedCornerShape(9.dp))
+                            .border(1.dp, mb.glow.copy(alpha = 0.5f), RoundedCornerShape(9.dp))
+                            .clickable(enabled = !testing && sk.isNotBlank()) {
+                                testing = true
+                                onTestKey(sk) { ok ->
+                                    testing = false
+                                    toast(if (ok) "Connected — key is valid" else "Failed — wrong key or unreachable server")
+                                }
+                            }
+                            .padding(horizontal = 14.dp, vertical = 10.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            if (testing) "Testing…" else "Test",
+                            color = mb.glow, fontSize = 13.sp, fontWeight = FontWeight.Bold,
+                        )
+                    }
+                }
             }
         }
+        // ── payment info ──
+        item {
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(mb.panel)
+                    .border(1.dp, mb.panelEdge, RoundedCornerShape(12.dp))
+                    .padding(16.dp),
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(ic(R.drawable.ic_credit_card), null, tint = mb.glow, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Card-to-card payment info", color = mb.ink, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                }
+                Text(
+                    "Shown to every user in the purchase sheet. Copy-paste your card number exactly.",
+                    color = mb.dim, fontSize = 12.sp, lineHeight = 17.sp,
+                    modifier = Modifier.padding(top = 6.dp),
+                )
+                AdminField(card, { card = it }, "Card number · 6037-…", mb, Modifier.padding(top = 12.dp))
+                AdminField(holder, { holder = it }, "Card holder name", mb, Modifier.padding(top = 8.dp))
+                AdminField(note, { note = it }, "Note for users (optional)", mb, Modifier.padding(top = 8.dp))
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(top = 12.dp)
+                        .clip(RoundedCornerShape(9.dp))
+                        .background(mb.gold)
+                        .clickable { onSavePayInfo(PayInfo(card.trim(), holder.trim(), note.trim())) }
+                        .padding(vertical = 10.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text("Save payment info", color = mb.night, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+        // ── app hardening ──
         item {
             Column(
                 Modifier
@@ -609,6 +905,7 @@ private fun SecurityTab(
                 }
             }
         }
+        // ── block rooted devices ──
         item {
             Row(
                 Modifier
@@ -623,6 +920,7 @@ private fun SecurityTab(
                 MbSwitch(blockRoot, onChange = onBlockRoot)
             }
         }
+        // ── change admin password ──
         item {
             Column(
                 Modifier
@@ -675,71 +973,43 @@ private fun SecurityTab(
             }
         }
         item {
-            Column(
-                Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(mb.panel)
-                    .border(1.dp, mb.panelEdge, RoundedCornerShape(12.dp))
-                    .padding(16.dp),
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(ic(R.drawable.ic_server), null, tint = mb.glow, modifier = Modifier.size(16.dp))
-                    Spacer(Modifier.width(8.dp))
-                    Text("Server sync key", color = mb.ink, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                }
-                Text(
-                    "Same value as ADMIN_PASSWORD on the server. When set, new configs publish to every device in their category (free / premium) — otherwise they stay on this phone only.",
-                    color = mb.dim, fontSize = 12.sp, lineHeight = 17.sp,
-                    modifier = Modifier.padding(top = 6.dp),
-                )
-                BasicTextField(
-                    value = sk,
-                    onValueChange = { sk = it },
-                    singleLine = true,
-                    textStyle = TextStyle(color = mb.ink, fontSize = 14.sp),
-                    cursorBrush = SolidColor(mb.gold),
-                    visualTransformation = PasswordVisualTransformation(),
-                    decorationBox = { inner ->
-                        Box(
-                            Modifier
-                                .fillMaxWidth()
-                                .padding(top = 12.dp)
-                                .clip(RoundedCornerShape(9.dp))
-                                .background(mb.night)
-                                .border(1.dp, mb.panelEdge, RoundedCornerShape(9.dp))
-                                .padding(horizontal = 12.dp, vertical = 10.dp),
-                        ) {
-                            if (sk.isEmpty()) Text("ADMIN_PASSWORD of the server", color = mb.dim, fontSize = 13.sp)
-                            inner()
-                        }
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                Box(
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(top = 12.dp)
-                        .clip(RoundedCornerShape(9.dp))
-                        .background(mb.gold)
-                        .clickable {
-                            onServerKey(sk)
-                            toast(if (sk.isBlank()) "Server sync disabled" else "Server sync enabled")
-                        }
-                        .padding(vertical = 10.dp),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text("Save & sync", color = mb.night, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                }
-            }
-        }
-        item {
             Text(
                 "Lock after 5 wrong tries · Session ends when app closes · Hidden entry, no visible button.",
                 color = mb.dim, fontSize = 12.sp, lineHeight = 17.sp,
             )
         }
     }
+}
+
+@Composable
+private fun AdminField(
+    value: String,
+    onChange: (String) -> Unit,
+    placeholder: String,
+    mb: com.mianboor.vpn.ui.MbColors,
+    modifier: Modifier = Modifier,
+) {
+    BasicTextField(
+        value = value,
+        onValueChange = onChange,
+        singleLine = true,
+        textStyle = TextStyle(color = mb.ink, fontSize = 14.sp),
+        cursorBrush = SolidColor(mb.glow),
+        decorationBox = { inner ->
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(9.dp))
+                    .background(mb.night)
+                    .border(1.dp, mb.panelEdge, RoundedCornerShape(9.dp))
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
+            ) {
+                if (value.isEmpty()) Text(placeholder, color = mb.dim, fontSize = 13.sp)
+                inner()
+            }
+        },
+        modifier = modifier.fillMaxWidth(),
+    )
 }
 
 // ---------------------------------------------------------------------------
@@ -749,17 +1019,23 @@ private fun SecurityTab(
 @Composable
 fun AdminPanel(
     configs: List<ConfigItem>,
-    orders: List<Order>,
-    devices: List<DeviceRecord>,
+    orders: List<RemoteOrder>,
+    devices: List<RemoteDevice>,
+    ownDeviceId: String,
     blockRoot: Boolean,
     serverKey: String,
+    payInfo: PayInfo,
+    adminBusy: Boolean,
     onServerKey: (String) -> Unit,
+    onTestKey: (String, (Boolean) -> Unit) -> Unit,
+    onSavePayInfo: (PayInfo) -> Unit,
+    onRefreshAdmin: () -> Unit,
+    onDevicePremium: (String, Int) -> Unit,
     onToggleConfig: (String, Boolean) -> Unit,
     onDeleteConfig: (String) -> Unit,
     onTogglePremium: (String) -> Unit,
     onAddConfig: (name: String, country: String, link: String, premium: Boolean) -> Unit,
-    onApprove: (String) -> Unit,
-    onReject: (String) -> Unit,
+    onOrderAction: (String, String) -> Unit,
     onBlockRoot: (Boolean) -> Unit,
     onChangePass: (String) -> Unit,
     onExit: () -> Unit,
@@ -771,6 +1047,7 @@ fun AdminPanel(
 
     val active = configs.count { it.enabled }
     val pending = orders.count { it.status == "pending" }
+    val premiumDevices = devices.count { it.premium }
 
     Box(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize().padding(horizontal = 20.dp)) {
@@ -799,7 +1076,8 @@ fun AdminPanel(
             Row(Modifier.fillMaxWidth().padding(top = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 StatCard(configs.size.toString(), "Configs", Modifier.weight(1f))
                 StatCard(active.toString(), "Live", Modifier.weight(1f))
-                StatCard(orders.size.toString(), "Orders", Modifier.weight(1f))
+                StatCard(pending.toString(), "Pending", Modifier.weight(1f))
+                StatCard(premiumDevices.toString(), "Premium", Modifier.weight(1f))
             }
 
             // tabs
@@ -812,7 +1090,12 @@ fun AdminPanel(
                     .padding(4.dp),
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
             ) {
-                listOf("configs", "orders", "security").forEach { tb ->
+                listOf(
+                    "configs" to "Configs",
+                    "orders" to "Orders",
+                    "users" to "Users",
+                    "server" to "Server",
+                ).forEach { (tb, label) ->
                     Box(
                         Modifier
                             .weight(1f)
@@ -823,17 +1106,30 @@ fun AdminPanel(
                         contentAlignment = Alignment.Center,
                     ) {
                         Text(
-                            tb.replaceFirstChar { it.uppercase() },
+                            label,
                             color = if (tab == tb) mb.ink else mb.dim,
-                            fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+                            fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
                         )
                     }
                 }
             }
 
             if (tab == "configs") {
+                Row(
+                    Modifier.fillMaxWidth().padding(top = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        "Published on the server — users receive them on sync",
+                        color = mb.dim, fontSize = 12.sp, modifier = Modifier.weight(1f),
+                    )
+                    Icon(
+                        ic(R.drawable.ic_rotate_ccw), "refresh", tint = mb.glow,
+                        modifier = Modifier.size(18.dp).clickable { onRefreshAdmin() },
+                    )
+                }
                 LazyColumn(
-                    Modifier.fillMaxWidth().weight(1f).padding(top = 12.dp),
+                    Modifier.fillMaxWidth().weight(1f).padding(top = 8.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     items(configs, key = { it.key }) { c ->
@@ -867,8 +1163,7 @@ fun AdminPanel(
                             }
                             // premium toggle
                             Icon(
-                                ic(if (c.premium) R.drawable.ic_crown else R.drawable.ic_crown),
-                                "premium", tint = if (c.premium) mb.gold else mb.dim.copy(alpha = 0.4f),
+                                ic(R.drawable.ic_crown), "premium", tint = if (c.premium) mb.gold else mb.dim.copy(alpha = 0.4f),
                                 modifier = Modifier
                                     .size(18.dp)
                                     .clickable { onTogglePremium(c.key) },
@@ -890,11 +1185,24 @@ fun AdminPanel(
                     item { Spacer(Modifier.height(70.dp)) }
                 }
             } else if (tab == "orders") {
-                OrdersTab(orders, onApprove, onReject, Modifier.fillMaxWidth().weight(1f))
+                OrdersTab(
+                    orders, adminBusy,
+                    onAction = onOrderAction,
+                    onRefresh = onRefreshAdmin,
+                    Modifier.fillMaxWidth().weight(1f),
+                )
+            } else if (tab == "users") {
+                UsersTab(
+                    devices, ownDeviceId, adminBusy,
+                    onDevicePremium = onDevicePremium,
+                    onRefresh = onRefreshAdmin,
+                    Modifier.fillMaxWidth().weight(1f),
+                )
             } else {
-                SecurityTab(
-                    devices, blockRoot, onBlockRoot, onChangePass,
-                    serverKey, onServerKey, toast,
+                ServerTab(
+                    blockRoot, onBlockRoot, onChangePass,
+                    serverKey, onServerKey, onTestKey,
+                    payInfo, onSavePayInfo, toast,
                     Modifier.fillMaxWidth().weight(1f),
                 )
             }

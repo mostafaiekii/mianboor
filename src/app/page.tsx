@@ -56,7 +56,9 @@ const seedPings = (): Record<number, number> =>
   Object.fromEntries(SEED.map((c) => [c.id, c.ping]));
 
 const freshDevices = (): DeviceRecord[] => [
-  { id: DEVICE_ID, trialUsed: false, reinstalls: 0, seen: "just now" },
+  { id: DEVICE_ID, premium: false, trialUsed: false, reinstalls: 0, seen: "just now" },
+  { id: "MB-2K8D-41F7", premium: false, trialUsed: true, reinstalls: 1, seen: "2h ago" },
+  { id: "MB-9Q3L-77XE", premium: true, premiumUntil: Date.now() + 40 * 86400_000, trialUsed: true, reinstalls: 0, seen: "yesterday" },
 ];
 
 function NavBtn({
@@ -107,6 +109,8 @@ export default function VpnDemoPage() {
   const [usedGb, setUsedGb] = useState(1.2);
   const [split, setSplit] = useState<SplitState>({ mode: "exclude", apps: [] });
   const [toast, setToast] = useState<{ msg: string; k: number } | null>(null);
+  const [syncing, setSyncing] = useState(false);
+  const [syncOk, setSyncOk] = useState<boolean | null>(null);
 
   const t = tr(lang);
   const holdStart = useRef(0);
@@ -192,6 +196,17 @@ export default function VpnDemoPage() {
     setTimeout(() => setVpn((v) => (v === "connecting" ? "on" : v)), 1400);
   };
 
+  /* ── رفرش سرورها — شبیه‌سازی sync با سرور اصلی (در اپ واقعی از API می‌آید) ── */
+  const refreshServers = () => {
+    if (syncing) return;
+    setSyncing(true);
+    setTimeout(() => {
+      setSyncing(false);
+      setSyncOk(true);
+      showToast(t.syncDoneToast);
+    }, 900);
+  };
+
   /* ── خرید: سفارش ثبت می‌شه، ادمین از تب Orders تأیید می‌کنه ── */
   const createOrder = (plan: PlanId, via: "gateway" | "telegram"): string => {
     const id = `MB-${Math.floor(1000 + Math.random() * 9000)}`;
@@ -211,6 +226,28 @@ export default function VpnDemoPage() {
   const rejectOrder = (id: string) => {
     setOrders((os) => os.map((x) => (x.id === id ? { ...x, status: "rejected" } : x)));
     showToast(t.orderRejectedToast);
+  };
+
+  /* ── پرمیوم‌کردن مستقیم دستگاه (خرید تلگرامی) — days=0 یعنی لغو ── */
+  const devicePremium = (id: string, days: number) => {
+    setDevices((ds) =>
+      ds.map((d) =>
+        d.id === id
+          ? {
+              ...d,
+              premium: days > 0,
+              premiumUntil: days > 0 ? Math.max(Date.now(), d.premiumUntil ?? 0) + days * 86400_000 : undefined,
+            }
+          : d,
+      ),
+    );
+    if (id === DEVICE_ID) {
+      setEntitlement(
+        days > 0
+          ? { plan: "p3", expiresAt: Math.max(Date.now(), entitlement.expiresAt ?? 0) + days * 86400_000 }
+          : { plan: "free" },
+      );
+    }
   };
 
   /* ── ضدچیت: شبیه‌سازی نصب مجدد — دوره رایگان روی دستگاه قفل می‌مونه ── */
@@ -278,6 +315,7 @@ export default function VpnDemoPage() {
     setSplit({ mode: "exclude", apps: [] });
     setTheme("midnight");
     setLang("en");
+    setSyncOk(null);
   };
 
   const isAdmin = screen === "login" || screen === "admin";
@@ -434,6 +472,9 @@ export default function VpnDemoPage() {
                     configs={liveConfigs}
                     selectedId={selectedId}
                     premiumUser={premium}
+                    syncing={syncing}
+                    syncOk={syncOk}
+                    onRefresh={refreshServers}
                     onSelect={(id) => {
                       setSelectedId(id);
                       setScreen("home");
@@ -486,8 +527,10 @@ export default function VpnDemoPage() {
                     setConfigs={setConfigs}
                     orders={orders}
                     devices={devices}
+                    ownDeviceId={DEVICE_ID}
                     onApprove={approveOrder}
                     onReject={rejectOrder}
+                    onDevicePremium={devicePremium}
                     onChangePass={setPass}
                     onExit={() => {
                       setUnlocked(false);

@@ -42,6 +42,8 @@ export interface Order {
 
 export interface DeviceRecord {
   id: string;
+  premium: boolean;
+  premiumUntil?: number;
   trialUsed: boolean;
   reinstalls: number;
   seen: string;

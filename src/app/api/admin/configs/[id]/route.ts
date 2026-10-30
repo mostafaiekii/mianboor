@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { ensureDb } from "@/lib/ensure-db";
 import { isAdminReq } from "@/lib/admin-auth";
 
 /** فعال/غیرفعال کردن کانفیگ (و تغییر پرچم premium) */
@@ -11,6 +12,7 @@ export async function PATCH(
     return NextResponse.json({ ok: false, error: "دسترسی غیرمجاز" }, { status: 401 });
   }
   const { id } = await params;
+  await ensureDb();
   try {
     const { active, premium } = await req.json();
     const data: { active?: boolean; premium?: boolean } = {};
@@ -38,6 +40,7 @@ export async function DELETE(
     return NextResponse.json({ ok: false, error: "دسترسی غیرمجاز" }, { status: 401 });
   }
   const { id } = await params;
+  await ensureDb();
   try {
     await db.vpnConfig.delete({ where: { id } });
     return NextResponse.json({ ok: true });

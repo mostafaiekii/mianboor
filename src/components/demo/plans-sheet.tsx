@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Check, CreditCard, Crown, Loader2, PartyPopper, Send, X } from "lucide-react";
+import { Check, Copy, CreditCard, Crown, PartyPopper, Send, X } from "lucide-react";
 import { TG_SUPPORT, tr, type Lang } from "./i18n";
 import { PLAN_DAYS, type PlanId } from "./types";
 
@@ -10,6 +10,13 @@ const PLANS: { id: PlanId; key: "m1" | "m3" | "m6"; price: "price1" | "price3" |
   { id: "p3", key: "m3", price: "price3", sub: "sub3", tag: "popular" },
   { id: "p6", key: "m6", price: "price6", sub: "sub6", tag: "bestValue" },
 ];
+
+/** اطلاعات کارت‌به‌کارت — در اپ واقعی از سرور (تب Server پنل ادمین) می‌آید. */
+export const DEMO_PAY = {
+  card: "6037-9977-1234-5678",
+  holder: "MIANBOOR",
+  note: "شماره سفارش را در شرح پرداخت بنویسید",
+};
 
 type Step = "pick" | "pay" | "sent";
 
@@ -32,23 +39,12 @@ export function PlansSheet({
   const rtl = lang === "fa";
   const [step, setStep] = useState<Step>("pick");
   const [plan, setPlan] = useState<PlanId>("p3");
-  const [busy, setBusy] = useState(false);
   const [orderId, setOrderId] = useState("");
 
   const sel = PLANS.find((p) => p.id === plan)!;
 
-  const payGateway = () => {
-    setBusy(true);
-    setTimeout(() => {
-      const id = onCreateOrder(plan, "gateway");
-      setOrderId(id);
-      setBusy(false);
-      setStep("sent");
-    }, 1600);
-  };
-
-  const payTelegram = () => {
-    const id = onCreateOrder(plan, "telegram");
+  const pay = (via: "gateway" | "telegram") => {
+    const id = onCreateOrder(plan, via);
     setOrderId(id);
     setStep("sent");
   };
@@ -156,20 +152,18 @@ export function PlansSheet({
             <div className="text-sm font-semibold text-ink">{t.payTitle}</div>
             <button
               type="button"
-              disabled={busy}
-              onClick={payGateway}
-              className="flex items-center gap-3 rounded-xl border border-panel-edge bg-night px-4 py-4 text-start transition-colors hover:border-glow/50 disabled:opacity-60"
+              onClick={() => pay("gateway")}
+              className="flex items-center gap-3 rounded-xl border border-panel-edge bg-night px-4 py-4 text-start transition-colors hover:border-glow/50"
             >
-              {busy ? <Loader2 className="size-5 shrink-0 animate-spin text-glow" /> : <CreditCard className="size-5 shrink-0 text-glow" />}
+              <CreditCard className="size-5 shrink-0 text-glow" />
               <span className="flex-1">
-                <span className="block text-sm font-semibold text-ink">{busy ? t.processing : t.payGateway}</span>
+                <span className="block text-sm font-semibold text-ink">{t.payGateway}</span>
                 <span className="block text-sm text-dim">{t.payGatewaySub}</span>
               </span>
             </button>
             <button
               type="button"
-              disabled={busy}
-              onClick={payTelegram}
+              onClick={() => pay("telegram")}
               className="flex items-center gap-3 rounded-xl border border-panel-edge bg-night px-4 py-4 text-start transition-colors hover:border-glow/50"
             >
               <Send className="size-5 shrink-0 text-glow" />
@@ -189,11 +183,31 @@ export function PlansSheet({
             <span className="grid size-14 place-items-center rounded-full bg-glow/15">
               <PartyPopper className="size-7 text-glow" />
             </span>
-            <div className="font-display text-lg font-bold text-ink">{t.paySuccess}</div>
+            <div className="font-display text-lg font-bold text-ink">{t.orderPlaced}</div>
             <div dir="ltr" className="rounded-full bg-night px-3 py-1 font-mono text-sm text-dim">
-              {orderId}
+              {t.payOrderId}: {orderId}
             </div>
-            <div className="text-sm font-semibold text-ink">{t.orderPlaced}</div>
+            {/* اطلاعات کارت‌به‌کارت — در اپ واقعی از سرور می‌آید */}
+            <button
+              type="button"
+              dir="ltr"
+              onClick={() => {
+                navigator.clipboard?.writeText(DEMO_PAY.card).catch(() => {});
+              }}
+              className="w-full rounded-xl border border-glow/30 bg-night px-4 py-3"
+              aria-label={t.payCardLabel}
+            >
+              <span className="flex items-center gap-1.5 text-xs font-medium text-dim">
+                <CreditCard className="size-3.5" /> {t.payCardLabel} <Copy className="ms-auto size-3.5" />
+              </span>
+              <span className="mt-1 block font-mono text-lg font-bold tracking-wider text-ink">{DEMO_PAY.card}</span>
+              <span className="mt-1 block text-xs text-dim">{t.payHolderLabel}: {DEMO_PAY.holder}</span>
+              <span className="mt-1 block text-sm font-semibold text-gold">
+                {t.payAmountLabel}: {t[sel.price]}
+              </span>
+              <span className="mt-1 block text-xs leading-5 text-dim">{DEMO_PAY.note}</span>
+            </button>
+            <div className="text-xs leading-5 text-dim">{t.payCardHint}</div>
             <div className="text-sm leading-6 text-dim">{t.orderPlacedSub}</div>
             <div className="mt-1 flex w-full flex-col gap-2">
               <a

@@ -17,3 +17,30 @@ model VpnConfig {
   premium   Boolean  @default(false)
   createdAt DateTime @default(now())
 }
+
+// دستگاه‌های نصب‌شده — با هر sync ثبت/به‌روز می‌شوند؛ پرمیوم بودن اینجا تعیین می‌شود
+model Device {
+  id           String    @id // MB-XXXX-XXXX (ANDROID_ID hash از اپ)
+  premiumUntil DateTime?
+  label        String    @default("") // مدل گوشی (اختیاری، از اپ می‌آید)
+  appVersion   String    @default("")
+  lastSeenAt   DateTime  @default(now())
+  createdAt    DateTime  @default(now())
+}
+
+// سفارش‌های خرید — روی سرور ثبت می‌شوند تا مدیر از پنل مخفی ببیند و تأیید کند
+model Order {
+  id        String   @id // MB-1234
+  deviceId  String
+  plan      String // p1 | p3 | p6
+  price     Int
+  via       String // gateway | telegram
+  status    String   @default("pending") // pending | approved | rejected
+  createdAt DateTime @default(now())
+}
+
+// تنظیمات عمومی (شماره کارت پرداخت و ...) — از پنل ادمین قابل ویرایش
+model AppSetting {
+  key   String @id
+  value String
+}

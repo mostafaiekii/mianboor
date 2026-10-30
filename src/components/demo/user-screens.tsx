@@ -14,8 +14,10 @@ import {
   Fingerprint,
   GitBranch,
   Info,
+  Loader2,
   Lock,
   Power,
+  RotateCcw,
   Search,
   Send,
   Settings,
@@ -207,6 +209,9 @@ export function ServersScreen({
   configs,
   selectedId,
   premiumUser,
+  syncing,
+  syncOk,
+  onRefresh,
   onSelect,
   onPremiumTap,
   onBack,
@@ -215,6 +220,9 @@ export function ServersScreen({
   configs: ConfigItem[];
   selectedId: number | null;
   premiumUser: boolean;
+  syncing: boolean;
+  syncOk: boolean | null;
+  onRefresh: () => void;
   onSelect: (id: number) => void;
   onPremiumTap: () => void;
   onBack: () => void;
@@ -233,10 +241,27 @@ export function ServersScreen({
 
   return (
     <div dir={rtl ? "rtl" : "ltr"} className="flex min-h-0 flex-1 flex-col px-5 pt-2">
-      <button type="button" onClick={onBack} aria-label="Back" className="w-fit text-dim hover:text-ink">
-        <Back className="size-6" />
-      </button>
-      <h2 className="mt-3 font-display text-2xl font-bold text-ink">{t.selectLocation}</h2>
+      <div className="flex items-center gap-3">
+        <button type="button" onClick={onBack} aria-label="Back" className="w-fit text-dim hover:text-ink">
+          <Back className="size-6" />
+        </button>
+        <h2 className="flex-1 font-display text-2xl font-bold text-ink">{t.selectLocation}</h2>
+        {/* دکمه به‌روزرسانی از سرور — مثل اپ واقعی */}
+        <button
+          type="button"
+          onClick={onRefresh}
+          disabled={syncing}
+          aria-label={t.syncRefresh}
+          title={t.syncRefresh}
+          className={
+            syncOk === false
+              ? "grid size-9 shrink-0 place-items-center rounded-xl border border-panel-edge bg-panel text-danger hover:border-danger/40"
+              : "grid size-9 shrink-0 place-items-center rounded-xl border border-panel-edge bg-panel text-glow hover:border-glow/40"
+          }
+        >
+          {syncing ? <Loader2 className="size-4 animate-spin" /> : <RotateCcw className="size-4" />}
+        </button>
+      </div>
       <label className="mt-4 flex items-center gap-3 rounded-xl border border-panel-edge bg-panel px-4 py-3">
         <Search className="size-4 text-dim" />
         <input
@@ -272,6 +297,10 @@ export function ServersScreen({
             <span className="relative inline-flex size-2 rounded-full bg-glow" />
           </span>
           {t.livePing}
+        </span>
+        {/* وضعیت همگام‌سازی با سرور */}
+        <span className={syncOk === false ? "ms-auto text-xs text-danger" : "ms-auto text-xs"}>
+          {syncing ? t.syncing : syncOk === null ? t.syncNever : syncOk ? t.syncOkAgo.replace("{m}", "<1") : t.syncFail}
         </span>
       </div>
       <div className="scroll-hide mt-2 flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto pb-3">
@@ -423,7 +452,11 @@ export function AccountScreen({
           </span>
         </div>
       ) : (
-        <div className="flex items-center gap-4 rounded-2xl border border-panel-edge bg-panel p-4">
+        <button
+          type="button"
+          onClick={onUpgrade}
+          className="flex items-center gap-4 rounded-2xl border border-panel-edge bg-panel p-4 text-start transition-colors hover:border-glow/40"
+        >
           <span className="grid size-12 shrink-0 place-items-center rounded-full bg-ink/10">
             <User className="size-6 text-ink" />
           </span>
@@ -432,7 +465,7 @@ export function AccountScreen({
             <span className="block text-sm text-dim">{t.planFreeSub}</span>
           </span>
           <Fwd className="size-5 shrink-0 text-dim" />
-        </div>
+        </button>
       )}
 
       {/* usage */}

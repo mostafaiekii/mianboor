@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { ensureDb } from "@/lib/ensure-db";
 import { isAdminReq } from "@/lib/admin-auth";
 
 /** لیست همه کانفیگ‌ها — فقط مدیر (کوکی وب یا هدر x-admin-key اپ) */
@@ -7,6 +8,7 @@ export async function GET(req: Request) {
   if (!(await isAdminReq(req))) {
     return NextResponse.json({ ok: false, error: "دسترسی غیرمجاز" }, { status: 401 });
   }
+  await ensureDb();
   const configs = await db.vpnConfig.findMany({
     orderBy: { createdAt: "desc" },
   });
@@ -18,6 +20,7 @@ export async function POST(req: Request) {
   if (!(await isAdminReq(req))) {
     return NextResponse.json({ ok: false, error: "دسترسی غیرمجاز" }, { status: 401 });
   }
+  await ensureDb();
   try {
     const { name, country, links, premium } = await req.json();
     const lines = String(links ?? "")

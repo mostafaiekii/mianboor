@@ -68,6 +68,7 @@ jobs:
         env:
           MIANOOR_SERVER_URL: ${{ secrets.MIANOOR_SERVER_URL }}
           MIANOOR_CLIENT_TOKEN: ${{ secrets.MIANOOR_CLIENT_TOKEN }}
+          MIANOOR_ADMIN_KEY: ${{ secrets.MIANOOR_ADMIN_KEY }}
           MB_STORE_PASSWORD: ${{ secrets.MB_STORE_PASSWORD }}
           MB_KEY_ALIAS: ${{ secrets.MB_KEY_ALIAS }}
           MB_KEY_PASSWORD: ${{ secrets.MB_KEY_PASSWORD }}
@@ -76,6 +77,7 @@ jobs:
           ./gradlew :app:assembleRelease --no-daemon --stacktrace \
             -PMIANOOR_SERVER_URL="$MIANOOR_SERVER_URL" \
             -PMIANOOR_CLIENT_TOKEN="$MIANOOR_CLIENT_TOKEN" \
+            -PMIANOOR_ADMIN_KEY="${MIANOOR_ADMIN_KEY:-[REDACTED-SECURITY]}" \
             -PMB_STORE_FILE=android/keystore/release.jks \
             -PMB_STORE_PASSWORD="$MB_STORE_PASSWORD" \
             -PMB_KEY_ALIAS="$MB_KEY_ALIAS" \

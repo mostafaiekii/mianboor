@@ -339,6 +339,14 @@ object XrayConfigBuilder {
             )
 
         val proxy = server.outbound.put("tag", "proxy")
+        // بهینه‌سازی سرعت: حذف Nagle (tcpNoDelay) و TCP Fast Open در صورت پشتیبانی سرور —
+        // دست‌دادن (handshake) سریع‌تر و تأخیر کمتر برای وب‌سوکت/CDN
+        val stream = proxy.optJSONObject("streamSettings") ?: JSONObject()
+        stream.put(
+            "sockopt",
+            JSONObject().put("tcpFastOpen", true).put("tcpNoDelay", true)
+        )
+        proxy.put("streamSettings", stream)
         val direct = JSONObject().put("tag", "direct").put("protocol", "freedom").put("settings", JSONObject())
 
         val routing = JSONObject()

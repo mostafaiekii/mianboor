@@ -1,29 +1,56 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { ensureDb } from "@/lib/ensure-db";
 import { clientToken } from "@/lib/admin-auth";
 
 /**
  * نقطه اتصال اپ اندروید (و سایر کلاینت‌ها)
  *
  * توزیع هدفمند کانفیگ‌ها بر اساس دسته‌ی کاربر:
- *  - plan=premium → همه‌ی کانفیگ‌های فعال (رایگان + پرمیوم)
- *  - plan=free یا بدون plan → فقط کانفیگ‌های رایگان
- * یعنی لینک کانفیگ‌های پرمیوم هرگز به دستگاه کاربران رایگان حتی نمی‌رسد.
+ *  - device=MB-… ارسال شود → سرور وضعیت پرمیوم دستگاه را از دیتابیس می‌خواند
+ *    (مدیر از پنل مخفی می‌تواند دستگاه را پرمیوم کند) و کانفیگ‌های مجاز همان
+ *    دسته را برمی‌گرداند؛ خروجی plan/premiumUntil هم دارد تا اپ همگام شود.
+ *  - فقط plan=free|premium (نسخه‌های قدیمی اپ) → همان رفتار قبلی.
  *
  * کاربران هرگز لینک‌ها را در UI نمی‌بینند و لینک خام هرگز داخل اپ باندل نمی‌شود.
- * فراخوانی: GET /api/client/configs?token=CLIENT_TOKEN&plan=free|premium
+ * فراخوانی: GET /api/client/configs?token=CLIENT_TOKEN[&device=MB-…][&plan=free|premium]
  */
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const token = searchParams.get("token");
-  const plan = (searchParams.get("plan") ?? "free").toLowerCase();
+  const device = (searchParams.get("device") ?? "").trim().toUpperCase();
+  const planParam = (searchParams.get("plan") ?? "").toLowerCase();
 
   if (!token || token !== clientToken()) {
     return NextResponse.json(
       { ok: false, error: "توکن نامعتبر" },
-      { status: 401 }
+      { status: 401 },
     );
   }
+
+  await ensureDb();
+
+  // وضعیت پرمیوم دستگاه از سرور (مرجع نهایی)
+  let premium = false;
+  let premiumUntil: string | null = null;
+  if (device) {
+    const dev = await db.device
+      .upsert({
+        where: { id: device },
+        create: { id: device, lastSeenAt: new Date() },
+        update: { lastSeenAt: new Date() },
+      })
+      .catch(() => null);
+    if (dev?.premiumUntil && dev.premiumUntil.getTime() > Date.now()) {
+      premium = true;
+      premiumUntil = dev.premiumUntil.toISOString();
+    } else if (dev?.premiumUntil) {
+      // انقضا گذشته — وضعیت به روز شود
+      premiumUntil = null;
+    }
+  }
+
+  const plan = device ? (premium ? "premium" : "free") : planParam || "free";
 
   const configs = await db.vpnConfig.findMany({
     where: {
@@ -35,8 +62,25 @@ export async function GET(req: Request) {
     orderBy: { createdAt: "desc" },
   });
 
-  // پاسخ به‌صورت آرایه‌ی خام برمی‌گردد تا با نسخه‌های فعلی اپ اندروید سازگار باشد
-  return NextResponse.json(configs, {
-    headers: { "Cache-Control": "no-store" },
-  });
+  // اطلاعات پرداخت کارت‌به‌کارت (از تنظیمات پنل ادمین)
+  const settings = await db.appSetting.findMany({
+    where: { key: { in: ["pay_card", "pay_holder", "pay_note"] } },
+  }).catch(() => []);
+  const get = (k: string) => settings.find((s) => s.key === k)?.value ?? "";
+
+  return NextResponse.json(
+    {
+      ok: true,
+      configs,
+      plan,
+      premiumUntil,
+      serverTime: Date.now(),
+      pay: {
+        card: get("pay_card") || "6037-9977-XXXX-XXXX",
+        holder: get("pay_holder") || "MIANBOOR",
+        note: get("pay_note") || "شناسه دستگاه خود را در شرح پرداخت بنویسید",
+      },
+    },
+    { headers: { "Cache-Control": "no-store" } },
+  );
 }

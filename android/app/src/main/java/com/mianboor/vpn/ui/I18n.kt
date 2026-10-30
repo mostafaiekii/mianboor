@@ -79,6 +79,12 @@ interface Strings {
     val payGatewaySub: String
     val viaTelegram: String
     val viaTelegramSub: String
+    val payCardLabel: String
+    val payHolderLabel: String
+    val payAmountLabel: String
+    val payCardHint: String
+    val payCopiedCard: String
+    val payOrderId: String
     val processing: String
     val paySuccess: String
     val orderPlaced: String
@@ -112,6 +118,12 @@ interface Strings {
     fun aboutLine(v: String): String
     val noKey: String
     val noServers: String
+    val syncRefresh: String
+    val syncing: String
+    val syncNever: String
+    fun syncOkAgo(mins: String): String
+    val syncFail: String
+    val syncRetry: String
     val connectingMsgs: List<String>
     val scanningMsgs: List<String>
     val errPermission: String
@@ -199,10 +211,17 @@ object EnStrings : Strings {
     override val bestValue = "Best value"
     override val continuePay = "Continue to payment"
     override val payTitle = "Payment method"
-    override val payGateway = "Payment gateway"
-    override val payGatewaySub = "Card / wallet · simulated in demo"
+    override val payGateway = "Card to card"
+    override val payGatewaySub = "Transfer to the card, then send the receipt"
     override val viaTelegram = "Telegram · @member9"
     override val viaTelegramSub = "Pay via admin, activation by admin"
+    override val payCardLabel = "Card number"
+    override val payHolderLabel = "Card holder"
+    override val payAmountLabel = "Amount"
+    override val payCardHint =
+        "Transfer the exact amount, put your order ID in the description, then send the receipt on Telegram."
+    override val payCopiedCard = "Card number copied"
+    override val payOrderId = "Order ID"
     override val processing = "Connecting to the gateway…"
     override val paySuccess = "Payment successful"
     override val orderPlaced = "Order placed — waiting for admin approval"
@@ -240,6 +259,12 @@ object EnStrings : Strings {
     override fun aboutLine(v: String) = "Mianboor VPN · v$v"
     override val noKey = "No key, no sign-up — install & connect."
     override val noServers = "No servers available yet — the admin hasn't published any."
+    override val syncRefresh = "Refresh"
+    override val syncing = "Syncing…"
+    override val syncNever = "Not synced yet"
+    override fun syncOkAgo(mins: String) = "Synced $mins ago"
+    override val syncFail = "Sync failed"
+    override val syncRetry = "Tap ↻ to retry"
     override val connectingMsgs = listOf(
         "Establishing the secure tunnel…",
         "Encryption keys are being exchanged…",
@@ -337,10 +362,17 @@ object FaStrings : Strings {
     override val bestValue = "به‌صرفه‌ترین"
     override val continuePay = "ادامه و پرداخت"
     override val payTitle = "روش پرداخت"
-    override val payGateway = "درگاه پرداخت"
-    override val payGatewaySub = "کارت / کیف پول · توی دمو شبیه‌سازی می‌شه"
+    override val payGateway = "کارت به کارت"
+    override val payGatewaySub = "به شماره کارت واریز کن و رسید رو بفرست"
     override val viaTelegram = "تلگرام · @member9"
     override val viaTelegramSub = "پرداخت نزد ادمین، فعال‌سازی دستی"
+    override val payCardLabel = "شماره کارت"
+    override val payHolderLabel = "به نام"
+    override val payAmountLabel = "مبلغ"
+    override val payCardHint =
+        "مبلغ دقیق رو واریز کن، شماره سفارش رو در شرح پرداخت بنویس و رسیدش رو در تلگرام بفرست."
+    override val payCopiedCard = "شماره کارت کپی شد"
+    override val payOrderId = "شماره سفارش"
     override val processing = "در حال اتصال به درگاه…"
     override val paySuccess = "پرداخت موفق"
     override val orderPlaced = "سفارش ثبت شد — منتظر تأیید ادمین"
@@ -378,6 +410,12 @@ object FaStrings : Strings {
     override fun aboutLine(v: String) = "میانبر VPN · نسخه $v"
     override val noKey = "نه کلید می‌خواد نه ثبت‌نام؛ نصب کن و وصل شو."
     override val noServers = "هنوز سروری منتشر نشده — ادمین بعداً اضافه می‌کنه."
+    override val syncRefresh = "به‌روزرسانی"
+    override val syncing = "در حال همگام‌سازی…"
+    override val syncNever = "هنوز همگام نشده"
+    override fun syncOkAgo(mins: String) = "$mins دقیقه پیش همگام شد"
+    override val syncFail = "همگام‌سازی ناموفق"
+    override val syncRetry = "برای تلاش دوباره ↻ را بزن"
     override val connectingMsgs = listOf(
         "در حال برقراری تونل امن…",
         "کلیدهای رمزنگاری رد و بدل می‌شن…",

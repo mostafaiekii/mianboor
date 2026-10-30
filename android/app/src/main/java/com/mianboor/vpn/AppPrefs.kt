@@ -237,10 +237,12 @@ object AppPrefs {
     fun setAdminPass(c: Context, v: String) { ed(c).putString("admin_pass", v).apply() }
 
     /**
-     * کلید مدیر سرور (همان ADMIN_PASSWORD سمت سرور) — با هدر x-admin-key فرستاده می‌شود.
-     * خالی باشد یعنی انتشار روی سرور غیرفعال است و کانفیگ‌ها فقط لوکال ذخیره می‌شوند.
+     * کلید مدیر سرور — پیش‌فرض از BuildConfig.ADMIN_KEY (که CI از secret تزریق می‌کند)
+     * تا انتشار کانفیگ و مدیریت کاربران بدون تنظیم دستی کار کند. از پنل مخفی قابل
+     * تغییر است (مثلاً اگر ADMIN_SYNC_KEY سرور را عوض کردید).
      */
-    fun adminServerKey(c: Context): String = p(c).getString("admin_server_key", "") ?: ""
+    fun adminServerKey(c: Context): String =
+        p(c).getString("admin_server_key", BuildConfig.ADMIN_KEY)?.trim() ?: ""
     fun setAdminServerKey(c: Context, v: String) { ed(c).putString("admin_server_key", v.trim()).apply() }
 
     // ── last connected server (auto-connect on boot) ──────────────────
@@ -251,5 +253,14 @@ object AppPrefs {
 
     fun setLastServer(c: Context, link: String, name: String, country: String) {
         ed(c).putString("last_link", link).putString("last_name", name).putString("last_country", country).apply()
+    }
+
+    // ── sync status (for the servers screen) ──────────────────────
+
+    fun lastSyncAt(c: Context): Long = p(c).getLong("last_sync_at", 0L)
+    fun lastSyncOk(c: Context): Boolean = p(c).getBoolean("last_sync_ok", false)
+
+    fun setSyncStatus(c: Context, ok: Boolean) {
+        ed(c).putLong("last_sync_at", System.currentTimeMillis()).putBoolean("last_sync_ok", ok).apply()
     }
 }

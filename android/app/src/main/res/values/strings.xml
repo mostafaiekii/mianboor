@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">میانبر</string>
-    <string name="notif_title">میانبر فعال است</string>
+    <string name="app_name">Mianboor</string>
+    <string name="notif_title">Mianboor فعال است</string>
     <string name="notif_text">اتصال امن شما برقرار است</string>
 </resources>
