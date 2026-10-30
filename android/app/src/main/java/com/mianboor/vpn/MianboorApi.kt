@@ -101,14 +101,16 @@ object MianboorApi {
         conn.disconnect()
     }
 
-    /** Full config list for the admin panel (incl. inactive). */
+    /** Full config list for the admin panel (incl. inactive). Throws on failure. */
     fun adminListConfigs(serverUrl: String, adminKey: String): List<RemoteConfig> {
         val conn = adminConn(serverUrl, adminKey, "/api/admin/configs", "GET")
-        return try {
-            if (conn.responseCode != 200) return emptyList()
+        try {
+            if (conn.responseCode != 200) {
+                throw IllegalStateException("admin list failed: ${conn.responseCode}")
+            }
             val body = conn.inputStream.bufferedReader().use { it.readText() }
             val arr = JSONObject(body).optJSONArray("configs") ?: JSONArray()
-            (0 until arr.length()).mapNotNull { i ->
+            return (0 until arr.length()).mapNotNull { i ->
                 val o = arr.getJSONObject(i)
                 val link = o.optString("link")
                 if (link.isNullOrBlank()) return@mapNotNull null
@@ -121,8 +123,6 @@ object MianboorApi {
                     active = o.optBoolean("active", true),
                 )
             }
-        } catch (t: Throwable) {
-            emptyList()
         } finally {
             conn.disconnect()
         }
