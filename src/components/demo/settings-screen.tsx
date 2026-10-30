@@ -14,6 +14,7 @@ export function SettingsScreen({
   pingLive,
   setPingLive,
   onReinstall,
+  version,
   onBack,
 }: {
   lang: Lang;
@@ -23,6 +24,8 @@ export function SettingsScreen({
   pingLive: boolean;
   setPingLive: (v: boolean) => void;
   onReinstall: () => void;
+  /** نسخهٔ فعلی اپ — بعد از آپدیت OTA به‌روز می‌شه */
+  version: string;
   onBack: () => void;
 }) {
   const t = tr(lang);
@@ -125,7 +128,7 @@ export function SettingsScreen({
           <span className="text-sm font-semibold text-ink">{t.about}</span>
         </div>
         <div className="mt-2 text-sm text-dim" dir="ltr">
-          {t.aboutLine}
+          {t.aboutLine.replace("{v}", version)}
         </div>
         <div className="mt-1 text-sm leading-6 text-dim">{t.noKey}</div>
       </div>

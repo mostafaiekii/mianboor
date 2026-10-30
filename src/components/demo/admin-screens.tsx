@@ -2,7 +2,9 @@
 
 import { useEffect, useState } from "react";
 import {
+  AppWindow,
   Ban,
+  BellRing,
   Check,
   ChevronLeft,
   ClipboardPaste,
@@ -10,12 +12,15 @@ import {
   Eye,
   EyeOff,
   Fingerprint,
+  Inbox,
   KeyRound,
   Loader2,
   Lock,
   LogOut,
+  Megaphone,
   Plus,
   ReceiptText,
+  Rocket,
   Search,
   Server,
   ShieldCheck,
@@ -25,7 +30,19 @@ import {
 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { COUNTRIES, Flag } from "./flag";
-import { PLAN_DAYS, type ConfigItem, type DeviceRecord, type Order, type ParsedLink, type PlanId } from "./types";
+import {
+  PLAN_DAYS,
+  type ConfigItem,
+  type DeviceRecord,
+  type Notice,
+  type NoticeAudience,
+  type NoticeChannel,
+  type NoticeKind,
+  type OtaModule,
+  type Order,
+  type ParsedLink,
+  type PlanId,
+} from "./types";
 
 const PLAN_LABEL: Record<PlanId, string> = { p1: "1 month", p3: "3 months", p6: "6 months" };
 const PLAN_PRICE: Record<PlanId, number> = { p1: 200000, p3: 400000, p6: 700000 };
@@ -529,6 +546,343 @@ function UsersTab({
   );
 }
 
+/* ── Notifs tab — compose & send notifications to users (inbox / popup / push) ── */
+
+const CHANNEL_META: { id: NoticeChannel; icon: typeof Inbox; label: string; sub: string }[] = [
+  { id: "inbox", icon: Inbox, label: "Inbox", sub: "Saved in user's messages" },
+  { id: "popup", icon: AppWindow, label: "Popup", sub: "Dialog on next app open" },
+  { id: "push", icon: BellRing, label: "Push", sub: "Device notification" },
+];
+
+const KIND_LABEL: Record<NoticeKind, string> = { info: "Info", gift: "Gift", warn: "Warning", update: "Update" };
+const AUD_LABEL: Record<NoticeAudience, string> = { all: "Everyone", free: "Free users", premium: "Premium users" };
+
+function NotifsTab({
+  notices,
+  onSend,
+}: {
+  notices: Notice[];
+  onSend: (n: { title: string; body: string; kind: NoticeKind; audience: NoticeAudience; channels: NoticeChannel[] }) => void;
+}) {
+  const [title, setTitle] = useState("");
+  const [body, setBody] = useState("");
+  const [kind, setKind] = useState<NoticeKind>("info");
+  const [audience, setAudience] = useState<NoticeAudience>("all");
+  const [channels, setChannels] = useState<NoticeChannel[]>(["inbox"]);
+  const [err, setErr] = useState("");
+  const [toast, setToast] = useState("");
+
+  useEffect(() => {
+    if (!toast) return;
+    const tm = setTimeout(() => setToast(""), 2200);
+    return () => clearTimeout(tm);
+  }, [toast]);
+
+  const toggle = (c: NoticeChannel) =>
+    setChannels((cs) => (cs.includes(c) ? cs.filter((x) => x !== c) : [...cs, c]));
+
+  const send = () => {
+    if (!title.trim() || !body.trim()) {
+      setErr("Title and message are required");
+      return;
+    }
+    if (channels.length === 0) {
+      setErr("Pick at least one delivery method");
+      return;
+    }
+    onSend({ title: title.trim(), body: body.trim(), kind, audience, channels });
+    setTitle("");
+    setBody("");
+    setErr("");
+    setToast("Notification sent ✅");
+  };
+
+  return (
+    <div className="scroll-hide mt-3 flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-5 pb-20">
+      {/* composer */}
+      <div className="rounded-xl border border-panel-edge bg-panel p-4">
+        <div className="flex items-center gap-2 text-sm font-semibold text-ink">
+          <Megaphone className="size-4 text-glow" /> New notification
+        </div>
+        <input
+          aria-label="Notification title"
+          value={title}
+          onChange={(e) => {
+            setTitle(e.target.value);
+            setErr("");
+          }}
+          placeholder="Title — e.g. Weekend gift 🎁"
+          className="mt-3 w-full rounded-lg border border-panel-edge bg-night px-3 py-2.5 text-sm text-ink outline-none placeholder:text-dim focus:border-gold/60"
+        />
+        <textarea
+          aria-label="Notification message"
+          value={body}
+          onChange={(e) => {
+            setBody(e.target.value);
+            setErr("");
+          }}
+          rows={3}
+          placeholder="Message text…"
+          className="mt-2 w-full resize-none rounded-lg border border-panel-edge bg-night px-3 py-2.5 text-sm leading-6 text-ink outline-none placeholder:text-dim focus:border-gold/60"
+        />
+
+        <div className="mt-3 text-xs font-semibold text-dim">Type</div>
+        <div className="mt-1.5 flex flex-wrap gap-1.5">
+          {(Object.keys(KIND_LABEL) as NoticeKind[]).map((k) => (
+            <button
+              type="button"
+              key={k}
+              onClick={() => setKind(k)}
+              className={
+                kind === k
+                  ? "rounded-full border border-glow/40 bg-glow/15 px-3 py-1.5 text-xs font-bold text-glow"
+                  : "rounded-full border border-panel-edge bg-night px-3 py-1.5 text-xs text-dim hover:text-ink"
+              }
+            >
+              {KIND_LABEL[k]}
+            </button>
+          ))}
+        </div>
+
+        <div className="mt-3 text-xs font-semibold text-dim">Audience</div>
+        <div className="mt-1.5 flex flex-wrap gap-1.5">
+          {(Object.keys(AUD_LABEL) as NoticeAudience[]).map((a) => (
+            <button
+              type="button"
+              key={a}
+              onClick={() => setAudience(a)}
+              className={
+                audience === a
+                  ? "rounded-full border border-glow/40 bg-glow/15 px-3 py-1.5 text-xs font-bold text-glow"
+                  : "rounded-full border border-panel-edge bg-night px-3 py-1.5 text-xs text-dim hover:text-ink"
+              }
+            >
+              {AUD_LABEL[a]}
+            </button>
+          ))}
+        </div>
+
+        <div className="mt-3 text-xs font-semibold text-dim">Delivery</div>
+        <div className="mt-1.5 grid grid-cols-3 gap-2">
+          {CHANNEL_META.map(({ id, icon: I, label, sub }) => (
+            <button
+              type="button"
+              key={id}
+              onClick={() => toggle(id)}
+              aria-pressed={channels.includes(id)}
+              className={
+                channels.includes(id)
+                  ? "flex flex-col items-center gap-1 rounded-xl border border-glow/40 bg-glow/10 px-2 py-2.5 text-center"
+                  : "flex flex-col items-center gap-1 rounded-xl border border-panel-edge bg-night px-2 py-2.5 text-center hover:border-ink/20"
+              }
+            >
+              <I className={channels.includes(id) ? "size-4 text-glow" : "size-4 text-dim"} />
+              <span className={channels.includes(id) ? "text-xs font-bold text-ink" : "text-xs font-semibold text-dim"}>{label}</span>
+              <span className="text-[10px] leading-3.5 text-dim">{sub}</span>
+            </button>
+          ))}
+        </div>
+
+        {err && <div className="mt-2 text-sm text-danger">{err}</div>}
+        <button
+          type="button"
+          onClick={send}
+          className="mt-3 w-full rounded-lg bg-gold py-2.5 font-display text-sm font-bold text-night"
+        >
+          Send to users
+        </button>
+      </div>
+
+      {/* history */}
+      <div className="rounded-xl border border-panel-edge bg-panel p-4">
+        <div className="flex items-center justify-between text-sm font-semibold text-ink">
+          <span>Sent</span>
+          <span className="text-xs font-medium text-dim">{notices.length}</span>
+        </div>
+        <div className="mt-3 flex flex-col gap-2">
+          {notices.slice(0, 6).map((n) => {
+            const meta = CHANNEL_META;
+            return (
+              <div key={n.id} className="rounded-lg bg-night px-3 py-2.5">
+                <div className="flex items-center gap-2">
+                  <span className="min-w-0 flex-1 truncate text-sm font-semibold text-ink">{n.title}</span>
+                  <span className="shrink-0 text-[11px] text-dim">
+                    {new Date(n.at).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })}
+                  </span>
+                </div>
+                <div className="mt-1 line-clamp-2 text-xs leading-5 text-dim">{n.body}</div>
+                <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                  <span className="rounded-full bg-glow/15 px-2 py-0.5 text-[10px] font-bold text-glow">{KIND_LABEL[n.kind]}</span>
+                  <span className="rounded-full bg-ink/10 px-2 py-0.5 text-[10px] font-bold text-dim">{AUD_LABEL[n.audience]}</span>
+                  {meta
+                    .filter((c) => n.channels.includes(c.id))
+                    .map((c) => (
+                      <c.icon key={c.id} className="size-3.5 text-dim" aria-label={c.label} />
+                    ))}
+                </div>
+              </div>
+            );
+          })}
+          {notices.length === 0 && (
+            <div className="rounded-lg bg-night px-3 py-4 text-center text-xs text-dim">Nothing sent yet.</div>
+          )}
+        </div>
+      </div>
+
+      {toast && (
+        <div className="fixed inset-x-0 top-16 z-40 flex justify-center">
+          <span className="screen-in rounded-full bg-ink px-4 py-2 text-sm font-semibold text-night">{toast}</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ── Update tab — publish OTA releases; users download only changed parts ── */
+
+const MODULE_META: { id: OtaModule; label: string; size: number }[] = [
+  { id: "engine", label: "Connection engine", size: 3.8 },
+  { id: "servers", label: "Server list", size: 1.2 },
+  { id: "ui", label: "UI", size: 2.1 },
+];
+
+function OtaTab({
+  appVersion,
+  onPublish,
+}: {
+  appVersion: string;
+  onPublish: (r: { version: string; notes: string; modules: OtaModule[]; sizeMb: number }) => void;
+}) {
+  const [version, setVersion] = useState("1.7.0");
+  const [notes, setNotes] = useState("");
+  const [mods, setMods] = useState<OtaModule[]>(["servers"]);
+  const [err, setErr] = useState("");
+  const [toast, setToast] = useState("");
+
+  useEffect(() => {
+    if (!toast) return;
+    const tm = setTimeout(() => setToast(""), 2400);
+    return () => clearTimeout(tm);
+  }, [toast]);
+
+  const size = MODULE_META.filter((m) => mods.includes(m.id)).reduce((s, m) => s + m.size, 0);
+
+  const publish = () => {
+    if (!version.trim()) {
+      setErr("Version is required");
+      return;
+    }
+    if (mods.length === 0) {
+      setErr("Pick at least one changed part");
+      return;
+    }
+    onPublish({
+      version: version.trim(),
+      notes: notes.trim() || "Stability improvements & fixes.",
+      modules: mods,
+      sizeMb: Math.round(size * 10) / 10,
+    });
+    setErr("");
+    setNotes("");
+    setToast("Update published — users get a popup 🚀");
+  };
+
+  return (
+    <div className="scroll-hide mt-3 flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-5 pb-20">
+      {/* current version */}
+      <div className="rounded-xl border border-panel-edge bg-panel p-4">
+        <div className="flex items-center justify-between">
+          <span className="text-sm font-semibold text-ink">Current version</span>
+          <span dir="ltr" className="rounded-full bg-glow/15 px-2.5 py-0.5 font-mono text-xs font-bold text-glow">
+            v{appVersion}
+          </span>
+        </div>
+        <div className="mt-1.5 text-xs leading-5 text-dim">
+          Users auto-install only the changed parts in the background — the app keeps running, no reinstall needed.
+        </div>
+      </div>
+
+      {/* release composer */}
+      <div className="rounded-xl border border-panel-edge bg-panel p-4">
+        <div className="flex items-center gap-2 text-sm font-semibold text-ink">
+          <Rocket className="size-4 text-gold" /> Release an update
+        </div>
+        <input
+          aria-label="New version"
+          dir="ltr"
+          value={version}
+          onChange={(e) => {
+            setVersion(e.target.value);
+            setErr("");
+          }}
+          placeholder="e.g. 1.7.0"
+          className="mt-3 w-full rounded-lg border border-panel-edge bg-night px-3 py-2.5 font-mono text-sm text-ink outline-none placeholder:text-dim focus:border-gold/60"
+        />
+        <textarea
+          aria-label="Changelog"
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+          rows={2}
+          placeholder="Changelog — shown in the user's popup…"
+          className="mt-2 w-full resize-none rounded-lg border border-panel-edge bg-night px-3 py-2.5 text-sm leading-6 text-ink outline-none placeholder:text-dim focus:border-gold/60"
+        />
+
+        <div className="mt-3 text-xs font-semibold text-dim">Changed parts — only these download</div>
+        <div className="mt-1.5 flex flex-col gap-1.5">
+          {MODULE_META.map((m) => {
+            const on = mods.includes(m.id);
+            return (
+              <button
+                type="button"
+                key={m.id}
+                onClick={() => setMods((ms) => (on ? ms.filter((x) => x !== m.id) : [...ms, m.id]))}
+                aria-pressed={on}
+                className={
+                  on
+                    ? "flex items-center justify-between rounded-lg border border-glow/40 bg-glow/10 px-3 py-2"
+                    : "flex items-center justify-between rounded-lg border border-panel-edge bg-night px-3 py-2 hover:border-ink/20"
+                }
+              >
+                <span className="flex items-center gap-2">
+                  <span className={on ? "grid size-4 place-items-center rounded-full bg-glow" : "size-4 rounded-full border-2 border-ink/25"}>
+                    {on && <Check className="size-3 text-on-glow" strokeWidth={3} />}
+                  </span>
+                  <span className={on ? "text-sm font-semibold text-ink" : "text-sm text-dim"}>{m.label}</span>
+                </span>
+                <span dir="ltr" className="font-mono text-xs text-dim">
+                  {m.size.toFixed(1)} MB
+                </span>
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="mt-3 flex items-center justify-between rounded-lg bg-night px-3 py-2 text-sm">
+          <span className="text-dim">Patch size</span>
+          <span dir="ltr" className="font-mono font-bold text-ink">
+            {size.toFixed(1)} MB
+          </span>
+        </div>
+
+        {err && <div className="mt-2 text-sm text-danger">{err}</div>}
+        <button
+          type="button"
+          onClick={publish}
+          className="mt-3 flex w-full items-center justify-center gap-2 rounded-lg bg-gold py-2.5 font-display text-sm font-bold text-night"
+        >
+          <Rocket className="size-4" /> Publish update
+        </button>
+      </div>
+
+      {toast && (
+        <div className="fixed inset-x-0 top-16 z-40 flex justify-center">
+          <span className="screen-in rounded-full bg-ink px-4 py-2 text-sm font-semibold text-night">{toast}</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ── Panel shell ── */
 
 export function AdminPanel({
@@ -537,6 +891,10 @@ export function AdminPanel({
   orders,
   devices,
   ownDeviceId,
+  notices,
+  onSendNotice,
+  appVersion,
+  onPublishOta,
   onApprove,
   onReject,
   onDevicePremium,
@@ -548,13 +906,17 @@ export function AdminPanel({
   orders: Order[];
   devices: DeviceRecord[];
   ownDeviceId: string;
+  notices: Notice[];
+  onSendNotice: (n: { title: string; body: string; kind: NoticeKind; audience: NoticeAudience; channels: NoticeChannel[] }) => void;
+  appVersion: string;
+  onPublishOta: (r: { version: string; notes: string; modules: OtaModule[]; sizeMb: number }) => void;
   onApprove: (id: string) => void;
   onReject: (id: string) => void;
   onDevicePremium: (id: string, days: number) => void;
   onExit: () => void;
   onChangePass: (p: string) => void;
 }) {
-  const [tab, setTab] = useState<"configs" | "orders" | "users">("configs");
+  const [tab, setTab] = useState<"configs" | "orders" | "users" | "notifs" | "update">("configs");
   const [adding, setAdding] = useState(false);
   const [toast, setToast] = useState("");
 
@@ -600,19 +962,19 @@ export function AdminPanel({
         ))}
       </div>
 
-      <div className="mx-5 mt-4 grid grid-cols-3 rounded-xl bg-panel p-1">
-        {(["configs", "orders", "users"] as const).map((tb) => (
+      <div className="mx-5 mt-4 grid grid-cols-5 gap-0.5 rounded-xl bg-panel p-1">
+        {(["configs", "orders", "users", "notifs", "update"] as const).map((tb) => (
           <button
             type="button"
             key={tb}
             onClick={() => setTab(tb)}
             className={
               tab === tb
-                ? "relative rounded-lg bg-night py-2 text-sm font-semibold text-ink"
-                : "relative rounded-lg py-2 text-sm text-dim"
+                ? "relative rounded-lg bg-night py-2 text-[13px] font-semibold text-ink"
+                : "relative rounded-lg py-2 text-[13px] text-dim hover:text-ink"
             }
           >
-            {tb === "configs" ? "Configs" : tb === "orders" ? "Orders" : "Users"}
+            {tb === "configs" ? "Configs" : tb === "orders" ? "Orders" : tb === "users" ? "Users" : tb === "notifs" ? "Notifs" : "Update"}
             {tb === "orders" && pending > 0 && (
               <span className="absolute -top-1.5 -end-1 grid size-5 place-items-center rounded-full bg-gold text-[10px] font-bold text-night">
                 {pending}
@@ -665,6 +1027,8 @@ export function AdminPanel({
 
       {tab === "orders" && <OrdersTab orders={orders} onApprove={onApprove} onReject={onReject} />}
       {tab === "users" && <UsersTab devices={devices} ownDeviceId={ownDeviceId} onDevicePremium={onDevicePremium} onChangePass={onChangePass} />}
+      {tab === "notifs" && <NotifsTab notices={notices} onSend={onSendNotice} />}
+      {tab === "update" && <OtaTab appVersion={appVersion} onPublish={onPublishOta} />}
 
       {tab === "configs" && (
         <button

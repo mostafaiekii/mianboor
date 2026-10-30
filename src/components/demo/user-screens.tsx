@@ -5,6 +5,7 @@ import {
   ArrowDown,
   ArrowUp,
   BadgeCheck,
+  Bell,
   Camera,
   Check,
   ChevronDown,
@@ -17,6 +18,7 @@ import {
   Gift,
   GitBranch,
   Globe,
+  Inbox,
   Info,
   Loader2,
   Lock,
@@ -98,9 +100,10 @@ export function HomeScreen({
   warn,
   onPickServer,
   onOpenSettings,
+  unread,
+  onOpenInbox,
   origin,
   showFlash,
-  update,
   flashOrigin,
 }: {
   lang: Lang;
@@ -111,13 +114,14 @@ export function HomeScreen({
   warn?: string | null;
   onPickServer: () => void;
   onOpenSettings: () => void;
+  /** تعداد پیام خوانده‌نشده صندوق — badge روی زنگ */
+  unread?: number;
+  onOpenInbox?: () => void;
   /** آی‌پی و پرچم کشور مبدا کاربر (در اپ واقعی قبل از اتصال از ipwho.is) */
   origin?: { ip: string; country: string } | null;
   /** فلش لحظه اتصال: «از ایران به آلمان وصل شدی» — همیشه آی‌پی واقعی کاربر */
   flashOrigin?: { ip: string; country: string } | null;
   showFlash?: boolean;
-  /** بنر نسخهٔ جدید (اپ واقعی: چکر GitHub Releases) */
-  update?: { version: string; url: string; onUpdate: () => void; onDismiss: () => void } | null;
 }) {
   const t = tr(lang);
   const rtl = lang === "fa";
@@ -128,37 +132,28 @@ export function HomeScreen({
 
   return (
     <div dir={rtl ? "rtl" : "ltr"} className="flex flex-1 flex-col overflow-y-auto scroll-hide px-6 pt-2">
-      {update && (
-        <div className="screen-in mt-2 flex items-start gap-3 rounded-2xl border border-gold/40 bg-gold/10 p-3">
-          <span className="grid size-9 shrink-0 place-items-center rounded-full bg-gold/20">
-            <Crown className="size-4 fill-gold text-gold" />
-          </span>
-          <span className="min-w-0 flex-1">
-            <span className="block text-sm font-bold text-ink">{t.updateTitle}</span>
-            <span dir="ltr" className="block truncate text-xs text-dim">{t.updateSub.replace("{v}", update.version)}</span>
-          </span>
-          <span className="flex shrink-0 flex-col items-stretch gap-1">
-            <a
-              href={update.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              onClick={update.onUpdate}
-              className="rounded-full bg-gold px-3 py-1 text-center text-xs font-bold text-night"
-            >
-              {t.updateBtn}
-            </a>
-            <button type="button" onClick={update.onDismiss} className="text-center text-[11px] text-dim hover:text-ink">
-              {t.updateLater}
-            </button>
-          </span>
-        </div>
-      )}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <ShieldCheck className="size-7 shrink-0 text-glow" />
           <Brand lang={lang} />
         </div>
         <div className="flex items-center gap-1">
+          {/* صندوق پیام — زنگ با badge خوانده‌نشده */}
+          {onOpenInbox && (
+            <button
+              type="button"
+              onClick={onOpenInbox}
+              aria-label={`${t.inbox}${unread ? ` (${unread})` : ""}`}
+              className="relative grid size-9 place-items-center rounded-full text-dim hover:text-ink"
+            >
+              <Bell className="size-5" />
+              {!!unread && unread > 0 && (
+                <span className="absolute -end-0.5 -top-0.5 grid min-w-4 place-items-center rounded-full bg-gold px-1 text-[10px] font-bold text-night">
+                  {unread}
+                </span>
+              )}
+            </button>
+          )}
           <a
             href={TG_SUPPORT}
             target="_blank"
@@ -468,12 +463,14 @@ export function AccountScreen({
   usedGb,
   split,
   deviceId,
+  unread,
   onOpenSplit,
   onUpgrade,
   onCopyDevice,
   onOpenUsage,
   onOpenInvite,
   onOpenSupport,
+  onOpenInbox,
 }: {
   lang: Lang;
   entitlement: Entitlement;
@@ -481,12 +478,14 @@ export function AccountScreen({
   usedGb: number;
   split: SplitState;
   deviceId: string;
+  unread?: number;
   onOpenSplit: () => void;
   onUpgrade: () => void;
   onCopyDevice: () => void;
   onOpenUsage: () => void;
   onOpenInvite: () => void;
   onOpenSupport: () => void;
+  onOpenInbox: () => void;
 }) {
   const t = tr(lang);
   const rtl = lang === "fa";
@@ -622,7 +621,26 @@ export function AccountScreen({
         {renewOpen && <p className="screen-in border-t border-panel-edge px-4 py-3 text-sm leading-6 text-dim">{t.renewExplain}</p>}
       </div>
 
-      {/* invite friends — referral: کد معرف و روز هدیه */}
+      {/* پیام‌ها — صندوق اطلاع‌رسانی‌های میانبر */}
+      <button
+        type="button"
+        onClick={onOpenInbox}
+        className="flex items-center gap-3 rounded-2xl border border-panel-edge bg-panel p-4 text-start transition-colors hover:border-glow/40"
+      >
+        <Inbox className="size-5 shrink-0 text-dim" />
+        <span className="flex-1">
+          <span className="flex items-center gap-2 text-sm font-semibold text-ink">
+            {t.inbox}
+            {!!unread && unread > 0 && (
+              <span className="grid min-w-4 place-items-center rounded-full bg-gold px-1 text-[10px] font-bold text-night">{unread}</span>
+            )}
+          </span>
+          <span className="block text-sm text-dim">{t.inboxRowSub}</span>
+        </span>
+        <Fwd className="size-5 shrink-0 text-dim" />
+      </button>
+
+      {/* دعوت دوستان — referral: کد معرف و روز هدیه */}
       <button
         type="button"
         onClick={onOpenInvite}

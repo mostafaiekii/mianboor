@@ -2,7 +2,10 @@
 
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import {
+  Bell,
+  Check,
   CreditCard,
+  DownloadCloud,
   Eye,
   Fingerprint,
   Gauge,
@@ -11,10 +14,12 @@ import {
   Globe,
   Hand,
   Home,
+  Info,
   ListPlus,
   Lock,
   Palette,
   RotateCcw,
+  ShieldCheck,
   User,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -24,8 +29,9 @@ import { SplitScreen } from "@/components/demo/split-screen";
 import { PlansSheet } from "@/components/demo/plans-sheet";
 import { ReferralScreen, type RefFriend, REF_CODE, REF_LINK } from "@/components/demo/referral-screen";
 import { SupportChatScreen } from "@/components/demo/support-chat";
+import { InboxScreen, KIND_META } from "@/components/demo/inbox-screen";
 import { AdminLogin, AdminPanel } from "@/components/demo/admin-screens";
-import { tr, tpl, type Lang } from "@/components/demo/i18n";
+import { tr, tpl, type Lang, type Strings } from "@/components/demo/i18n";
 import { THEMES, type ThemeName } from "@/components/demo/themes";
 import {
   FREE_QUOTA_GB,
@@ -33,7 +39,13 @@ import {
   type ConfigItem,
   type DeviceRecord,
   type Entitlement,
+  type Notice,
+  type NoticeAudience,
+  type NoticeChannel,
+  type NoticeKind,
   type Order,
+  type OtaModule,
+  type OtaRelease,
   type PlanId,
   type Screen,
   type SplitState,
@@ -45,7 +57,7 @@ const DEMO_USER = "admin";
 const DEMO_PASS = "Mianboor@2026";
 const PING_MS = 3000;
 const DEVICE_ID = "MB-7F3A-92K1";
-const RELEASES_URL = "https://github.com/mostafaiekii/mianboor/releases/latest";
+const APP_VERSION = "1.6.0";
 
 /** کشور و آی‌پی مبدا کاربر — در اپ واقعی قبل از اتصال از ipwho.is گرفته می‌شود؛ اینجا ماک دمو */
 const ORIGIN = { ip: "5.160.42.117", country: "ir" };
@@ -86,6 +98,199 @@ const freshDevices = (): DeviceRecord[] => [
   { id: "MB-2K8D-41F7", premium: false, trialUsed: true, reinstalls: 1, seen: "2h ago" },
   { id: "MB-9Q3L-77XE", premium: true, premiumUntil: Date.now() + 40 * 86400_000, trialUsed: true, reinstalls: 0, seen: "yesterday" },
 ];
+
+/* صندوق پیام اولیه: یه پیام خوانده‌شده + یه اعلان هدیه خوانده‌نشده (برای badge) */
+const SEED_NOTICES = (): Notice[] => [
+  {
+    id: "seed-gift",
+    title: "🎁 Gift weekend",
+    body: "This weekend every friend you invite brings +3 extra gift days — share your code from Account → Invite Friends.",
+    kind: "gift",
+    audience: "all",
+    channels: ["inbox", "push"],
+    at: Date.now() - 45 * 60_000,
+    read: false,
+  },
+  {
+    id: "seed-welcome",
+    title: "Welcome to Mianboor 1.6",
+    body: "Faster servers, live pings and this message inbox — announcements from the team land here.",
+    kind: "info",
+    audience: "all",
+    channels: ["inbox"],
+    at: Date.now() - 2 * 86400_000,
+    read: true,
+  },
+];
+
+const MOD_KEY: Record<OtaModule, keyof Strings> = { engine: "modEngine", servers: "modServers", ui: "modUi" };
+
+function PushBanner({ n, onOpen }: { n: Notice; onOpen: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      className="push-in absolute inset-x-3 top-9 z-50 flex items-start gap-3 rounded-2xl border border-panel-edge bg-panel p-3 text-start shadow-[0_18px_40px_oklch(0_0_0/0.45)]"
+      role="alert"
+    >
+      <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-glow/15">
+        <ShieldCheck className="size-5 text-glow" />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="flex items-center gap-1.5 text-[11px] text-dim">
+          <span className="font-display font-bold text-ink">Mianboor</span>
+          <span>· now</span>
+        </span>
+        <span className="mt-0.5 block truncate text-sm font-bold text-ink">{n.title}</span>
+        <span className="line-clamp-2 block text-xs leading-5 text-dim">{n.body}</span>
+      </span>
+      <span className="mt-0.5 flex items-center gap-1">
+        <Check className="size-3.5 text-dim" />
+        <span className="text-[10px] font-semibold uppercase text-dim">now</span>
+      </span>
+    </button>
+  );
+}
+
+function NoticePopup({ lang, n, onClose, onInbox }: { lang: Lang; n: Notice; onClose: () => void; onInbox: () => void }) {
+  const t = tr(lang);
+  const M = KIND_META[n.kind];
+  const I = M.icon;
+  return (
+    <div
+      className="absolute inset-0 z-30 grid place-items-center bg-night/70 px-7 backdrop-blur-sm"
+      onClick={onClose}
+      role="presentation"
+    >
+      <div
+        className="screen-in w-full rounded-3xl border border-panel-edge bg-panel p-5 text-center shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-label={n.title}
+      >
+        <span className={`mx-auto grid size-14 place-items-center rounded-2xl ${M.box}`}>
+          <I className={`size-7 ${M.cls}`} />
+        </span>
+        <h3 className="mt-3 font-display text-lg font-bold text-ink">{n.title}</h3>
+        <p className="mt-1.5 text-sm leading-6 text-dim">{n.body}</p>
+        <div className="mt-4 flex gap-2">
+          <button
+            type="button"
+            onClick={onInbox}
+            className="flex-1 rounded-xl bg-glow py-2.5 font-display text-sm font-bold text-on-glow"
+          >
+            {t.popupOpenInbox}
+          </button>
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex-1 rounded-xl border border-panel-edge py-2.5 text-sm font-semibold text-dim hover:text-ink"
+          >
+            {t.popupGotIt}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function OtaPopup({
+  lang,
+  rel,
+  state,
+  progress,
+  onStart,
+  onLater,
+  onDone,
+}: {
+  lang: Lang;
+  rel: OtaRelease;
+  state: "offer" | "progress" | "done";
+  progress: number;
+  onStart: () => void;
+  onLater: () => void;
+  onDone: () => void;
+}) {
+  const t = tr(lang);
+  return (
+    <div className="absolute inset-0 z-30 grid place-items-center bg-night/70 px-7 backdrop-blur-sm" role="dialog" aria-label={t.otaTitle}>
+      <div className="screen-in w-full rounded-3xl border border-panel-edge bg-panel p-5 text-center shadow-2xl">
+        {state === "done" ? (
+          <>
+            <span className="mx-auto grid size-14 place-items-center rounded-full bg-glow/15">
+              <Check className="size-7 text-glow" strokeWidth={3} />
+            </span>
+            <h3 className="mt-3 font-display text-lg font-bold text-ink">{t.otaDone.replace("{v}", rel.version)}</h3>
+            <p className="mt-1.5 text-sm leading-6 text-dim">{t.otaDoneSub}</p>
+            <button
+              type="button"
+              onClick={onDone}
+              className="mt-4 w-full rounded-xl bg-glow py-2.5 font-display text-sm font-bold text-on-glow"
+            >
+              {tr(lang).popupGotIt}
+            </button>
+          </>
+        ) : state === "progress" ? (
+          <>
+            <span className="mx-auto grid size-14 place-items-center rounded-full bg-glow/15">
+              <DownloadCloud className="size-7 text-glow" />
+            </span>
+            <h3 className="mt-3 font-display text-lg font-bold text-ink">{progress >= 100 ? t.otaInstall : t.otaDl}</h3>
+            <div className="mt-3 h-2 overflow-hidden rounded-full bg-ink/10">
+              <div className="h-full rounded-full bg-glow transition-[width] duration-150" style={{ width: `${progress}%` }} />
+            </div>
+            <div dir="ltr" className="mt-1.5 font-mono text-xs font-bold tabular-nums text-dim">
+              {Math.round(progress)}% · {rel.sizeMb} MB
+            </div>
+            <div className="mt-3 flex flex-wrap justify-center gap-1.5">
+              {rel.modules.map((m) => (
+                <span key={m} className="rounded-full bg-ink/10 px-2 py-0.5 text-[10px] font-bold text-dim">
+                  {t[MOD_KEY[m]]}
+                </span>
+              ))}
+            </div>
+          </>
+        ) : (
+          <>
+            <span className="mx-auto grid size-14 place-items-center rounded-full bg-gold/15">
+              <DownloadCloud className="size-7 text-gold" />
+            </span>
+            <h3 className="mt-3 font-display text-lg font-bold text-ink">{t.otaTitle}</h3>
+            <p className="mt-1 text-sm text-dim">{t.otaVerSub.replace("{v}", rel.version).replace("{s}", String(rel.sizeMb))}</p>
+            {rel.notes && <p className="mt-2 rounded-xl bg-night px-3 py-2 text-sm leading-6 text-ink">{rel.notes}</p>}
+            <div className="mt-2 flex flex-wrap justify-center gap-1.5">
+              {rel.modules.map((m) => (
+                <span key={m} className="rounded-full bg-ink/10 px-2 py-0.5 text-[10px] font-bold text-dim">
+                  {t[MOD_KEY[m]]}
+                </span>
+              ))}
+            </div>
+            <div className="mt-3 flex items-start gap-2 rounded-xl border border-glow/25 bg-glow/10 px-3 py-2 text-start">
+              <Info className="mt-0.5 size-4 shrink-0 text-glow" />
+              <span className="text-xs leading-5 text-dim">{t.otaPatchNote}</span>
+            </div>
+            <div className="mt-4 flex gap-2">
+              <button
+                type="button"
+                onClick={onStart}
+                className="flex-1 rounded-xl bg-gold py-2.5 font-display text-sm font-bold text-night"
+              >
+                {t.otaBtn}
+              </button>
+              <button
+                type="button"
+                onClick={onLater}
+                className="flex-1 rounded-xl border border-panel-edge py-2.5 text-sm font-semibold text-dim hover:text-ink"
+              >
+                {t.otaLater}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
 
 /* دمو: دوستان دعوت‌شده اولیه + روزهای هدیه در انتظار (۱۰ از خرید پرمیوم + ۳ از ورود) */
 const freshFriends = (): RefFriend[] => [
@@ -148,9 +353,19 @@ export default function VpnDemoPage() {
   const [syncOk, setSyncOk] = useState<boolean | null>(null);
   const [usageOpen, setUsageOpen] = useState(false);
   const [showFlash, setShowFlash] = useState(false);
-  const [updateBanner, setUpdateBanner] = useState(false);
   /* آی‌پی واقعی مقصد — بعد از اتصال، با تاخیر کوتاه «تشخیص» می‌شه (دمو: ipwho.is از داخل تونل) */
   const [destResolved, setDestResolved] = useState(false);
+  /* اعلان‌ها: صندوق پیام + نوتیف گوشی + پاپ‌آپ */
+  const [notices, setNotices] = useState<Notice[]>(SEED_NOTICES);
+  const [push, setPush] = useState<{ n: Notice; k: number } | null>(null);
+  const [popupNotice, setPopupNotice] = useState<Notice | null>(null);
+  const [pendingPopupId, setPendingPopupId] = useState<string | null>(null);
+  /* OTA: انتشار ادمین → پاپ‌آپ → دانلود پچ → نصب خودکار */
+  const [ota, setOta] = useState<OtaRelease | null>(null);
+  const [otaState, setOtaState] = useState<null | "offer" | "progress" | "done">(null);
+  const [otaProgress, setOtaProgress] = useState(0);
+  const [pendingOta, setPendingOta] = useState(false);
+  const [appVersion, setAppVersion] = useState(APP_VERSION);
 
   const t = tr(lang);
   const holdStart = useRef(0);
@@ -158,6 +373,8 @@ export default function VpnDemoPage() {
   const fired = useRef(false);
 
   const premium = entitlement.plan !== "free";
+  const isAdmin = screen === "login" || screen === "admin";
+  const unread = notices.filter((n) => !n.read).length;
 
   const showToast = (msg: string) => setToast({ msg, k: Date.now() });
 
@@ -225,11 +442,52 @@ export default function VpnDemoPage() {
     };
   }, [vpn]);
 
-  /* ── بنر نسخهٔ جدید (دمو: بعد از چند ثانیه می‌آید؛ اپ واقعی: چکر GitHub Releases) ── */
+  /* ── بنر نسخهٔ جدید حذف شد — آپدیت حالا از پنل ادمین منتشر می‌شه (تب Update) ── */
+
+  /* ── نوتیف گوشی: بنر heads-up بعد از ۵ ثانیه خودش محو می‌شه ── */
   useEffect(() => {
-    const id = setTimeout(() => setUpdateBanner(true), 2500);
+    if (!push) return;
+    const id = setTimeout(() => setPush(null), 5000);
     return () => clearTimeout(id);
-  }, []);
+  }, [push]);
+
+  /* ── پاپ‌آپ در صف: تا از پنل خارج نشده و صفحهٔ کاربر دیده نشه، باز نمی‌شه ── */
+  useEffect(() => {
+    if (isAdmin) return;
+    if (pendingOta && ota) {
+      setOtaState("offer");
+      setPendingOta(false);
+      return;
+    }
+    if (pendingPopupId) {
+      const n = notices.find((x) => x.id === pendingPopupId);
+      if (n) setPopupNotice(n);
+      setPendingPopupId(null);
+    }
+  }, [screen, isAdmin, pendingOta, pendingPopupId, ota, notices]);
+
+  /* ── دیدن پاپ‌آپ یعنی پیام خونده شد ── */
+  useEffect(() => {
+    if (!popupNotice) return;
+    setNotices((list) => list.map((x) => (x.id === popupNotice.id ? { ...x, read: true } : x)));
+  }, [popupNotice]);
+
+  /* ── دانلود پچ OTA: نوار پیشرفت شبیه‌سازی می‌شه ── */
+  useEffect(() => {
+    if (otaState !== "progress") return;
+    const id = setInterval(() => {
+      setOtaProgress((p) => {
+        const next = p + 2.5 + Math.random() * 6;
+        if (next >= 100) {
+          clearInterval(id);
+          setTimeout(() => setOtaState("done"), 600);
+          return 100;
+        }
+        return next;
+      });
+    }, 170);
+    return () => clearInterval(id);
+  }, [otaState]);
 
   useEffect(() => {
     if (!configs.find((c) => c.id === selectedId && c.enabled)) {
@@ -354,6 +612,46 @@ export default function VpnDemoPage() {
     showToast(t.copied);
   };
 
+  /* ── اعلان‌ها: ارسال مدیر → تحویل روی دستگاه (push / popup / inbox) ── */
+  const sendNotice = (n: { title: string; body: string; kind: NoticeKind; audience: NoticeAudience; channels: NoticeChannel[] }) => {
+    const matches = n.audience === "all" || (n.audience === "premium" ? premium : !premium);
+    const notice: Notice = { ...n, id: `n-${Date.now()}`, at: Date.now(), read: false };
+    setNotices((list) => [notice, ...list]);
+    if (!matches) return;
+    if (n.channels.includes("push")) setPush({ n: notice, k: Date.now() });
+    if (n.channels.includes("popup")) {
+      if (isAdmin) setPendingPopupId(notice.id);
+      else setPopupNotice(notice);
+    }
+  };
+
+  const openNotice = (n: Notice) => {
+    setNotices((list) => list.map((x) => (x.id === n.id ? { ...x, read: true } : x)));
+  };
+
+  const markAllNotices = () => {
+    setNotices((list) => list.map((x) => ({ ...x, read: true })));
+    showToast(t.markAll);
+  };
+
+  /* ── OTA: انتشار آپدیت از پنل → پاپ‌آپ روی دستگاه کاربر ── */
+  const publishOta = (r: { version: string; notes: string; modules: OtaModule[]; sizeMb: number }) => {
+    const rel: OtaRelease = { ...r, at: Date.now() };
+    setOta(rel);
+    setOtaProgress(0);
+    if (isAdmin) setPendingOta(true);
+    else setOtaState("offer");
+  };
+
+  const dismissOta = () => setOtaState(null);
+
+  const finishOta = () => {
+    if (ota) setAppVersion(ota.version);
+    setOta(null);
+    setOtaState(null);
+    setOtaProgress(0);
+  };
+
   const tick = () => {
     const p = Math.min(1, (performance.now() - holdStart.current) / HOLD_MS);
     setHold(p);
@@ -408,10 +706,17 @@ export default function VpnDemoPage() {
     setSyncOk(null);
     setUsageOpen(false);
     setShowFlash(false);
-    setUpdateBanner(false);
+    setNotices(SEED_NOTICES());
+    setPush(null);
+    setPopupNotice(null);
+    setPendingPopupId(null);
+    setOta(null);
+    setOtaState(null);
+    setOtaProgress(0);
+    setPendingOta(false);
+    setAppVersion(APP_VERSION);
   };
 
-  const isAdmin = screen === "login" || screen === "admin";
   const themeVars = THEMES[theme].vars as CSSProperties;
   const steps: { i: LucideIcon; t: React.ReactNode; done: boolean }[] = [
     { i: Hand, t: "روی آیکن Account پایین صفحه ۵ ثانیه انگشتت رو نگه دار", done: isAdmin || unlocked },
@@ -455,6 +760,16 @@ export default function VpnDemoPage() {
       i: Gift,
       t: "از Account → دعوت دوستان: «شبیه‌سازی ورود دوست» رو بزن، روز هدیه جمع کن و Claim کن؛ بعد Support رو باز کن و با دستیار هوشمند چت کن",
       done: friends.length > freshFriends().length && giftDays === 0,
+    },
+    {
+      i: Bell,
+      t: "از پنل مدیر → تب Notifs: یه اعلان با Push و Popup بفرست؛ نوتیف بالای گوشی میاد، پاپ‌آپ باز می‌شه و توی پیام‌ها ذخیره می‌شه",
+      done: notices.length > 2,
+    },
+    {
+      i: DownloadCloud,
+      t: "تب Update پنل: یه نسخهٔ جدید منتشر کن؛ پاپ‌آپ آپدیت میاد و فقط بخش‌های تغییرکرده دانلود و خودکار نصب می‌شن — بدون نصب مجدد",
+      done: appVersion !== APP_VERSION,
     },
   ];
 
@@ -562,14 +877,11 @@ export default function VpnDemoPage() {
                     warn={!premium && trialLocked ? t.trialOverUpsell : null}
                     onPickServer={() => setScreen("servers")}
                     onOpenSettings={() => setScreen("settings")}
+                    unread={unread}
+                    onOpenInbox={() => setScreen("inbox")}
                     origin={vpn === "on" && destResolved ? DEST : ORIGIN}
                     flashOrigin={ORIGIN}
                     showFlash={showFlash}
-                    update={
-                      updateBanner
-                        ? { version: "1.6.0", url: RELEASES_URL, onUpdate: () => setUpdateBanner(false), onDismiss: () => setUpdateBanner(false) }
-                        : null
-                    }
                   />
                 )}
                 {screen === "servers" && (
@@ -603,6 +915,8 @@ export default function VpnDemoPage() {
                     onOpenUsage={() => setUsageOpen(true)}
                     onOpenInvite={() => setScreen("referral")}
                     onOpenSupport={() => setScreen("support")}
+                    unread={unread}
+                    onOpenInbox={() => setScreen("inbox")}
                   />
                 )}
                 {screen === "referral" && (
@@ -619,6 +933,9 @@ export default function VpnDemoPage() {
                 {screen === "support" && (
                   <SupportChatScreen lang={lang} onBack={() => setScreen("account")} />
                 )}
+                {screen === "inbox" && (
+                  <InboxScreen lang={lang} notices={notices} onOpen={openNotice} onMarkAll={markAllNotices} onBack={() => setScreen("home")} />
+                )}
                 {screen === "settings" && (
                   <SettingsScreen
                     lang={lang}
@@ -628,6 +945,7 @@ export default function VpnDemoPage() {
                     pingLive={pingLive}
                     setPingLive={setPingLive}
                     onReinstall={reinstall}
+                    version={appVersion}
                     onBack={() => setScreen("home")}
                   />
                 )}
@@ -654,6 +972,10 @@ export default function VpnDemoPage() {
                     orders={orders}
                     devices={devices}
                     ownDeviceId={DEVICE_ID}
+                    notices={notices}
+                    onSendNotice={sendNotice}
+                    appVersion={appVersion}
+                    onPublishOta={publishOta}
                     onApprove={approveOrder}
                     onReject={rejectOrder}
                     onDevicePremium={devicePremium}
@@ -680,6 +1002,21 @@ export default function VpnDemoPage() {
                   onClose={() => setUsageOpen(false)}
                 />
               )}
+
+              {/* اعلان‌ها: نوتیف heads-up گوشی + پاپ‌آپ داخل اپ + پاپ‌آپ آپدیت OTA */}
+              {push && <PushBanner n={push.n} onOpen={() => { setPush(null); setScreen("inbox"); }} />}
+              {popupNotice && (
+                <NoticePopup
+                  lang={lang}
+                  n={popupNotice}
+                  onClose={() => setPopupNotice(null)}
+                  onInbox={() => {
+                    setPopupNotice(null);
+                    setScreen("inbox");
+                  }}
+                />
+              )}
+              {ota && otaState && <OtaPopup lang={lang} rel={ota} state={otaState} progress={otaProgress} onStart={() => setOtaState("progress")} onLater={dismissOta} onDone={finishOta} />}
 
               {toast && (
                 <div className="pointer-events-none absolute inset-x-0 top-12 z-40 flex justify-center px-6">

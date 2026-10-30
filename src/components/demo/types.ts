@@ -2,7 +2,7 @@
 
 export type VpnState = "off" | "connecting" | "on";
 
-export type Screen = "home" | "servers" | "account" | "settings" | "split" | "login" | "admin" | "referral" | "support";
+export type Screen = "home" | "servers" | "account" | "settings" | "split" | "login" | "admin" | "referral" | "support" | "inbox";
 
 export interface ConfigItem {
   id: number;
@@ -47,6 +47,35 @@ export interface DeviceRecord {
   trialUsed: boolean;
   reinstalls: number;
   seen: string;
+}
+
+/* ── Notifications (admin → user) ── */
+
+export type NoticeKind = "info" | "gift" | "warn" | "update";
+export type NoticeChannel = "inbox" | "popup" | "push";
+export type NoticeAudience = "all" | "free" | "premium";
+
+export interface Notice {
+  id: string;
+  title: string;
+  body: string;
+  kind: NoticeKind;
+  audience: NoticeAudience;
+  channels: NoticeChannel[];
+  at: number;
+  read: boolean;
+}
+
+/* ── OTA update (partial patch) ── */
+
+export type OtaModule = "engine" | "servers" | "ui";
+
+export interface OtaRelease {
+  version: string;
+  notes: string;
+  modules: OtaModule[];
+  sizeMb: number;
+  at: number;
 }
 
 /* ── Split tunneling ── */
