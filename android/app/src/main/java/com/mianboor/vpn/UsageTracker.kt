@@ -37,7 +37,7 @@ object UsageTracker {
                 val prev = if (snap.has(uid.toString())) snap.optLong(uid.toString(), total) else total
                 val delta = (total - prev).coerceAtLeast(0L)
                 if (delta > 512_000L) { // فقط دلتاهای معنی‌دار (>512KB)
-                    val label = runCatching { pm.getApplicationLabel(pi).toString() }.getOrDefault("App")
+                    val label = runCatching { pm.getApplicationLabel(appInfo).toString() }.getOrDefault("App")
                     acc.put(label, acc.optLong(label, 0L) + delta)
                 }
             }
@@ -63,7 +63,7 @@ object UsageTracker {
     fun topApps(context: Context, n: Int = 6): List<Pair<String, Long>> {
         return try {
             val acc = JSONObject(if (AppPrefs.appMonthKey(context) == monthKey()) AppPrefs.appAcc(context) else "{}")
-            (0 until acc.length()).mapNotNull { k ->
+            acc.keys().asSequence().mapNotNull { k ->
                 val v = acc.optLong(k, 0L)
                 if (v > 0L) k to v else null
             }.sortedByDescending { it.second }.take(n)
@@ -74,7 +74,7 @@ object UsageTracker {
     fun topServers(context: Context, n: Int = 5): List<Triple<String, String, Long>> {
         return try {
             val acc = JSONObject(if (AppPrefs.srvMonthKey(context) == monthKey()) AppPrefs.srvAcc(context) else "{}")
-            (0 until acc.length()).mapNotNull { k ->
+            acc.keys().asSequence().mapNotNull { k ->
                 val o = acc.optJSONObject(k) ?: return@mapNotNull null
                 val b = o.optLong("b", 0L)
                 if (b > 0L) Triple(k, o.optString("cc", ""), b) else null
