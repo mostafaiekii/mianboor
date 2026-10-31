@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { chatCompletion } from "@/lib/ai-chat";
+import { chatCompletion, supportFallback } from "@/lib/ai-chat";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -72,9 +72,10 @@ export async function POST(req: Request) {
       ...clean,
     ]);
     return NextResponse.json({ ok: true, reply });
-  } catch (err) {
-    console.error("support-chat failed:", err);
-    // TODO: remove debug after diagnosis
-    return NextResponse.json({ ok: false, reply: "", debug: String(err).slice(0, 250) }, { status: 200 });
+  } catch {
+    // AI gateway در دسترس نیست (مثلاً روی اینfra خارجی) → پاسخ‌دهندهٔ قانون‌محور
+    const fb = supportFallback(clean);
+    if (fb) return NextResponse.json({ ok: true, reply: fb });
+    return NextResponse.json({ ok: false, reply: "" }, { status: 200 });
   }
 }
