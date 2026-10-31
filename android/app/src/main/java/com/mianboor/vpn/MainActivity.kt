@@ -207,8 +207,6 @@ private fun MbAppInner(
     val pings = remember { mutableStateMapOf<String, Int>() }
     var selectedKey by remember { mutableStateOf(AppPrefs.selectedKey(context)) }
     var seconds by remember { mutableIntStateOf(0) }
-    var downMbps by remember { mutableDoubleStateOf(0.0) }
-    var upMbps by remember { mutableDoubleStateOf(0.0) }
 
     var entitlement by remember {
         mutableStateOf(Entitlement(AppPrefs.plan(context), AppPrefs.planExpiresAt(context)))
@@ -661,7 +659,7 @@ private fun MbAppInner(
         }
     }
 
-    // ── live speeds + monthly usage accounting ──
+    // ── monthly usage accounting (بایت‌های خام برای کارت‌های مصرف در UI زنده هستند) ──
     var lastRx by remember { mutableLongStateOf(0L) }
     var lastTx by remember { mutableLongStateOf(0L) }
     var tick by remember { mutableIntStateOf(0) }
@@ -675,8 +673,6 @@ private fun MbAppInner(
                 val drx = (rxBytes - lastRx).coerceAtLeast(0L)
                 val dtx = (txBytes - lastTx).coerceAtLeast(0L)
                 if (lastRx > 0L || lastTx > 0L) {
-                    downMbps = drx * 8.0 / 1_000_000.0
-                    upMbps = dtx * 8.0 / 1_000_000.0
                     if (!premium) pendingBytes += drx + dtx
                     sessionBytes += drx + dtx
                 }
@@ -1149,8 +1145,8 @@ private fun MbAppInner(
                         onSupport = { openTelegram() },
                         unreadNotices = notices.count { !it.read },
                         onOpenInbox = { screen = Screen.INBOX },
-                        downMbps = downMbps,
-                        upMbps = upMbps,
+                        downBytes = rxBytes,
+                        upBytes = txBytes,
                         originIp = originIp,
                         originCc = originCc,
                         showFlash = showFlash,

@@ -39,8 +39,8 @@ android {
         applicationId = "com.mianboor.vpn"
         minSdk = 26
         targetSdk = 34
-        versionCode = 13
-        versionName = "1.6.4"
+        versionCode = 14
+        versionName = "1.7.0"
 
         ndk {
             abiFilters += "arm64-v8a"

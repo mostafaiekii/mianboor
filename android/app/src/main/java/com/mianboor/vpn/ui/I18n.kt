@@ -17,6 +17,8 @@ interface Strings {
     val tapProtect: String
     val download: String
     val upload: String
+    val tabFree: String
+    val tabPremium: String
     val selectLocation: String
     val search: String
     val smart: String
@@ -237,6 +239,8 @@ object EnStrings : Strings {
     override val tapProtect = "Tap to protect your connection"
     override val download = "Download"
     override val upload = "Upload"
+    override val tabFree = "Free"
+    override val tabPremium = "Premium"
     override val selectLocation = "Select Location"
     override val search = "Search countries…"
     override val smart = "Smart Connect"
@@ -474,6 +478,8 @@ object FaStrings : Strings {
     override val tapProtect = "برای امن شدن اتصالت لمس کن"
     override val download = "دانلود"
     override val upload = "آپلود"
+    override val tabFree = "رایگان"
+    override val tabPremium = "پرمیوم"
     override val selectLocation = "انتخاب سرور"
     override val search = "جستجوی کشور…"
     override val smart = "اتصال هوشمند"

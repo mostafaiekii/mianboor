@@ -243,7 +243,7 @@ export function HomeScreen({
             <ArrowDown className="size-4 text-glow" /> {t.download}
           </div>
           <div className="mt-1.5 whitespace-nowrap font-display text-lg font-bold text-ink tabular-nums">
-            {on ? "48.2" : "0.0"} <span className="text-xs font-medium text-dim">Mbps</span>
+            {on ? "1.42 GB" : "0 B"}
           </div>
         </div>
         <div className="rounded-2xl border border-panel-edge bg-panel p-3">
@@ -251,7 +251,7 @@ export function HomeScreen({
             <ArrowUp className="size-4 text-up" /> {t.upload}
           </div>
           <div className="mt-1.5 whitespace-nowrap font-display text-lg font-bold text-ink tabular-nums">
-            {on ? "12.6" : "0.0"} <span className="text-xs font-medium text-dim">Mbps</span>
+            {on ? "312 MB" : "0 B"}
           </div>
         </div>
       </div>
@@ -302,12 +302,14 @@ export function ServersScreen({
   const Back = rtl ? ChevronRight : ChevronLeft;
   const Fwd = rtl ? ChevronLeft : ChevronRight;
   const [q, setQ] = useState("");
-  // کم‌ترین پینگ بالای لیست — مثل اپ واقعی
-  const list = configs
-    .filter((c) => c.enabled && c.name.toLowerCase().includes(q.toLowerCase()))
-    .sort((a, b) => a.ping - b.ping);
+  const [tab, setTab] = useState<"free" | "premium">("free");
   const enabled = configs.filter((c) => c.enabled);
   const freeEnabled = enabled.filter((c) => !c.premium);
+  const premEnabled = enabled.filter((c) => c.premium);
+  // کم‌ترین پینگ بالای لیست — مثل اپ واقعی (تب رایگان/پرمیوم جدا)
+  const list = (tab === "free" ? freeEnabled : premEnabled)
+    .filter((c) => c.name.toLowerCase().includes(q.toLowerCase()))
+    .sort((a, b) => a.ping - b.ping);
   // Smart Connect really measures: lowest live ping among the servers this user can join.
   const pool = premiumUser ? enabled : freeEnabled.length ? freeEnabled : enabled;
   const best = [...pool].sort((a, b) => a.ping - b.ping)[0];
@@ -345,6 +347,25 @@ export function ServersScreen({
           className="w-full bg-transparent text-sm text-ink outline-none placeholder:text-dim"
         />
       </label>
+      {/* ── تب رایگان / پرمیوم — دو تب کنار هم، مثل اپ ── */}
+      <div className="mt-3 grid grid-cols-2 gap-0 rounded-xl border border-panel-edge bg-panel p-0">
+        {([
+          ["free", t.tabFree, freeEnabled.length],
+          ["premium", t.tabPremium, premEnabled.length],
+        ] as const).map(([key, label, count]) => (
+          <button
+            key={key}
+            type="button"
+            onClick={() => setTab(key)}
+            className={`flex items-center justify-center gap-1.5 rounded-xl py-2.5 text-sm transition-colors ${
+              tab === key ? "bg-glow/15 font-bold text-glow" : "font-medium text-dim hover:text-ink"
+            }`}
+          >
+            {label}
+            <span className={tab === key ? "text-xs opacity-70" : "text-xs opacity-60"}>{count}</span>
+          </button>
+        ))}
+      </div>
       <button
         type="button"
         onClick={() => best && onSelect(best.id)}

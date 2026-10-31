@@ -33,38 +33,58 @@ const YELLOW = "#FDC010";
 const GOLD = "#E3A008";
 const DARK_GOLD = "#B07C08";
 
-/* Lion & Sun emblem (Shiro-Khorshid) — stylized golden mark for the Iranian flag */
+/* ------------------------------------------------------------------ */
+/* Lion & Sun (Shiro-Khorshid) — proper emblem for the Iranian flag:   */
+/* golden lion facing the hoist, sword upright in the forepaw,         */
+/* radiant sun rising behind the back. All inside the white band.      */
+/* ------------------------------------------------------------------ */
 function LionSun() {
-  const rays: [number, number, number, number][] = [
-    [21.4, 13.5, 23.1, 13.5],
-    [20.4, 15.9, 21.61, 17.11],
-    [18, 16.9, 18, 18.6],
-    [15.6, 15.9, 14.39, 17.11],
-    [14.6, 13.5, 12.9, 13.5],
-    [15.6, 11.1, 14.39, 9.89],
-    [18, 10.1, 18, 8.4],
-    [20.4, 11.1, 21.61, 9.89],
-  ];
+  const cx = 19.4, cy = 14.9, rSun = 1.5;
+  const rays: React.ReactNode[] = [];
+  for (let i = 0; i < 12; i++) {
+    const a = (i * Math.PI) / 6;
+    rays.push(
+      <line
+        key={i}
+        x1={cx + Math.cos(a) * (rSun + 0.45)}
+        y1={cy + Math.sin(a) * (rSun + 0.45)}
+        x2={cx + Math.cos(a) * (rSun + 1.45)}
+        y2={cy + Math.sin(a) * (rSun + 1.45)}
+        stroke={GOLD}
+        strokeWidth="0.55"
+        strokeLinecap="round"
+      />,
+    );
+  }
   return (
     <>
-      {/* sun with rays */}
-      <circle cx="18" cy="13.5" r="2.6" fill={GOLD} />
-      {rays.map(([x1, y1, x2, y2], i) => (
-        <line key={i} x1={x1} y1={y1} x2={x2} y2={y2} stroke={GOLD} strokeWidth="0.9" strokeLinecap="round" />
-      ))}
-      {/* lion silhouette */}
-      <circle cx="21.2" cy="17.3" r="2" fill={DARK_GOLD} />
-      <circle cx="21.4" cy="17.2" r="1.4" fill={GOLD} />
-      <rect x="14.6" y="18.2" width="6.6" height="2.9" rx="1.4" fill={GOLD} />
-      <rect x="19.6" y="21" width="1" height="3.1" fill={GOLD} />
-      <rect x="21.2" y="21" width="1" height="3.1" fill={GOLD} />
-      <rect x="14.8" y="21" width="1" height="3.1" fill={GOLD} />
-      <rect x="16.4" y="21" width="1" height="3.1" fill={GOLD} />
-      <line x1="14.7" y1="19.2" x2="12.9" y2="16.9" stroke={GOLD} strokeWidth="0.8" strokeLinecap="round" />
-      <circle cx="12.9" cy="16.9" r="0.55" fill={GOLD} />
-      {/* sword */}
-      <rect x="23" y="14.6" width="0.8" height="9.5" fill={GOLD} />
-      <circle cx="23.4" cy="14.2" r="0.7" fill={GOLD} />
+      {/* sun rising behind the lion's back */}
+      {rays}
+      <circle cx={cx} cy={cy} r={rSun} fill={GOLD} />
+      {/* tail with tuft */}
+      <line x1="22.2" y1="17.4" x2="23.8" y2="14.6" stroke={GOLD} strokeWidth="0.9" strokeLinecap="round" />
+      <circle cx="24" cy="14.3" r="0.6" fill={GOLD} />
+      {/* body + haunch + legs */}
+      <rect x="13" y="16.6" width="9" height="3.3" rx="1.5" fill={GOLD} />
+      <circle cx="20.3" cy="17.4" r="1.8" fill={GOLD} />
+      <rect x="14" y="19.5" width="1.05" height="3.2" fill={GOLD} />
+      <rect x="15.9" y="19.5" width="1.05" height="3.2" fill={GOLD} />
+      <rect x="19.5" y="19.5" width="1.05" height="3.2" fill={GOLD} />
+      <rect x="21.3" y="19.5" width="1.05" height="3.2" fill={GOLD} />
+      {/* neck bridges head and body */}
+      <rect x="13.2" y="15.4" width="2.6" height="2.4" fill={GOLD} />
+      {/* head with dark mane */}
+      <circle cx="13.5" cy="15" r="2.15" fill={DARK_GOLD} />
+      <circle cx="13.5" cy="15" r="1.65" fill={GOLD} />
+      <circle cx="14.7" cy="13.2" r="0.5" fill={GOLD} />
+      <circle cx="11.95" cy="15.6" r="0.75" fill={GOLD} />
+      {/* raised foreleg gripping the sword */}
+      <line x1="14.6" y1="17.6" x2="12.5" y2="16.95" stroke={GOLD} strokeWidth="1" strokeLinecap="round" />
+      <rect x="11.75" y="12.4" width="0.7" height="4" fill={GOLD} />
+      <rect x="10.9" y="16.1" width="2.4" height="0.55" fill={GOLD} />
+      <rect x="11.9" y="16.65" width="0.4" height="1" fill={GOLD} />
+      <circle cx="12.1" cy="17.75" r="0.42" fill={GOLD} />
+      <circle cx="12.1" cy="16.85" r="0.62" fill={GOLD} />
     </>
   );
 }
@@ -93,13 +113,18 @@ const BODIES: Record<string, React.ReactNode> = {
   ),
   gb: (
     <>
-      <rect width="36" height="36" fill={NAVY} />
+      {/* Union Jack — proper geometry: St Andrew white diagonals, counterchanged
+          St Patrick red diagonals, St George white-fimbriated red cross on top */}
+      <rect width="36" height="36" fill="#012169" />
       <path d="M0 0L36 36M36 0L0 36" stroke={WHITE} strokeWidth="7" />
-      <path d="M0 0L36 36M36 0L0 36" stroke="#DD7C08" strokeWidth="2.5" />
-      <rect x="13" width="10" height="36" fill={WHITE} />
-      <rect y="13" width="36" height="10" fill={WHITE} />
-      <rect x="15" width="6" height="36" fill="#DD7C08" />
-      <rect y="15" width="36" height="6" fill="#DD7C08" />
+      <path d="M-1.56 1.56L16.44 19.56" stroke="#C8102E" strokeWidth="2.6" />
+      <path d="M19.56 16.44L37.56 34.44" stroke="#C8102E" strokeWidth="2.6" />
+      <path d="M19.56 19.56L1.56 37.56" stroke="#C8102E" strokeWidth="2.6" />
+      <path d="M16.44 16.44L34.44 -1.56" stroke="#C8102E" strokeWidth="2.6" />
+      <rect x="12" width="12" height="36" fill={WHITE} />
+      <rect y="12" width="36" height="12" fill={WHITE} />
+      <rect x="14.4" width="7.2" height="36" fill="#C8102E" />
+      <rect y="14.4" width="36" height="7.2" fill="#C8102E" />
     </>
   ),
   tr: (

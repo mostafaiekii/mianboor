@@ -1510,7 +1510,7 @@ fun AdminPanel(
                     }
                     Spacer(Modifier.height(16.dp))
                 }
-            } else if (tab == "configs") {            } else if (tab == "configs") {
+            } else if (tab == "configs") {
                 Row(
                     Modifier.fillMaxWidth().padding(top = 12.dp),
                     verticalAlignment = Alignment.CenterVertically,

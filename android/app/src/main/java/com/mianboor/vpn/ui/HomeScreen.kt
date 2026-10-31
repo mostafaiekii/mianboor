@@ -52,9 +52,17 @@ fun fmtTimer(sec: Int): String = String.format(
     Locale.US, "%02d:%02d:%02d", sec / 3600, (sec % 3600) / 60, sec % 60,
 )
 
-fun fmtSpeed(mbps: Double): String =
-    if (mbps >= 100) String.format(Locale.US, "%.0f", mbps)
-    else String.format(Locale.US, "%.1f", mbps)
+/** ۱٫۲ GB / ۳۴۰ MB — حجم مصرف‌شده به‌جای سرعت لحظه‌ای. */
+fun fmtBytes(b: Long): String {
+    if (b < 1024L) return "$b B"
+    val kb = b / 1024.0
+    if (kb < 1024.0) return String.format(Locale.US, "%.0f KB", kb)
+    val mb = kb / 1024.0
+    if (mb < 1024.0) {
+        return String.format(Locale.US, if (mb < 100.0) "%.1f MB" else "%.0f MB", mb)
+    }
+    return String.format(Locale.US, "%.2f GB", mb / 1024.0)
+}
 
 @Composable
 fun HomeScreen(
@@ -67,8 +75,8 @@ fun HomeScreen(
     onPickServer: () -> Unit,
     onOpenSettings: () -> Unit,
     onSupport: () -> Unit,
-    downMbps: Double,
-    upMbps: Double,
+    downBytes: Long,
+    upBytes: Long,
     originIp: String? = null,
     originCc: String = "ir",
     showFlash: Boolean = false,
@@ -310,13 +318,13 @@ fun HomeScreen(
             }
         }
 
-        // ── کارت‌های سرعت — دانلود و آپلود کنار هم ──
+        // ── کارت‌های مصرف — حجم دانلود و آپلود این سشن کنار هم ──
         Row(
             Modifier.fillMaxWidth().padding(top = 12.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            SpeedCard(t.download, R.drawable.ic_arrow_down, if (on) downMbps else 0.0, mb.glow, Modifier.weight(1f))
-            SpeedCard(t.upload, R.drawable.ic_arrow_up, if (on) upMbps else 0.0, mb.up, Modifier.weight(1f))
+            UsageCard(t.download, R.drawable.ic_arrow_down, if (on) downBytes else 0L, mb.glow, Modifier.weight(1f))
+            UsageCard(t.upload, R.drawable.ic_arrow_up, if (on) upBytes else 0L, mb.up, Modifier.weight(1f))
         }
 
         // ── آی‌پی مبدا (قبل از اتصال گرفته می‌شود) — زیر دو کارت، دقیقا وسط ──
@@ -355,7 +363,7 @@ private fun OriginCard(ip: String?, cc: String, ipLabel: String, modifier: Modif
 }
 
 @Composable
-private fun SpeedCard(title: String, icon: Int, mbps: Double, tint: Color, modifier: Modifier = Modifier) {
+private fun UsageCard(title: String, icon: Int, bytes: Long, tint: Color, modifier: Modifier = Modifier) {
     val mb = LocalMb.current
     PanelCard(modifier) {
         Column(Modifier.fillMaxWidth().padding(16.dp)) {
@@ -364,14 +372,10 @@ private fun SpeedCard(title: String, icon: Int, mbps: Double, tint: Color, modif
                 Spacer(Modifier.width(8.dp))
                 Text(title, color = mb.dim, fontSize = 13.sp)
             }
-            Row(
-                Modifier.padding(top = 8.dp),
-                verticalAlignment = Alignment.Bottom,
-            ) {
-                Text(fmtSpeed(mbps), color = mb.ink, fontSize = 24.sp, fontWeight = FontWeight.Bold)
-                Spacer(Modifier.width(6.dp))
-                Text("Mbps", color = mb.dim, fontSize = 13.sp, modifier = Modifier.padding(bottom = 3.dp))
-            }
+            Text(
+                fmtBytes(bytes), color = mb.ink, fontSize = 22.sp, fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(top = 10.dp), maxLines = 1,
+            )
         }
     }
 }
