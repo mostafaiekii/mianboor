@@ -52,7 +52,6 @@
         <activity
             android:name="com.journeyapps.barcodescanner.CaptureActivity"
             android:exported="false"
-            android:screenOrientation="fullSensor"
             tools:replace="android:theme"
             android:theme="@style/Theme.AppCompat.NoActionBar" />
 
