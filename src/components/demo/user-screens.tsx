@@ -6,6 +6,7 @@ import {
   ArrowUp,
   BadgeCheck,
   Bell,
+  CalendarClock,
   Camera,
   Check,
   ChevronDown,
@@ -15,6 +16,7 @@ import {
   Copy,
   Crown,
   Fingerprint,
+  Gauge,
   Gift,
   GitBranch,
   Globe,
@@ -23,6 +25,7 @@ import {
   Loader2,
   Lock,
   Play,
+  Plus,
   Power,
   RotateCcw,
   Search,
@@ -30,14 +33,19 @@ import {
   Settings,
   ShieldAlert,
   ShieldCheck,
+  Smartphone,
+  Star,
+  TriangleAlert,
   User,
+  Wallet as WalletIcon,
   X,
   Zap,
 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { COUNTRIES, Flag } from "./flag";
 import { TG_SUPPORT, tr, type Lang } from "./i18n";
-import { FREE_QUOTA_GB, type ConfigItem, type Entitlement, type SplitState, type VpnState } from "./types";
+import { FREE_QUOTA_GB, type ConfigItem, type Entitlement, type SpeedResult, type SplitState, type UsageDay, type VpnState } from "./types";
+import { FavStar, SpeedChip, UsageChart } from "./v2-features";
 
 /** یک ردیف مصرف — اپ یا سرور. در اپ واقعی از TrafficStats/VpnService می‌آید. */
 export type UsageRow = { label: string; mb: number; icon?: "tg" | "web" | "cam" | "play" | "sys"; flag?: string };
@@ -106,6 +114,10 @@ export function HomeScreen({
   origin,
   showFlash,
   flashOrigin,
+  quotaWarnPct,
+  expiryDays,
+  onRenew,
+  stealthOn,
 }: {
   lang: Lang;
   state: VpnState;
@@ -123,12 +135,20 @@ export function HomeScreen({
   /** فلش لحظه اتصال: «از ایران به آلمان وصل شدی» — همیشه آی‌پی واقعی کاربر */
   flashOrigin?: { ip: string; country: string } | null;
   showFlash?: boolean;
+  /** هشدار مصرف ۸۰٪ — درصد مصرف */
+  quotaWarnPct?: number | null;
+  /** هشدار انقضای پلن — روزهای باقی‌مانده */
+  expiryDays?: number | null;
+  onRenew?: () => void;
+  /** حالت سخت‌گیر ضد-فیلترینگ روشنه؟ */
+  stealthOn?: boolean;
 }) {
   const t = tr(lang);
   const rtl = lang === "fa";
   const on = state === "on";
   const busy = state === "connecting";
-  const label = on ? t.connected : busy ? t.connecting : t.notConnected;
+  const blocked = state === "blocked";
+  const label = blocked ? t.blockedTitle : on ? t.connected : busy ? t.connecting : t.notConnected;
   const Fwd = rtl ? ChevronLeft : ChevronRight;
 
   return (
@@ -185,22 +205,29 @@ export function HomeScreen({
           onClick={onToggle}
           aria-label={on ? "Disconnect" : "Connect"}
           className={
-            on
-              ? "relative grid size-44 place-items-center rounded-full border-4 border-glow bg-night shadow-[0_0_40px_var(--mb-glow)] transition-all"
-              : busy
-                ? "spin-ring relative grid size-44 place-items-center rounded-full border-4 border-glow/30 border-t-glow bg-night transition-all"
-                : "relative grid size-44 place-items-center rounded-full border-4 border-panel-edge bg-night transition-all hover:border-glow/50"
+            blocked
+              ? "relative grid size-44 place-items-center rounded-full border-4 border-danger bg-night shadow-[0_0_40px_var(--mb-danger)] transition-all"
+              : on
+                ? "relative grid size-44 place-items-center rounded-full border-4 border-glow bg-night shadow-[0_0_40px_var(--mb-glow)] transition-all"
+                : busy
+                  ? "spin-ring relative grid size-44 place-items-center rounded-full border-4 border-glow/30 border-t-glow bg-night transition-all"
+                  : "relative grid size-44 place-items-center rounded-full border-4 border-panel-edge bg-night transition-all hover:border-glow/50"
           }
         >
           <span className={busy ? "unspin grid size-32 place-items-center rounded-full bg-panel" : "grid size-32 place-items-center rounded-full bg-panel"}>
-            <Power className={on ? "size-12 text-glow" : "size-12 text-dim"} strokeWidth={2.4} />
+            <Power className={blocked ? "size-12 text-danger" : on ? "size-12 text-glow" : "size-12 text-dim"} strokeWidth={2.4} />
           </span>
         </button>
       </div>
 
       <div className="mt-4 text-center">
-        <div className={on ? "font-display text-2xl font-bold text-glow" : "font-display text-2xl font-bold text-ink"}>{label}</div>
-        <div className="mt-1 font-display text-base tabular-nums text-dim">{on ? fmt(seconds) : t.tapProtect}</div>
+        <div className={blocked ? "font-display text-2xl font-bold text-danger" : on ? "font-display text-2xl font-bold text-glow" : "font-display text-2xl font-bold text-ink"}>{label}</div>
+        <div className="mt-1 font-display text-base tabular-nums text-dim">{blocked ? t.blockedSub : on ? fmt(seconds) : t.tapProtect}</div>
+        {stealthOn && on && (
+          <div className="mx-auto mt-2 flex w-fit items-center gap-1.5 rounded-full border border-glow/40 bg-glow/10 px-3 py-1 text-xs font-semibold text-glow">
+            <ShieldAlert className="size-3.5" /> {t.stealthBadge}
+          </div>
+        )}
         {showFlash && on && server && (
           <div className="flash-in mx-auto mt-2 flex max-w-[300px] items-center justify-center gap-2 rounded-full border border-glow/40 bg-glow/10 px-3 py-1.5">
             <Flag code={(flashOrigin ?? origin)?.country ?? "ir"} size={18} />
@@ -213,12 +240,44 @@ export function HomeScreen({
             <Flag code={server.country} size={18} />
           </div>
         )}
-        {warn && !on && (
+        {warn && !on && !blocked && (
           <div className="mx-auto mt-2 flex max-w-[280px] items-center justify-center gap-1.5 rounded-full border border-danger/40 bg-danger/10 px-3 py-1.5 text-xs font-medium text-danger">
             <ShieldAlert className="size-3.5 shrink-0" /> {warn}
           </div>
         )}
       </div>
+
+      {/* ── هشدارهای خانه: مصرف ۸۰٪ و انقضای پلن — با دکمهٔ اقدام ── */}
+      {(quotaWarnPct != null || expiryDays != null) && (
+        <div className="mt-3 flex flex-col gap-2">
+          {quotaWarnPct != null && (
+            <div className="flex items-center gap-2.5 rounded-2xl border border-gold/40 bg-gold/10 px-3 py-2.5">
+              <TriangleAlert className="size-4 shrink-0 text-gold" />
+              <span className="min-w-0 flex-1 text-xs font-medium leading-5 text-ink">
+                {t.quotaWarn.replace("{p}", String(quotaWarnPct))}
+              </span>
+              {onRenew && (
+                <button type="button" onClick={onRenew} className="shrink-0 rounded-full bg-gold px-3 py-1.5 text-xs font-bold text-night">
+                  {t.quotaWarnCta}
+                </button>
+              )}
+            </div>
+          )}
+          {expiryDays != null && (
+            <div className="flex items-center gap-2.5 rounded-2xl border border-gold/40 bg-gold/10 px-3 py-2.5">
+              <CalendarClock className="size-4 shrink-0 text-gold" />
+              <span className="min-w-0 flex-1 text-xs font-medium leading-5 text-ink">
+                {t.expiryWarn.replace("{d}", String(expiryDays))}
+              </span>
+              {onRenew && (
+                <button type="button" onClick={onRenew} className="shrink-0 rounded-full bg-gold px-3 py-1.5 text-xs font-bold text-night">
+                  {t.expiryWarnCta}
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       <button
         type="button"
@@ -282,8 +341,14 @@ export function ServersScreen({
   premiumUser,
   syncing,
   syncOk,
+  favorites,
+  speedResults,
   onRefresh,
   onSelect,
+  onToggleFav,
+  onSpeedTest,
+  onImport,
+  onStatus,
   onPremiumTap,
   onBack,
 }: {
@@ -293,8 +358,16 @@ export function ServersScreen({
   premiumUser: boolean;
   syncing: boolean;
   syncOk: boolean | null;
+  /** سرورهای سنجاق‌شده بالای لیست */
+  favorites: number[];
+  /** نتیجهٔ اسپیدتست‌های انجام‌شده */
+  speedResults: Record<number, SpeedResult>;
   onRefresh: () => void;
   onSelect: (id: number) => void;
+  onToggleFav: (id: number) => void;
+  onSpeedTest: () => void;
+  onImport: () => void;
+  onStatus: () => void;
   onPremiumTap: () => void;
   onBack: () => void;
 }) {
@@ -307,21 +380,54 @@ export function ServersScreen({
   const enabled = configs.filter((c) => c.enabled);
   const freeEnabled = enabled.filter((c) => !c.premium);
   const premEnabled = enabled.filter((c) => c.premium);
-  // کم‌ترین پینگ بالای لیست — مثل اپ واقعی (تب رایگان/پرمیوم جدا)
-  const list = (tab === "free" ? freeEnabled : premEnabled)
-    .filter((c) => c.name.toLowerCase().includes(q.toLowerCase()))
-    .sort((a, b) => a.ping - b.ping);
+  // سنجاق‌شده‌ها اول، بعد بقیه — هر دو با کم‌ترین پینگ بالا
+  const base = (tab === "free" ? freeEnabled : premEnabled).filter((c) => c.name.toLowerCase().includes(q.toLowerCase()));
+  const list = [
+    ...base.filter((c) => favorites.includes(c.id)).sort((a, b) => a.ping - b.ping),
+    ...base.filter((c) => !favorites.includes(c.id)).sort((a, b) => a.ping - b.ping),
+  ];
   // Smart Connect really measures: lowest live ping among the servers this user can join.
   const pool = premiumUser ? enabled : freeEnabled.length ? freeEnabled : enabled;
   const best = [...pool].sort((a, b) => a.ping - b.ping)[0];
 
   return (
     <div dir={rtl ? "rtl" : "ltr"} className="flex min-h-0 flex-1 flex-col px-5 pt-2">
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-2">
         <button type="button" onClick={onBack} aria-label="Back" className="w-fit text-dim hover:text-ink">
           <Back className="size-6" />
         </button>
-        <h2 className="flex-1 font-display text-2xl font-bold text-ink">{t.selectLocation}</h2>
+        <h2 className="flex-1 truncate font-display text-2xl font-bold text-ink">{t.selectLocation}</h2>
+        {/* اسپیدتست سرور انتخاب‌شده */}
+        <button
+          type="button"
+          onClick={onSpeedTest}
+          disabled={!configs.find((c) => c.id === selectedId)}
+          aria-label={t.speedTest}
+          title={t.speedTest}
+          className="grid size-9 shrink-0 place-items-center rounded-xl border border-panel-edge bg-panel text-glow hover:border-glow/40 disabled:opacity-50"
+        >
+          <Gauge className="size-4" />
+        </button>
+        {/* ورود کانفیگ شخصی */}
+        <button
+          type="button"
+          onClick={onImport}
+          aria-label={t.importTitle}
+          title={t.importTitle}
+          className="grid size-9 shrink-0 place-items-center rounded-xl border border-panel-edge bg-panel text-glow hover:border-glow/40"
+        >
+          <Plus className="size-4" />
+        </button>
+        {/* وضعیت زندهٔ همهٔ سرورها */}
+        <button
+          type="button"
+          onClick={onStatus}
+          aria-label={t.statusTitle}
+          title={t.statusTitle}
+          className="grid size-9 shrink-0 place-items-center rounded-xl border border-panel-edge bg-panel text-glow hover:border-glow/40"
+        >
+          <ShieldCheck className="size-4" />
+        </button>
         {/* دکمه به‌روزرسانی از سرور — مثل اپ واقعی */}
         <button
           type="button"
@@ -403,33 +509,48 @@ export function ServersScreen({
           const sel = c.id === selectedId;
           const locked = c.premium && !premiumUser;
           const isBest = best?.id === c.id;
+          const fav = favorites.includes(c.id);
+          const spd = speedResults[c.id];
           return (
-            <button
-              type="button"
+            <div
               key={c.id}
+              role="button"
+              tabIndex={0}
               onClick={() => (locked ? onPremiumTap() : onSelect(c.id))}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  if (locked) onPremiumTap();
+                  else onSelect(c.id);
+                }
+              }}
               aria-label={`${c.name}${locked ? " (premium)" : ""}`}
               className={
                 locked
-                  ? "flex items-center gap-3 rounded-xl border border-panel-edge bg-panel/60 px-3 py-3 text-start opacity-75"
+                  ? "flex cursor-pointer items-center gap-3 rounded-xl border border-panel-edge bg-panel/60 px-3 py-3 text-start opacity-75"
                   : sel
-                    ? "flex items-center gap-3 rounded-xl border border-glow/40 bg-panel px-3 py-3 text-start"
-                    : "flex items-center gap-3 rounded-xl border border-panel-edge bg-panel px-3 py-3 text-start hover:border-ink/20"
+                    ? "flex cursor-pointer items-center gap-3 rounded-xl border border-glow/40 bg-panel px-3 py-3 text-start"
+                    : "flex cursor-pointer items-center gap-3 rounded-xl border border-panel-edge bg-panel px-3 py-3 text-start hover:border-ink/20"
               }
             >
               <Flag code={c.country} size={32} />
               <span className="min-w-0 flex-1">
-                <span className="block truncate text-sm font-semibold text-ink">{c.name}</span>
+                <span className="flex items-center gap-1.5">
+                  {fav && <Star className="size-3 shrink-0 fill-gold text-gold" />}
+                  <span className="block truncate text-sm font-semibold text-ink">{c.name}</span>
+                </span>
                 <span className="block truncate text-sm text-dim">
                   {locked ? t.premiumLockSub : c.protocol}
                 </span>
               </span>
+              {spd && <SpeedChip lang={lang} r={spd} />}
               <span className={`w-12 shrink-0 text-end text-sm tabular-nums ${pingTone(c.ping)}`}>{c.ping} ms</span>
               {isBest && !locked && (
                 <span className="shrink-0 rounded-full bg-glow/15 px-1.5 py-0.5 text-[10px] font-bold uppercase text-glow">
                   {t.best}
                 </span>
               )}
+              {!locked && <FavStar active={fav} onClick={() => onToggleFav(c.id)} label={fav ? t.starRemove : t.starAdd} />}
               {locked ? (
                 <>
                   <Crown className="size-4 shrink-0 fill-gold text-gold" />
@@ -440,7 +561,7 @@ export function ServersScreen({
                   {sel && <Check className="size-3.5 text-on-glow" strokeWidth={3} />}
                 </span>
               )}
-            </button>
+            </div>
           );
         })}
         {list.length === 0 && <div className="py-8 text-center text-sm text-dim">{t.noMatch}</div>}
@@ -486,6 +607,12 @@ export function AccountScreen({
   split,
   deviceId,
   unread,
+  killSwitch,
+  setKillSwitch,
+  failover,
+  setFailover,
+  autoReconnect,
+  setAutoReconnect,
   onOpenSplit,
   onUpgrade,
   onCopyDevice,
@@ -493,6 +620,9 @@ export function AccountScreen({
   onOpenInvite,
   onOpenSupport,
   onOpenInbox,
+  onOpenWallet,
+  onOpenDevices,
+  onOpenPrivacy,
 }: {
   lang: Lang;
   entitlement: Entitlement;
@@ -501,6 +631,13 @@ export function AccountScreen({
   split: SplitState;
   deviceId: string;
   unread?: number;
+  /** کلید قطع اضطراری و محافظت‌های اتصال — از تنظیمات سراسری می‌آید */
+  killSwitch: boolean;
+  setKillSwitch: (v: boolean) => void;
+  failover: boolean;
+  setFailover: (v: boolean) => void;
+  autoReconnect: boolean;
+  setAutoReconnect: (v: boolean) => void;
   onOpenSplit: () => void;
   onUpgrade: () => void;
   onCopyDevice: () => void;
@@ -508,12 +645,13 @@ export function AccountScreen({
   onOpenInvite: () => void;
   onOpenSupport: () => void;
   onOpenInbox: () => void;
+  onOpenWallet: () => void;
+  onOpenDevices: () => void;
+  onOpenPrivacy: () => void;
 }) {
   const t = tr(lang);
   const rtl = lang === "fa";
   const Fwd = rtl ? ChevronLeft : ChevronRight;
-  const [kill, setKill] = useState(true);
-  const [auto, setAuto] = useState(true);
   const [renewOpen, setRenewOpen] = useState(false);
   const premium = entitlement.plan !== "free";
   const pct = premium ? 1 : trialLocked ? 1 : usedGb / FREE_QUOTA_GB;
@@ -522,6 +660,7 @@ export function AccountScreen({
   const until = entitlement.expiresAt
     ? new Date(entitlement.expiresAt).toLocaleDateString(lang === "fa" ? "fa-IR" : "en-US", { month: "short", day: "numeric", year: "numeric" })
     : "";
+  const daysLeft = entitlement.expiresAt ? Math.max(0, Math.ceil((entitlement.expiresAt - Date.now()) / 86400_000)) : null;
   const splitN = split.apps.length;
   const splitSub =
     splitN === 0
@@ -529,8 +668,9 @@ export function AccountScreen({
       : tpl2(t.splitSubOn, splitN, split.mode === "exclude" ? t.modeExcl : t.modeIncl);
 
   const rows = [
-    { icon: ShieldCheck, t: t.killSwitch, d: t.killSwitchSub, v: kill, set: setKill },
-    { icon: WifiIcon, t: t.autoConnect, d: t.autoConnectSub, v: auto, set: setAuto },
+    { icon: ShieldCheck, t: t.killSwitch, d: t.killSwitchSub, v: killSwitch, set: setKillSwitch },
+    { icon: ShieldAlert, t: t.failover, d: t.failoverSub, v: failover, set: setFailover },
+    { icon: WifiIcon, t: t.autoReconnect, d: t.autoReconnectSub, v: autoReconnect, set: setAutoReconnect },
   ];
 
   return (
@@ -554,6 +694,11 @@ export function AccountScreen({
             <span dir="ltr" className="mt-0.5 block text-sm font-medium text-gold">
               {t.validUntil} {until}
             </span>
+            {daysLeft != null && daysLeft <= 3 && (
+              <span className="mt-1 flex items-center gap-1.5 text-sm font-bold text-danger">
+                <CalendarClock className="size-4 shrink-0" /> {t.planEndsDays.replace("{d}", String(daysLeft))}
+              </span>
+            )}
           </span>
         </div>
       ) : (
@@ -626,6 +771,34 @@ export function AccountScreen({
         <span className="flex-1">
           <span className="block text-sm font-semibold text-ink">{t.split}</span>
           <span className="block text-sm text-dim">{splitSub}</span>
+        </span>
+        <Fwd className="size-5 shrink-0 text-dim" />
+      </button>
+
+      {/* ── کیف پول: موجودی، کد هدیه، پرداخت از کیف پول ── */}
+      <button
+        type="button"
+        onClick={onOpenWallet}
+        className="flex items-center gap-3 rounded-2xl border border-panel-edge bg-panel p-4 text-start transition-colors hover:border-glow/40"
+      >
+        <WalletIcon className="size-5 shrink-0 text-dim" />
+        <span className="flex-1">
+          <span className="block text-sm font-semibold text-ink">{t.wallet}</span>
+          <span className="block text-sm text-dim">{t.walletSub}</span>
+        </span>
+        <Fwd className="size-5 shrink-0 text-dim" />
+      </button>
+
+      {/* ── دستگاه‌های من: مدیریت دسترسی از سمت کاربر ── */}
+      <button
+        type="button"
+        onClick={onOpenDevices}
+        className="flex items-center gap-3 rounded-2xl border border-panel-edge bg-panel p-4 text-start transition-colors hover:border-glow/40"
+      >
+        <Smartphone className="size-5 shrink-0 text-dim" />
+        <span className="flex-1">
+          <span className="block text-sm font-semibold text-ink">{t.myDevices}</span>
+          <span className="block text-sm text-dim">{t.myDevicesSub}</span>
         </span>
         <Fwd className="size-5 shrink-0 text-dim" />
       </button>
@@ -713,6 +886,20 @@ export function AccountScreen({
         <Copy className="size-4 shrink-0 text-dim" />
       </button>
 
+      {/* ── حریم خصوصی و بدون لاگ ── */}
+      <button
+        type="button"
+        onClick={onOpenPrivacy}
+        className="flex items-center gap-3 rounded-2xl border border-panel-edge bg-panel p-4 text-start transition-colors hover:border-glow/40"
+      >
+        <ShieldCheck className="size-5 shrink-0 text-dim" />
+        <span className="flex-1">
+          <span className="block text-sm font-semibold text-ink">{t.privacyRow}</span>
+          <span className="block text-sm text-dim">{t.privacyRowSub}</span>
+        </span>
+        <Fwd className="size-5 shrink-0 text-dim" />
+      </button>
+
       <button
         type="button"
         onClick={onUpgrade}
@@ -771,6 +958,7 @@ export function UsageSheet({
   totalText,
   byApp,
   byServer,
+  days,
   onClose,
 }: {
   lang: Lang;
@@ -778,6 +966,8 @@ export function UsageSheet({
   totalText: string;
   byApp: UsageRow[];
   byServer: UsageRow[];
+  /** مصرف روزانهٔ ۱۴ روز اخیر برای نمودار */
+  days: UsageDay[];
   onClose: () => void;
 }) {
   const t = tr(lang);
@@ -808,6 +998,8 @@ export function UsageSheet({
         </div>
 
         <div className="scroll-hide mt-4 flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto">
+          <UsageChart lang={lang} days={days} />
+
           <section>
             <div className="text-sm font-bold text-ink">{t.usageByApp}</div>
             <div className="text-xs text-dim">{t.usageAppSub}</div>

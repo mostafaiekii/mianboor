@@ -1,9 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { Check, Copy, CreditCard, Crown, PartyPopper, Send, X } from "lucide-react";
+import { Check, Copy, CreditCard, Crown, PartyPopper, Send, Ticket, Wallet as WalletIcon, X } from "lucide-react";
 import { TG_SUPPORT, tr, type Lang } from "./i18n";
-import { PLAN_DAYS, type PlanId } from "./types";
+import { PLAN_DAYS, PLAN_PRICES, PROMO_CODES, type PlanId } from "./types";
 
 const PLANS: { id: PlanId; key: "m1" | "m3" | "m6"; price: "price1" | "price3" | "price6"; sub: "sub1" | "sub3" | "sub6"; tag?: "popular" | "bestValue" }[] = [
   { id: "p1", key: "m1", price: "price1", sub: "sub1" },
@@ -27,27 +27,50 @@ type Step = "pick" | "pay" | "sent";
 export function PlansSheet({
   lang,
   reason,
+  walletBalance,
+  onWalletPay,
   onClose,
   onCreateOrder,
 }: {
   lang: Lang;
   reason: "renew" | "premium-lock" | "trial-over";
+  /** موجودی کیف پول برای پرداخت مستقیم */
+  walletBalance: number;
+  onWalletPay: (plan: PlanId, finalPrice: number) => void;
   onClose: () => void;
-  onCreateOrder: (plan: PlanId, via: "gateway" | "telegram") => string;
+  onCreateOrder: (plan: PlanId, via: "gateway" | "telegram", discountPct?: number) => string;
 }) {
   const t = tr(lang);
   const rtl = lang === "fa";
   const [step, setStep] = useState<Step>("pick");
   const [plan, setPlan] = useState<PlanId>("p3");
   const [orderId, setOrderId] = useState("");
+  const [promo, setPromo] = useState("");
+  const [promoPct, setPromoPct] = useState<number | null>(null);
+  const [promoErr, setPromoErr] = useState(false);
 
   const sel = PLANS.find((p) => p.id === plan)!;
+  const finalPrice = Math.round(PLAN_PRICES[plan] * (1 - (promoPct ?? 0) / 100));
+
+  const applyPromo = () => {
+    const c = promo.trim().toUpperCase();
+    const pct = PROMO_CODES[c];
+    if (pct) {
+      setPromoPct(pct);
+      setPromoErr(false);
+    } else {
+      setPromoPct(null);
+      setPromoErr(true);
+    }
+  };
 
   const pay = (via: "gateway" | "telegram") => {
-    const id = onCreateOrder(plan, via);
+    const id = onCreateOrder(plan, via, promoPct ?? 0);
     setOrderId(id);
     setStep("sent");
   };
+
+  const fmtPrice = (n: number) => `${n.toLocaleString("en-US")} ${t.toman}`;
 
   return (
     <div
@@ -142,14 +165,56 @@ export function PlansSheet({
               onClick={() => setStep("pay")}
               className="mt-1 flex items-center justify-center gap-2 rounded-xl bg-gold py-3 font-display text-base font-bold text-night"
             >
-              {t.continuePay} — <span className="tabular-nums">{t[sel.price]}</span>
+              {t.continuePay} — <span className="tabular-nums">{promoPct ? fmtPrice(finalPrice) : t[sel.price]}</span>
             </button>
+
+            {/* ── کد تخفیف ── */}
+            <div className="rounded-xl border border-panel-edge bg-night p-3">
+              <div className="flex gap-2">
+                <span className="grid w-9 shrink-0 place-items-center">
+                  <Ticket className="size-4 text-gold" />
+                </span>
+                <input
+                  dir="ltr"
+                  value={promo}
+                  onChange={(e) => { setPromo(e.target.value); setPromoErr(false); }}
+                  onKeyDown={(e) => e.key === "Enter" && applyPromo()}
+                  placeholder={t.promoPh}
+                  className="w-full flex-1 rounded-lg border border-panel-edge bg-panel px-2.5 py-2 font-mono text-sm uppercase text-ink outline-none placeholder:normal-case placeholder:text-dim focus:border-gold/50"
+                />
+                <button
+                  type="button"
+                  onClick={applyPromo}
+                  className="shrink-0 rounded-lg bg-gold/20 px-3 text-sm font-bold text-gold"
+                >
+                  {t.promoApply}
+                </button>
+              </div>
+              {promoPct != null && (
+                <div className="mt-2 text-xs font-semibold text-glow">{t.promoOk.replace("{p}", String(promoPct))}</div>
+              )}
+              {promoErr && <div className="mt-2 text-xs font-semibold text-danger">{t.promoBad}</div>}
+            </div>
           </>
         )}
 
         {step === "pay" && (
           <>
             <div className="text-sm font-semibold text-ink">{t.payTitle}</div>
+            {/* ── پرداخت با کیف پول — فعال‌سازی آنی ── */}
+            <button
+              type="button"
+              onClick={() => onWalletPay(plan, finalPrice)}
+              className={`flex items-center gap-3 rounded-xl border bg-night px-4 py-4 text-start transition-colors ${
+                walletBalance >= finalPrice ? "border-glow/40 hover:border-glow" : "border-panel-edge opacity-70"
+              }`}
+            >
+              <WalletIcon className="size-5 shrink-0 text-glow" />
+              <span className="flex-1">
+                <span className="block text-sm font-semibold text-ink">{t.payWallet.replace("{b}", `${walletBalance.toLocaleString("en-US")} ${t.toman}`)}</span>
+                <span className="block text-sm text-dim">{t.walletPay} · {t.walletPaySub.replace("{b}", `${walletBalance.toLocaleString("en-US")} ${t.toman}`)}</span>
+              </span>
+            </button>
             <button
               type="button"
               onClick={() => pay("gateway")}
@@ -203,8 +268,9 @@ export function PlansSheet({
               <span className="mt-1 block font-mono text-lg font-bold tracking-wider text-ink">{DEMO_PAY.card}</span>
               <span className="mt-1 block text-xs text-dim">{t.payHolderLabel}: {DEMO_PAY.holder}</span>
               <span className="mt-1 block text-sm font-semibold text-gold">
-                {t.payAmountLabel}: {t[sel.price]}
+                {t.payAmountLabel}: {promoPct ? fmtPrice(finalPrice) : t[sel.price]}
               </span>
+              {promoPct != null && <span className="mt-0.5 block text-xs font-bold text-glow">{t.promoApplied.replace("{c}", promo.trim().toUpperCase()).replace("{p}", String(promoPct))}</span>}
               <span className="mt-1 block text-xs leading-5 text-dim">{DEMO_PAY.note}</span>
             </button>
             <div className="text-xs leading-5 text-dim">{t.payCardHint}</div>

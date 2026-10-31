@@ -17,7 +17,9 @@ import {
   Power,
   RotateCcw,
   ShieldCheck,
+  Star,
   User,
+  Wallet as WalletIc,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { HomeScreen, ServersScreen, AccountScreen, UsageSheet, type UsageRow } from "@/components/demo/user-screens";
@@ -28,14 +30,20 @@ import { ReferralScreen, type RefFriend, REF_CODE, REF_LINK } from "@/components
 import { SupportChatScreen } from "@/components/demo/support-chat";
 import { InboxScreen, KIND_META } from "@/components/demo/inbox-screen";
 import { AdminLogin, AdminPanel } from "@/components/demo/admin-screens";
+import { DevicesSheet, ImportSheet, PrivacyScreen, SpeedTestSheet, StatusSheet, WalletScreen, type SpeedPhase, type SpeedState } from "@/components/demo/v2-features";
 import { tr, tpl, type Lang, type Strings } from "@/components/demo/i18n";
 import { THEMES, type ThemeName } from "@/components/demo/themes";
 import {
   FREE_QUOTA_GB,
   PLAN_DAYS,
+  PLAN_PRICES,
+  QUOTA_WARN_PCT,
+  WALLET_CODES,
   type ConfigItem,
   type DeviceRecord,
+  type DnsMode,
   type Entitlement,
+  type MyDevice,
   type Notice,
   type NoticeAudience,
   type NoticeChannel,
@@ -45,8 +53,12 @@ import {
   type OtaRelease,
   type PlanId,
   type Screen,
+  type SpeedResult,
   type SplitState,
+  type StealthMode,
+  type UsageDay,
   type VpnState,
+  type Wallet,
 } from "@/components/demo/types";
 
 const HOLD_MS = 5000;
@@ -108,15 +120,25 @@ const freshDevices = (): DeviceRecord[] => [
   { id: "MB-9Q3L-77XE", premium: true, premiumUntil: Date.now() + 40 * 86400_000, trialUsed: true, reinstalls: 0, seen: "yesterday" },
 ];
 
-/* صندوق پیام اولیه: یه پیام خوانده‌شده + یه اعلان هدیه خوانده‌نشده (برای badge) */
+/* صندوق پیام اولیه: یه پیام خوانده‌شده + اعلان هدیه + چنج‌لاگ نسخهٔ ۲ (خوانده‌نشده) */
 const SEED_NOTICES = (): Notice[] => [
+  {
+    id: "seed-v2",
+    title: "🚀 What's new — v2 features are live",
+    body: "Kill Switch + auto-failover now protect your tunnel, servers get speed tests, favorites and live status. Plus: wallet with gift codes, promo codes, config import, 14-day usage chart and a no-logs page — all in this update.",
+    kind: "update",
+    audience: "all",
+    channels: ["inbox", "push"],
+    at: Date.now() - 12 * 60_000,
+    read: false,
+  },
   {
     id: "seed-gift",
     title: "🎁 Gift weekend",
     body: "This weekend every friend you invite brings +3 extra gift days — share your code from Account → Invite Friends.",
     kind: "gift",
     audience: "all",
-    channels: ["inbox", "push"],
+    channels: ["inbox"],
     at: Date.now() - 45 * 60_000,
     read: false,
   },
@@ -133,6 +155,27 @@ const SEED_NOTICES = (): Notice[] => [
 ];
 
 const MOD_KEY: Record<OtaModule, keyof Strings> = { engine: "modEngine", servers: "modServers", ui: "modUi" };
+
+/* ── v2 seeds ── */
+
+const freshWallet = (): Wallet => ({
+  balance: 320_000,
+  usedCodes: [],
+  txs: [{ id: "w-seed", kind: "topup", amount: 320_000, label: "Wallet top-up", at: Date.now() - 3 * 86400_000 }],
+});
+
+const freshMyDevices = (): MyDevice[] => [
+  { id: DEVICE_ID, name: "This phone", self: true, lastSeen: "now" },
+  { id: "MB-2K8D-41F7", name: "Pixel 7", lastSeen: "2h ago" },
+  { id: "MB-9Q3L-77XE", name: "Galaxy Tab A8", lastSeen: "yesterday" },
+];
+
+const seedUsageDays = (): UsageDay[] =>
+  Array.from({ length: 14 }, (_, i) => {
+    const d = new Date(Date.now() - (13 - i) * 86400_000);
+    const wobble = Math.sin(i * 2.7) * 0.7 + Math.random() * 0.9;
+    return { label: d.toLocaleDateString("en-US", { weekday: "short" }), gb: Math.max(0.2, +(1.1 + wobble).toFixed(2)) };
+  });
 
 function PushBanner({ n, onOpen }: { n: Notice; onOpen: () => void }) {
   return (
@@ -254,7 +297,7 @@ function OtaPopup({
             <div className="mt-3 flex flex-wrap justify-center gap-1.5">
               {rel.modules.map((m) => (
                 <span key={m} className="rounded-full bg-ink/10 px-2 py-0.5 text-[10px] font-bold text-dim">
-                  {t[MOD_KEY[m]]}
+                  {t[MOD_KEY[m]] as string}
                 </span>
               ))}
             </div>
@@ -270,7 +313,7 @@ function OtaPopup({
             <div className="mt-2 flex flex-wrap justify-center gap-1.5">
               {rel.modules.map((m) => (
                 <span key={m} className="rounded-full bg-ink/10 px-2 py-0.5 text-[10px] font-bold text-dim">
-                  {t[MOD_KEY[m]]}
+                  {t[MOD_KEY[m]] as string}
                 </span>
               ))}
             </div>
@@ -374,11 +417,30 @@ export default function VpnDemoPage() {
   const [otaProgress, setOtaProgress] = useState(0);
   const [pendingOta, setPendingOta] = useState(false);
   const [appVersion, setAppVersion] = useState(APP_VERSION);
+  /* ── v2: محافظت اتصال + امکانات جدید ── */
+  const [killSwitch, setKillSwitch] = useState(true);
+  const [failover, setFailover] = useState(true);
+  const [autoReconnect, setAutoReconnect] = useState(true);
+  const [stealth, setStealth] = useState<StealthMode>("normal");
+  const [dnsMode, setDnsMode] = useState<DnsMode>("auto");
+  const [dnsCustom, setDnsCustom] = useState("");
+  const [favorites, setFavorites] = useState<number[]>([2]);
+  const [speedResults, setSpeedResults] = useState<Record<number, SpeedResult>>({});
+  const [speedOpen, setSpeedOpen] = useState(false);
+  const [speed, setSpeed] = useState<SpeedState | null>(null);
+  const [statusOpen, setStatusOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
+  const [devicesOpen, setDevicesOpen] = useState(false);
+  const [wallet, setWallet] = useState<Wallet>(freshWallet);
+  const [myDevices, setMyDevices] = useState<MyDevice[]>(freshMyDevices);
+  const [usageDays, setUsageDays] = useState<UsageDay[]>(seedUsageDays);
+  const [deadServers, setDeadServers] = useState<number[]>([]);
 
   const t = tr(lang);
   const holdStart = useRef(0);
   const raf = useRef(0);
   const fired = useRef(false);
+  const speedTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const premium = entitlement.plan !== "free";
   const isAdmin = screen === "login" || screen === "admin";
@@ -504,11 +566,36 @@ export default function VpnDemoPage() {
     }
   }, [configs, selectedId]);
 
+  /* ── v2: موتور Failover + Kill Switch — اگه سرور فعال بمیره ── */
+  useEffect(() => {
+    if (vpn !== "on" || !selectedId) return;
+    if (!deadServers.includes(selectedId)) return;
+    const pool = liveConfigs.filter((c) => c.enabled && !deadServers.includes(c.id) && (premium || !c.premium));
+    const next = [...pool].sort((a, b) => a.ping - b.ping)[0];
+    if (failover && next) {
+      setSelectedId(next.id);
+      showToast(t.failoverToast.replace("{s}", next.name));
+    } else if (killSwitch) {
+      setVpn("blocked");
+    } else {
+      setVpn("off");
+    }
+  }, [vpn, selectedId, deadServers]);
+
+  /* ── v2: پاک‌سازی تایمر اسپیدتست ── */
+  useEffect(() => () => { if (speedTimer.current) clearInterval(speedTimer.current); }, []);
+
   /* ── کانفیگ‌های زنده: پینگ لحظه‌ای جای پایه رو می‌گیره ── */
   const liveConfigs: ConfigItem[] = configs.map((c) => ({ ...c, ping: pings[c.id] ?? c.ping }));
   const server = liveConfigs.find((c) => c.id === selectedId) ?? null;
 
   const toggleVpn = () => {
+    if (vpn === "blocked") {
+      /* Kill Switch — کاربر می‌خواد دوباره وصل شه */
+      setVpn("connecting");
+      setTimeout(() => setVpn((v) => (v === "connecting" ? "on" : v)), 1400);
+      return;
+    }
     if (vpn === "on" || vpn === "connecting") {
       setVpn("off");
       setSeconds(0);
@@ -524,6 +611,141 @@ export default function VpnDemoPage() {
     setTimeout(() => setVpn((v) => (v === "connecting" ? "on" : v)), 1400);
   };
 
+  /* ── v2: اسپیدتست زنده — موتور انیمیشن + ثبت نتیجه ── */
+  const startSpeedTest = (srvId: number) => {
+    const srv = liveConfigs.find((c) => c.id === srvId);
+    if (!srv) return;
+    const downCap = Math.max(9, Math.min(180, 260 - srv.ping * 1.2));
+    const upCap = Math.max(4, downCap * 0.34);
+    let n = 0;
+    const samples: number[] = [];
+    let curDown = 0;
+    let curUp = 0;
+    if (speedTimer.current) clearInterval(speedTimer.current);
+    setSpeed({ phase: "down", down: 0, up: 0, samples: [] });
+    setSpeedOpen(true);
+    speedTimer.current = setInterval(() => {
+      n++;
+      if (n > 36) {
+        if (speedTimer.current) clearInterval(speedTimer.current);
+        setSpeed({ phase: "done", down: curDown, up: curUp, samples: [...samples] });
+        setSpeedResults((r) => ({ ...r, [srvId]: { down: curDown, up: curUp } }));
+        return;
+      }
+      const isDown = n <= 20;
+      const tgt = isDown ? downCap : upCap;
+      const ramp = Math.min(1, ((isDown ? n : n - 20) + 2) / 12);
+      const val = tgt * ramp * (0.88 + Math.random() * 0.24);
+      if (isDown) curDown = val;
+      else curUp = val;
+      samples.push(val);
+      setSpeed({ phase: isDown ? "down" : "up", down: curDown, up: curUp, samples: [...samples] });
+    }, 150);
+  };
+
+  /* ── v2: آزمایشگاه دمو ── */
+  const chaosKill = () => {
+    if (!selectedId || vpn !== "on") {
+      showToast(t.notConnected);
+      return;
+    }
+    const id = selectedId;
+    setDeadServers((ds) => (ds.includes(id) ? ds : [...ds, id]));
+    setPings((p) => ({ ...p, [id]: 999 }));
+    setTimeout(() => {
+      setDeadServers((ds) => ds.filter((x) => x !== id));
+      showToast(t.chaosRestored);
+    }, 9000);
+  };
+
+  const chaosNet = () => {
+    if (vpn !== "on") {
+      showToast(t.notConnected);
+      return;
+    }
+    setVpn("connecting");
+    setTimeout(() => {
+      setVpn((v) => (v === "connecting" ? (autoReconnect ? "on" : "off") : v));
+      if (autoReconnect) showToast(t.reconnectToast);
+    }, 1800);
+  };
+
+  const chaosQuota = () => {
+    setUsedGb(+(FREE_QUOTA_GB * 0.84).toFixed(2));
+    showToast(t.quotaWarn.replace("{p}", "84"));
+  };
+
+  const chaosExpiry = () => {
+    setEntitlement((e) => ({ plan: e.plan === "free" ? "p1" : e.plan, expiresAt: Date.now() + 2 * 86400_000 }));
+    showToast(t.expiryWarn.replace("{d}", "2"));
+  };
+
+  /* ── v2: منتخب‌ها / ورود کانفیگ / کیف پول / دستگاه‌ها ── */
+  const toggleFav = (id: number) => setFavorites((f) => (f.includes(id) ? f.filter((x) => x !== id) : [...f, id]));
+
+  const addCustomServer = (c: { name: string; country: string; protocol: string; host: string }) => {
+    setConfigs((cs) => [
+      ...cs,
+      { id: Date.now(), name: c.name, country: c.country, protocol: c.protocol, host: c.host, ping: 45 + Math.floor(Math.random() * 60), premium: false, enabled: true, custom: true },
+    ]);
+    setImportOpen(false);
+    showToast(t.importAddedToast);
+  };
+
+  const importSub = (host: string) => {
+    const base = Date.now();
+    setConfigs((cs) => [
+      ...cs,
+      { id: base, name: `${host} · 01`, country: "nl", protocol: "VLESS", host, ping: 50 + Math.floor(Math.random() * 40), premium: false, enabled: true, custom: true },
+      { id: base + 1, name: `${host} · 02`, country: "sg", protocol: "VMESS", host, ping: 110 + Math.floor(Math.random() * 60), premium: false, enabled: true, custom: true },
+    ]);
+    setImportOpen(false);
+    showToast(t.importSubOk.replace("{n}", "2"));
+  };
+
+  const walletTopup = () => {
+    setWallet((w) => ({
+      ...w,
+      balance: w.balance + 200_000,
+      txs: [{ id: `t-${Date.now()}`, kind: "topup", amount: 200_000, label: t.txTopup, at: Date.now() }, ...w.txs],
+    }));
+    showToast(t.walletTopupDone);
+  };
+
+  const walletRedeem = (code: string): boolean => {
+    const amt = WALLET_CODES[code];
+    if (!amt || wallet.usedCodes.includes(code)) return false;
+    setWallet((w) => ({
+      ...w,
+      balance: w.balance + amt,
+      usedCodes: [...w.usedCodes, code],
+      txs: [{ id: `r-${Date.now()}`, kind: "redeem", amount: amt, label: t.txRedeem.replace("{c}", code), at: Date.now() }, ...w.txs],
+    }));
+    return true;
+  };
+
+  const payWithWallet = (plan: PlanId, price: number) => {
+    if (wallet.balance < price) {
+      showToast(t.walletPayLow);
+      return;
+    }
+    const id = `MB-${Math.floor(1000 + Math.random() * 9000)}`;
+    setOrders((os) => [{ id, plan, price, device: DEVICE_ID, via: "wallet", at: Date.now(), status: "approved" }, ...os]);
+    setWallet((w) => ({
+      ...w,
+      balance: w.balance - price,
+      txs: [{ id: `p-${Date.now()}`, kind: "pay", amount: -price, label: t.txPay, at: Date.now() }, ...w.txs],
+    }));
+    setEntitlement({ plan, expiresAt: Math.max(Date.now(), entitlement.expiresAt ?? 0) + PLAN_DAYS[plan] * 86400_000 });
+    setPlans(null);
+    showToast(t.walletPayOk);
+  };
+
+  const unlinkDevice = (id: string) => {
+    setMyDevices((ds) => ds.filter((d) => d.id !== id));
+    showToast(t.unlinkToast);
+  };
+
   /* ── رفرش سرورها — شبیه‌سازی sync با سرور اصلی (در اپ واقعی از API می‌آید) ── */
   const refreshServers = () => {
     if (syncing) return;
@@ -535,10 +757,11 @@ export default function VpnDemoPage() {
     }, 900);
   };
 
-  /* ── خرید: سفارش ثبت می‌شه و پس از بررسی تأیید می‌شه ── */
-  const createOrder = (plan: PlanId, via: "gateway" | "telegram"): string => {
+  /* ── خرید: سفارش ثبت می‌شه و پس از بررسی تأیید می‌شه (با تخفیف کد) ── */
+  const createOrder = (plan: PlanId, via: "gateway" | "telegram", discountPct = 0): string => {
     const id = `MB-${Math.floor(1000 + Math.random() * 9000)}`;
-    setOrders((os) => [{ id, plan, price: plan === "p1" ? 200000 : plan === "p3" ? 400000 : 700000, device: DEVICE_ID, via, at: Date.now(), status: "pending" }, ...os]);
+    const price = Math.round(PLAN_PRICES[plan] * (1 - discountPct / 100));
+    setOrders((os) => [{ id, plan, price, device: DEVICE_ID, via, at: Date.now(), status: "pending" }, ...os]);
     showToast(t.orderPlacedToast);
     return id;
   };
@@ -720,9 +943,33 @@ export default function VpnDemoPage() {
     setOtaProgress(0);
     setPendingOta(false);
     setAppVersion(APP_VERSION);
+    /* v2 */
+    setKillSwitch(true);
+    setFailover(true);
+    setAutoReconnect(true);
+    setStealth("normal");
+    setDnsMode("auto");
+    setDnsCustom("");
+    setFavorites([2]);
+    setSpeedResults({});
+    setSpeedOpen(false);
+    setSpeed(null);
+    setStatusOpen(false);
+    setImportOpen(false);
+    setDevicesOpen(false);
+    setWallet(freshWallet());
+    setMyDevices(freshMyDevices());
+    setUsageDays(seedUsageDays());
+    setDeadServers([]);
   };
 
   const themeVars = THEMES[theme].vars as CSSProperties;
+  /* هشدارهای خانه — مصرف ۸۰٪ و انقضای نزدیک پلن */
+  const quotaWarnPct = !premium && !trialLocked && usedGb >= FREE_QUOTA_GB * QUOTA_WARN_PCT
+    ? Math.round((usedGb / FREE_QUOTA_GB) * 100)
+    : null;
+  const daysLeft = entitlement.expiresAt ? Math.ceil((entitlement.expiresAt - Date.now()) / 86400_000) : null;
+  const expiryDays = premium && daysLeft != null && daysLeft <= 3 ? daysLeft : null;
   const steps: { i: LucideIcon; t: React.ReactNode; done: boolean }[] = [
     {
       i: Power,
@@ -758,6 +1005,21 @@ export default function VpnDemoPage() {
       i: Bell,
       t: "از خانه، زنگولهٔ بالا رو بزن: اعلان‌ها و پیام‌های تیم میانبر رو بخون و Mark all کن",
       done: unread === 0,
+    },
+    {
+      i: Star,
+      t: "سرورها: با ★ سرور دلخواهت رو سنجاق کن، با گیج اسپیدتست بگیر و وضعیت زندهٔ همهٔ سرورها رو ببین — از آزمایشگاه تنظیمات هم «خرابی سرور» رو شبیه‌سازی کن تا تعویض خودکار/Kill Switch رو ببینی",
+      done: Object.keys(speedResults).length > 0,
+    },
+    {
+      i: WalletIc,
+      t: "Account → کیف پول: شارژ کن، کد هدیه MIANBOOR50 رو ردیم کن و بعد توی خرید پلن، «پرداخت با کیف پول» رو بزن؛ کد تخفیف WINTER30 هم توی صفحهٔ تعرفه‌ها امتحان کن",
+      done: wallet.txs.some((x) => x.kind === "redeem") || wallet.txs.some((x) => x.kind === "pay"),
+    },
+    {
+      i: Globe,
+      t: "سرورها → +: لینک کانفیگ خودت (vless://…) یا لینک اشتراک رو وارد کن؛ بعد از Account → حریم خصوصی و دستگاه‌های من هم دیدن کن",
+      done: configs.some((c) => c.custom),
     },
   ];
 
@@ -853,6 +1115,10 @@ export default function VpnDemoPage() {
                     origin={vpn === "on" && destResolved ? DEST : ORIGIN}
                     flashOrigin={ORIGIN}
                     showFlash={showFlash}
+                    quotaWarnPct={quotaWarnPct}
+                    expiryDays={expiryDays}
+                    onRenew={() => setPlans("renew")}
+                    stealthOn={stealth === "strict"}
                   />
                 )}
                 {screen === "servers" && (
@@ -863,11 +1129,17 @@ export default function VpnDemoPage() {
                     premiumUser={premium}
                     syncing={syncing}
                     syncOk={syncOk}
+                    favorites={favorites}
+                    speedResults={speedResults}
                     onRefresh={refreshServers}
                     onSelect={(id) => {
                       setSelectedId(id);
                       setScreen("home");
                     }}
+                    onToggleFav={toggleFav}
+                    onSpeedTest={() => selectedId && startSpeedTest(selectedId)}
+                    onImport={() => setImportOpen(true)}
+                    onStatus={() => setStatusOpen(true)}
                     onPremiumTap={() => setPlans("premium-lock")}
                     onBack={() => setScreen("home")}
                   />
@@ -888,8 +1160,27 @@ export default function VpnDemoPage() {
                     onOpenSupport={() => setScreen("support")}
                     unread={unread}
                     onOpenInbox={() => setScreen("inbox")}
+                    killSwitch={killSwitch}
+                    setKillSwitch={setKillSwitch}
+                    failover={failover}
+                    setFailover={setFailover}
+                    autoReconnect={autoReconnect}
+                    setAutoReconnect={setAutoReconnect}
+                    onOpenWallet={() => setScreen("wallet")}
+                    onOpenDevices={() => setDevicesOpen(true)}
+                    onOpenPrivacy={() => setScreen("privacy")}
                   />
                 )}
+                {screen === "wallet" && (
+                  <WalletScreen
+                    lang={lang}
+                    wallet={wallet}
+                    onTopup={walletTopup}
+                    onRedeem={walletRedeem}
+                    onBack={() => setScreen("account")}
+                  />
+                )}
+                {screen === "privacy" && <PrivacyScreen lang={lang} onBack={() => setScreen("account")} />}
                 {screen === "referral" && (
                   <ReferralScreen
                     lang={lang}
@@ -915,6 +1206,23 @@ export default function VpnDemoPage() {
                     setTheme={setTheme}
                     pingLive={pingLive}
                     setPingLive={setPingLive}
+                    killSwitch={killSwitch}
+                    setKillSwitch={setKillSwitch}
+                    failover={failover}
+                    setFailover={setFailover}
+                    autoReconnect={autoReconnect}
+                    setAutoReconnect={setAutoReconnect}
+                    stealth={stealth}
+                    setStealth={setStealth}
+                    dnsMode={dnsMode}
+                    setDnsMode={setDnsMode}
+                    dnsCustom={dnsCustom}
+                    setDnsCustom={setDnsCustom}
+                    onChaosKill={chaosKill}
+                    onChaosNet={chaosNet}
+                    onChaosQuota={chaosQuota}
+                    onChaosExpiry={chaosExpiry}
+                    onOpenPrivacy={() => setScreen("privacy")}
                     onReinstall={reinstall}
                     version={appVersion}
                     onBack={() => setScreen("home")}
@@ -960,7 +1268,14 @@ export default function VpnDemoPage() {
               </div>
 
               {plans && (
-                <PlansSheet lang={lang} reason={plans} onClose={() => setPlans(null)} onCreateOrder={createOrder} />
+                <PlansSheet
+                  lang={lang}
+                  reason={plans}
+                  walletBalance={wallet.balance}
+                  onWalletPay={payWithWallet}
+                  onClose={() => setPlans(null)}
+                  onCreateOrder={createOrder}
+                />
               )}
 
               {usageOpen && (
@@ -970,9 +1285,24 @@ export default function VpnDemoPage() {
                   totalText={premium ? t.unlimited : `${FREE_QUOTA_GB} GB`}
                   byApp={DEMO_BY_APP}
                   byServer={DEMO_BY_SERVER}
+                  days={usageDays.map((d, i) => (i === usageDays.length - 1 ? { ...d, gb: Math.max(d.gb, usedGb) } : d))}
                   onClose={() => setUsageOpen(false)}
                 />
               )}
+
+              {/* ── v2 sheets: اسپیدتست، وضعیت سرورها، ورود کانفیگ، دستگاه‌ها ── */}
+              {speedOpen && server && (
+                <SpeedTestSheet
+                  lang={lang}
+                  server={server}
+                  speed={speed}
+                  onStart={() => selectedId && startSpeedTest(selectedId)}
+                  onClose={() => setSpeedOpen(false)}
+                />
+              )}
+              {statusOpen && <StatusSheet lang={lang} configs={liveConfigs} dead={deadServers} onClose={() => setStatusOpen(false)} />}
+              {importOpen && <ImportSheet lang={lang} onAddServer={addCustomServer} onImportSub={importSub} onClose={() => setImportOpen(false)} />}
+              {devicesOpen && <DevicesSheet lang={lang} devices={myDevices} onUnlink={unlinkDevice} onClose={() => setDevicesOpen(false)} />}
 
               {/* اعلان‌ها: نوتیف heads-up گوشی + پاپ‌آپ داخل اپ + پاپ‌آپ آپدیت OTA */}
               {push && <PushBanner n={push.n} onOpen={() => { setPush(null); setScreen("inbox"); }} />}

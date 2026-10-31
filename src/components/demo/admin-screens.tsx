@@ -340,7 +340,7 @@ function OrdersTab({
             <span className="flex items-center gap-1">
               <Fingerprint className="size-3.5" /> {o.device}
             </span>
-            <span>· {o.via === "gateway" ? "gateway" : "telegram"}</span>
+            <span>· {o.via === "gateway" ? "gateway" : o.via === "wallet" ? "wallet" : "telegram"}</span>
             <span>· {new Date(o.at).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })}</span>
           </div>
           {o.status === "pending" && (
