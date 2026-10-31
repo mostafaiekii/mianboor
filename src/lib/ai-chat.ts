@@ -10,6 +10,10 @@
 
 type ChatMessage = { role: string; content: string };
 
+/** بعد از هر شکست گیت‌وی، این مدت دوباره تلاش نکن (به‌ازای هر instance) */
+const COOLDOWN_MS = 15 * 60 * 1000;
+let gatewayDownUntil = 0;
+
 export async function chatCompletion(
   messages: ChatMessage[],
   opts: { thinking?: { type: string } } = {},
@@ -17,7 +21,7 @@ export async function chatCompletion(
   const base = (process.env.ZAI_BASE_URL ?? "").replace(/\/+$/, "");
   const key = process.env.ZAI_API_KEY ?? "";
 
-  if (base && key) {
+  if (base && key && Date.now() >= gatewayDownUntil) {
     // ── مسیر مستقیم — همان پروتکل z-ai-web-dev-sdk ──
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
@@ -28,23 +32,30 @@ export async function chatCompletion(
     if (process.env.ZAI_USER_ID) headers["X-User-Id"] = process.env.ZAI_USER_ID;
     if (process.env.ZAI_TOKEN) headers["X-Token"] = process.env.ZAI_TOKEN;
 
-    const res = await fetch(`${base}/chat/completions`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({
-        messages,
-        thinking: opts.thinking ?? { type: "disabled" },
-      }),
-    });
-    if (!res.ok) {
-      throw new Error(`AI request failed: ${res.status}`);
+    try {
+      const res = await fetch(`${base}/chat/completions`, {
+        method: "POST",
+        headers,
+        signal: AbortSignal.timeout(8_000), // fail fast — کاربر منتظر نمی‌ماند
+        body: JSON.stringify({
+          messages,
+          thinking: opts.thinking ?? { type: "disabled" },
+        }),
+      });
+      if (!res.ok) {
+        gatewayDownUntil = Date.now() + COOLDOWN_MS;
+        throw new Error(`AI request failed: ${res.status}`);
+      }
+      const data = (await res.json()) as {
+        choices?: Array<{ message?: { content?: string } }>;
+      };
+      const reply = data.choices?.[0]?.message?.content?.trim() ?? "";
+      if (!reply) throw new Error("empty reply");
+      return reply;
+    } catch (err) {
+      gatewayDownUntil = Date.now() + COOLDOWN_MS;
+      throw err;
     }
-    const data = (await res.json()) as {
-      choices?: Array<{ message?: { content?: string } }>;
-    };
-    const reply = data.choices?.[0]?.message?.content?.trim() ?? "";
-    if (!reply) throw new Error("empty reply");
-    return reply;
   }
 
   // ── fallback: SDK با فایل کانفیگ (محیط محلی) ──
