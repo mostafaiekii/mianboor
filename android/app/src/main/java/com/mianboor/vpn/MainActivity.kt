@@ -264,6 +264,77 @@ private fun MbAppInner(
     val premium = entitlement.plan != "free" && entitlement.expiresAt > System.currentTimeMillis()
     val trialLocked = trialUsed || (!premium && usedGb >= FREE_QUOTA_GB)
 
+    /** نوتیف سیستم — اعلان جدید در نوار وضعیت گوشی. */
+    fun postNoticeNotification(unread: Int) {
+        try {
+            val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+            nm.createNotificationChannel(
+                android.app.NotificationChannel("notices", "Mianboor", android.app.NotificationManager.IMPORTANCE_DEFAULT),
+            )
+            val fa = AppPrefs.lang(context) == "fa"
+            val pi = android.app.PendingIntent.getActivity(
+                context, 41, Intent(context, MainActivity::class.java),
+                android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE,
+            )
+            val notif = android.app.Notification.Builder(context, "notices")
+                .setSmallIcon(R.drawable.ic_bell)
+                .setContentTitle("Mianboor")
+                .setContentText(if (fa) "$unread اعلان جدید داری" else "You have $unread new notice(s)")
+                .setContentIntent(pi)
+                .setAutoCancel(true)
+            nm.notify(4101, notif.build())
+        } catch (t: Throwable) {
+        }
+    }
+
+    /** گرفتن اعلان‌ها از سرور: کش محلی + پاپ‌آپ جدید + نوتیف سیستم. */
+    fun refreshNotices() {
+        val url = AppPrefs.serverUrl(context)
+        val token = AppPrefs.clientToken(context)
+        val dev = deviceId
+        if (!url.startsWith("http") || token.isBlank() || dev.isBlank()) return
+        scope.launch(Dispatchers.IO) {
+            val fresh = MianboorApi.notices(url, token, dev)
+            if (fresh.isEmpty()) return@launch
+            val beforeUnread = AppPrefs.noticesCache(context).count { !it.read }
+            val unread = fresh.count { !it.read }
+            AppPrefs.setNoticesCache(context, fresh)
+            withContext(Dispatchers.Main) {
+                notices = fresh
+                val seen = AppPrefs.popupSeen(context)
+                if (popupNotice == null) {
+                    fresh.firstOrNull { it.kind == "popup" && !it.read && it.id !in seen }?.let { pn ->
+                        popupNotice = pn
+                        AppPrefs.addPopupSeen(context, pn.id)
+                    }
+                }
+                if (unread > beforeUnread) postNoticeNotification(unread)
+            }
+        }
+    }
+
+    /** OTA: دانلود مستقیم APK نسخهٔ جدید و باز کردن خودکار نصب‌کننده. */
+    fun downloadAndInstallUpdate() {
+        val url = AppPrefs.latestUpdateUrl(context).ifBlank { "https://github.com/mostafaiekii/mianboor/releases/latest" }
+        if (!url.endsWith(".apk")) {
+            runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
+            return
+        }
+        try {
+            val dm = context.getSystemService(Context.DOWNLOAD_SERVICE) as android.app.DownloadManager
+            if (otaDownloadId != -1L) dm.remove(otaDownloadId)
+            val req = android.app.DownloadManager.Request(Uri.parse(url))
+                .setTitle("Mianboor update")
+                .setMimeType("application/vnd.android.package-archive")
+                .setNotificationVisibility(android.app.DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+                .setDestinationInExternalFilesDir(context, null, "ota/update.apk")
+            otaDownloadId = dm.enqueue(req)
+            Toast.makeText(context, if (AppPrefs.lang(context) == "fa") "دانلود شروع شد…" else "Download started…", Toast.LENGTH_SHORT).show()
+        } catch (t: Throwable) {
+            runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
+        }
+    }
+
     fun toast(msg: String) {
         toastMsg = msg
         toastKey = System.currentTimeMillis()
@@ -606,9 +677,9 @@ private fun MbAppInner(
                 val id = i?.getLongExtra(android.app.DownloadManager.EXTRA_DOWNLOAD_ID, -1L) ?: return
                 if (id != otaDownloadId) return
                 runCatching {
-                    val dm = getSystemService(Context.DOWNLOAD_SERVICE) as android.app.DownloadManager
+                    val dm = context.getSystemService(Context.DOWNLOAD_SERVICE) as android.app.DownloadManager
                     val uri = dm.getUriForDownloadedFile(id) ?: return
-                    startActivity(
+                    context.startActivity(
                         Intent(Intent.ACTION_VIEW)
                             .setDataAndType(uri, "application/vnd.android.package-archive")
                             .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK),
@@ -935,77 +1006,6 @@ private fun MbAppInner(
     fun copyDeviceId() {
         clipboard.setText(AnnotatedString(deviceId))
         toast(t.copied)
-    }
-
-    /** گرفتن اعلان‌ها از سرور: کش محلی + پاپ‌آپ جدید + نوتیف سیستم. */
-    fun refreshNotices() {
-        val url = AppPrefs.serverUrl(context)
-        val token = AppPrefs.clientToken(context)
-        val dev = deviceId
-        if (!url.startsWith("http") || token.isBlank() || dev.isBlank()) return
-        scope.launch(Dispatchers.IO) {
-            val fresh = MianboorApi.notices(url, token, dev)
-            if (fresh.isEmpty()) return@launch
-            val beforeUnread = AppPrefs.noticesCache(context).count { !it.read }
-            val unread = fresh.count { !it.read }
-            AppPrefs.setNoticesCache(context, fresh)
-            withContext(Dispatchers.Main) {
-                notices = fresh
-                val seen = AppPrefs.popupSeen(context)
-                if (popupNotice == null) {
-                    fresh.firstOrNull { it.kind == "popup" && !it.read && it.id !in seen }?.let { pn ->
-                        popupNotice = pn
-                        AppPrefs.addPopupSeen(context, pn.id)
-                    }
-                }
-                if (unread > beforeUnread) postNoticeNotification(unread)
-            }
-        }
-    }
-
-    /** نوتیف سیستم — اعلان جدید در نوار وضعیت گوشی. */
-    fun postNoticeNotification(unread: Int) {
-        try {
-            val nm = getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
-            nm.createNotificationChannel(
-                android.app.NotificationChannel("notices", "Mianboor", android.app.NotificationManager.IMPORTANCE_DEFAULT),
-            )
-            val fa = AppPrefs.lang(this) == "fa"
-            val pi = android.app.PendingIntent.getActivity(
-                this, 41, Intent(this, MainActivity::class.java),
-                android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE,
-            )
-            val notif = android.app.Notification.Builder(this, "notices")
-                .setSmallIcon(R.drawable.ic_bell)
-                .setContentTitle("Mianboor")
-                .setContentText(if (fa) "$unread اعلان جدید داری" else "You have $unread new notice(s)")
-                .setContentIntent(pi)
-                .setAutoCancel(true)
-            nm.notify(4101, notif.build())
-        } catch (t: Throwable) {
-        }
-    }
-
-    /** OTA: دانلود مستقیم APK نسخهٔ جدید و باز کردن خودکار نصب‌کننده. */
-    fun downloadAndInstallUpdate() {
-        val url = AppPrefs.latestUpdateUrl(context).ifBlank { "https://github.com/mostafaiekii/mianboor/releases/latest" }
-        if (!url.endsWith(".apk")) {
-            runCatching { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
-            return
-        }
-        try {
-            val dm = getSystemService(Context.DOWNLOAD_SERVICE) as android.app.DownloadManager
-            if (otaDownloadId != -1L) dm.remove(otaDownloadId)
-            val req = android.app.DownloadManager.Request(Uri.parse(url))
-                .setTitle("Mianboor update")
-                .setMimeType("application/vnd.android.package-archive")
-                .setNotificationVisibility(android.app.DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-                .setDestinationInExternalFilesDir(this, null, "ota/update.apk")
-            otaDownloadId = dm.enqueue(req)
-            Toast.makeText(this, if (AppPrefs.lang(this) == "fa") "دانلود شروع شد…" else "Download started…", Toast.LENGTH_SHORT).show()
-        } catch (t: Throwable) {
-            runCatching { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
-        }
     }
 
     // ── back handling ──
