@@ -60,6 +60,15 @@ db/*.db-journal
 upload/
 download/
 
+# local design/preview assets — never publish to the repo
+/brand/
+/generated-images/
+/public/preview/
+/public/logo-preview/
+/public/*.html
+/tests/
+/design/
+
 # android build outputs & native binaries (CI builds/downloads them)
 android/.gradle/
 android/build/
