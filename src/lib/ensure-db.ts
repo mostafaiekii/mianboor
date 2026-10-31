@@ -84,6 +84,32 @@ const POSTGRES_DDL = [
   `ALTER TABLE "Notice" ADD COLUMN IF NOT EXISTS "audience" TEXT NOT NULL DEFAULT 'all'`,
   `ALTER TABLE "Notice" ADD COLUMN IF NOT EXISTS "channels" TEXT NOT NULL DEFAULT '["inbox"]'`,
   `CREATE INDEX IF NOT EXISTS "Order_deviceId_idx" ON "Order" ("deviceId")`,
+  // کیف پول + کدهای هدیه/تخفیف (نسخهٔ ۲)
+  `CREATE TABLE IF NOT EXISTS "WalletTx" (
+     "id" TEXT NOT NULL,
+     "deviceId" TEXT NOT NULL,
+     "kind" TEXT NOT NULL,
+     "amount" INTEGER NOT NULL,
+     "label" TEXT NOT NULL DEFAULT '',
+     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+     CONSTRAINT "WalletTx_pkey" PRIMARY KEY ("id")
+   )`,
+  `CREATE TABLE IF NOT EXISTS "GiftCode" (
+     "code" TEXT NOT NULL,
+     "amount" INTEGER NOT NULL,
+     "usedBy" TEXT NOT NULL DEFAULT '',
+     "usedAt" TIMESTAMP(3),
+     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+     CONSTRAINT "GiftCode_pkey" PRIMARY KEY ("code")
+   )`,
+  `CREATE TABLE IF NOT EXISTS "PromoCode" (
+     "code" TEXT NOT NULL,
+     "percent" INTEGER NOT NULL,
+     "active" BOOLEAN NOT NULL DEFAULT true,
+     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+     CONSTRAINT "PromoCode_pkey" PRIMARY KEY ("code")
+   )`,
+  `CREATE INDEX IF NOT EXISTS "WalletTx_deviceId_idx" ON "WalletTx" ("deviceId")`,
 ];
 
 const SQLITE_DDL = [
@@ -137,6 +163,27 @@ const SQLITE_DDL = [
      "deviceId" TEXT NOT NULL,
      "readAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
      PRIMARY KEY ("noticeId","deviceId")
+   )`,
+  `CREATE TABLE IF NOT EXISTS "WalletTx" (
+     "id" TEXT NOT NULL PRIMARY KEY,
+     "deviceId" TEXT NOT NULL,
+     "kind" TEXT NOT NULL,
+     "amount" INTEGER NOT NULL,
+     "label" TEXT NOT NULL DEFAULT '',
+     "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+   )`,
+  `CREATE TABLE IF NOT EXISTS "GiftCode" (
+     "code" TEXT NOT NULL PRIMARY KEY,
+     "amount" INTEGER NOT NULL,
+     "usedBy" TEXT NOT NULL DEFAULT '',
+     "usedAt" DATETIME,
+     "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+   )`,
+  `CREATE TABLE IF NOT EXISTS "PromoCode" (
+     "code" TEXT NOT NULL PRIMARY KEY,
+     "percent" INTEGER NOT NULL,
+     "active" BOOLEAN NOT NULL DEFAULT true,
+     "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
    )`,
 ];
 

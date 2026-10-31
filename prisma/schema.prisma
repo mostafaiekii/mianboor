@@ -72,3 +72,32 @@ model NoticeRead {
 
   @@id([noticeId, deviceId])
 }
+
+// کیف پول دستگاه — موجودی = مجموع amount ها (+ شارژ / − پرداخت، تومان)
+model WalletTx {
+  id        String   @id @default(cuid())
+  deviceId  String
+  kind      String // topup | redeem | pay
+  amount    Int
+  label     String   @default("")
+  createdAt DateTime @default(now())
+
+  @@index([deviceId])
+}
+
+// کد هدیهٔ کیف پول — مدیر می‌سازد، کاربر یک‌بار ردیم می‌کند
+model GiftCode {
+  code      String    @id
+  amount    Int // تومان
+  usedBy    String    @default("") // deviceId که مصرف کرده
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+}
+
+// کد تخفیف پلن — درصدی؛ مدیر کنترل می‌کند
+model PromoCode {
+  code      String   @id
+  percent   Int
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+}
