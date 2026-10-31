@@ -308,6 +308,15 @@ interface Strings {
     val chartToday: String
     val privacyRow: String
     val privacyRowSub: String
+    val privacyTitle: String
+    val p1t: String
+    val p1b: String
+    val p2t: String
+    val p2b: String
+    val p3t: String
+    val p3b: String
+    val p4t: String
+    val p4b: String
     val codesTab: String
     val codesGift: String
     val codesPromo: String
@@ -643,6 +652,15 @@ object EnStrings : Strings {
     override val chartToday = "Today"
     override val privacyRow = "Privacy & No-logs"
     override val privacyRowSub = "What we collect — and what we never do"
+    override val privacyTitle = "Privacy & No-logs"
+    override val p1t = "What we store"
+    override val p1b = "Only your device ID, plan state and total usage — just enough to run your subscription. No name, no email, no phone number."
+    override val p2t = "What we never store"
+    override val p2b = "Browsing history, DNS queries, traffic content or destination IPs. No activity logs — nothing to sell, nothing to leak."
+    override val p3t = "Tunnel security"
+    override val p3b = "Traffic is end-to-end encrypted with Xray (VLESS · Reality · TLS). Kill Switch cuts the internet if the tunnel drops."
+    override val p4t = "Your controls"
+    override val p4b = "Split tunneling, encrypted DNS of your choice and full server selection are always in your hands."
     override val codesTab = "Codes"
     override val codesGift = "Gift codes"
     override val codesPromo = "Promo codes"
@@ -978,6 +996,15 @@ object FaStrings : Strings {
     override val chartToday = "امروز"
     override val privacyRow = "حریم خصوصی و بدون لاگ"
     override val privacyRowSub = "چی ذخیره می‌کنیم — و چی هرگز"
+    override val privacyTitle = "حریم خصوصی و بدون لاگ"
+    override val p1t = "چی ذخیره می‌کنیم"
+    override val p1b = "فقط شناسهٔ دستگاه، وضعیت پلن و مصرف کل — همون‌قدر که برای سرویس لازمه. نه اسم، نه ایمیل، نه شماره تلفن."
+    override val p2t = "چی هرگز ذخیره نمی‌کنیم"
+    override val p2b = "تاریخچهٔ مرور، کوئری‌های DNS، محتوای ترافیک یا IP مقصدها. هیچ لاگی از فعالیتت وجود نداره — چیزی برای فروش نیست، چیزی برای لو دادن نیست."
+    override val p3t = "امنیت تونل"
+    override val p3b = "ترافیک سرتاسر با Xray رمز می‌شه (VLESS · Reality · TLS). اگه تونل قطع شه، Kill Switch اینترنت رو کور می‌کنه تا آی‌پی‌ت لو نره."
+    override val p4t = "کنترل‌های دست تو"
+    override val p4b = "تونل‌گذاری انتخابی، DNS رمز دلخواه و انتخاب کامل سرور همیشه دست خودته."
     override val codesTab = "کدها"
     override val codesGift = "کد هدیه"
     override val codesPromo = "کد تخفیف"

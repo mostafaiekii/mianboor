@@ -602,28 +602,6 @@ private fun MbAppInner(
         }
     }
 
-    // ── v2: Failover — سرور فعال مرد و کاربر خواسته؟ فوراً بهترین جایگزین ──
-    LaunchedEffect(Unit) {
-        while (true) {
-            kotlinx.coroutines.delay(2000)
-            if (phase != Phase.CONNECTED || !AppPrefs.failover(context)) continue
-            val target = selectedConfig ?: continue
-            val ping = pings[target.key] ?: 0
-            if (ping < 999) continue
-            val best = configsForPing
-                .filter { it.enabled && it.key != target.key && (pings[it.key] ?: 999) < 999 && (premium || !it.premium) }
-                .minByOrNull { pings[it.key] ?: it.ping }
-            if (best != null) {
-                withContext(Dispatchers.Main) {
-                    toast(t.failoverToast(best.name))
-                    selectedKey = best.key
-                    AppPrefs.setSelectedKey(context, best.key)
-                    launchVpn(best)
-                }
-            }
-        }
-    }
-
     // ── v2: کیف پول ──
     fun loadWallet() {
         val url = AppPrefs.serverUrl(context)
@@ -729,8 +707,8 @@ private fun MbAppInner(
     }
 
     val qrLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { res ->
-        val result = com.journeyapps.barcodescanner.IntentIntegrator.parseActivityResult(res.resultCode, res.data)
-        val content = result?.contents
+        // zxing-embedded CaptureActivity نتیجه را در SCAN_RESULT برمی‌گرداند
+        val content = res.data?.getStringExtra("SCAN_RESULT")
         if (!content.isNullOrBlank()) {
             val parsed = XrayConfigBuilder.parseLink(content.trim(), t.importDefaultName, "de")
             if (parsed == null) {
@@ -742,12 +720,12 @@ private fun MbAppInner(
     }
 
     fun scanQr() {
-        val integrator = com.journeyapps.barcodescanner.IntentIntegrator(context as Activity)
-            .setDesiredBarcodeFormats(com.journeyapps.barcodescanner.IntentIntegrator.QR_CODE)
-            .setPrompt(t.qrPrompt)
-            .setBeepEnabled(false)
-            .setOrientationLocked(true)
-        qrLauncher.launch(integrator.createScanIntent())
+        val scan = Intent("com.google.zxing.client.android.SCAN")
+            .setPackage(context.packageName)
+            .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
+            .putExtra("SCAN_FORMATS", "QR_CODE")
+            .putExtra("PROMPT_MESSAGE", t.qrPrompt)
+        qrLauncher.launch(scan)
     }
 
     // ── v2: کدهای هدیه/تخفیف (پنل مدیر) ──
@@ -1049,6 +1027,28 @@ private fun MbAppInner(
         } else {
             VpnState.phase.value = Phase.IDLE
             VpnState.errorMessage.value = t.errPermission
+        }
+    }
+
+    // ── v2: Failover — سرور فعال مرد و کاربر خواسته؟ فوراً بهترین جایگزین ──
+    LaunchedEffect(Unit) {
+        while (true) {
+            kotlinx.coroutines.delay(2000)
+            if (phase != Phase.CONNECTED || !AppPrefs.failover(context)) continue
+            val target = selectedConfig ?: continue
+            val ping = pings[target.key] ?: 0
+            if (ping < 999) continue
+            val best = configsForPing
+                .filter { it.enabled && it.key != target.key && (pings[it.key] ?: 999) < 999 && (premium || !it.premium) }
+                .minByOrNull { pings[it.key] ?: it.ping }
+            if (best != null) {
+                withContext(Dispatchers.Main) {
+                    toast(t.failoverToast(best.name))
+                    selectedKey = best.key
+                    AppPrefs.setSelectedKey(context, best.key)
+                    launchVpn(best)
+                }
+            }
         }
     }
 

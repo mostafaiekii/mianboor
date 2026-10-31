@@ -293,6 +293,28 @@ class MianboorVpnService : VpnService() {
      * خاموشی کامل — TUN هم بسته می‌شود؛ فقط وقتی کاربر خودش قطع کرده یا اجازه
      * گرفته شده صدا زده می‌شود (در Kill Switch هرگز).
      */
+    /**
+     * Real split tunneling: exclude mode disallows the selected packages,
+     * include mode allows ONLY the selected packages (self always excluded
+     * from the tunnel so xray traffic never loops).
+     */
+    private fun applySplitTunneling(builder: Builder) {
+        val mode = AppPrefs.splitMode(this)
+        val apps = AppPrefs.splitApps(this)
+        if (mode == "include" && apps.isNotEmpty()) {
+            apps.forEach { pkg ->
+                runCatching { builder.addAllowedApplication(pkg) }
+            }
+        } else if (mode == "exclude") {
+            apps.forEach { pkg ->
+                runCatching { builder.addDisallowedApplication(pkg) }
+            }
+        }
+    }
+
+    private fun isIncludeMode(): Boolean =
+        AppPrefs.splitMode(this) == "include" && AppPrefs.splitApps(this).isNotEmpty()
+
     private suspend fun fullShutdown() {
         statsJob?.cancel()
         statsJob = null
