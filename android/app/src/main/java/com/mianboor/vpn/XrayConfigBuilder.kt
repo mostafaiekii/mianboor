@@ -326,7 +326,19 @@ object XrayConfigBuilder {
     // Full xray config
     // ------------------------------------------------------------------
 
-    fun buildConfigJson(server: ParsedServer): String {
+    /**
+     * Full xray config.
+     *
+     * تفاوت‌های سرعتی با نسخهٔ قدیمی (دلیل «کند بودن اپ نسبت به v2rayNG»):
+     *  1) ماژول DNS با کش محلی + هِجِ UDP/53 — هر کوئری DNS قبلاً تا سرور می‌رفت
+     *     و برمی‌گشت (یک RTT کامل به‌ازای هر دامنهٔ جدید!)؛ الان از کش محلی جواب
+     *     می‌گیرد و فقط بار اول از مسیر پروکسی resolve می‌شود.
+     *  2) queryStrategy=UseIPv4 — هیچ AAAA به اپ‌ها نمی‌رسد؛ پس هیچ سایتی روی
+     *     IPv6 خرابِ مسیر گیر نمی‌کند و timeout نمی‌خورد (علت اصلی «کند باز شدن»).
+     *  3) بستن QUIC (UDP/443) — مرورگر فوراً به HTTP/2 روی TCP برمی‌گردد که از
+     *     دل تونل TCP بسیار سریع‌تر است؛ QUIC روی UDP-over-TCP همیشه سرکوب می‌شود.
+     */
+    fun buildConfigJson(server: ParsedServer, blockQuic: Boolean = true): String {
         val socksIn = JSONObject()
             .put("tag", "socks-in")
             .put("listen", "127.0.0.1")
@@ -347,22 +359,46 @@ object XrayConfigBuilder {
             JSONObject().put("tcpFastOpen", true).put("tcpNoDelay", true)
         )
         proxy.put("streamSettings", stream)
-        val direct = JSONObject().put("tag", "direct").put("protocol", "freedom").put("settings", JSONObject())
 
-        val routing = JSONObject()
-            .put("domainStrategy", "AsIs")
+        val direct = JSONObject().put("tag", "direct").put("protocol", "freedom").put("settings", JSONObject())
+        val block = JSONObject().put("tag", "block").put("protocol", "blackhole").put("settings", JSONObject())
+        // خروجی DNS: کوئری‌های هِج‌شدهٔ پورت ۵۳ را از ماژول DNS جواب می‌دهد
+        val dnsOut = JSONObject().put("tag", "dns-out").put("protocol", "dns").put("settings", JSONObject())
+
+        // ماژول DNS — سرورهای DNS از مسیر پروکسی resolve می‌شوند (دیدِ لوکیشن سرور) و جواب کش می‌شود.
+        // آدرس‌های ساده: بدون outboundTag هم کوئری از اولین خروجی (proxy) می‌رود — سازگار با هر نسخهٔ Xray.
+        val dns = JSONObject()
+            .put("queryStrategy", "UseIPv4")
+            .put("disableCache", false)
+            .put("servers", JSONArray().put("8.8.8.8").put("1.1.1.1"))
+
+        val rules = JSONArray()
+            // ۱) هِج DNS: همهٔ کوئری‌های UDP/53 از ماژول DNS محلی جواب می‌گیرند
             .put(
-                "rules",
-                JSONArray().put(
-                    JSONObject().put("type", "field").put("port", "0-65535").put("outboundTag", "proxy")
-                )
+                JSONObject().put("type", "field")
+                    .put("inboundTag", JSONArray(listOf("socks-in")))
+                    .put("port", 53).put("network", "udp")
+                    .put("outboundTag", "dns-out")
             )
+        if (blockQuic) {
+            // ۲) بستن QUIC (UDP/443): مرورگر بلافاصله روی HTTP/2-TCP ادامه می‌دهد
+            rules.put(
+                JSONObject().put("type", "field")
+                    .put("port", 443).put("network", "udp")
+                    .put("outboundTag", "block")
+            )
+        }
+        // ۳) بقیهٔ ترافیک → پروکسی
+        rules.put(
+            JSONObject().put("type", "field").put("port", "0-65535").put("outboundTag", "proxy")
+        )
 
         val root = JSONObject()
             .put("log", JSONObject().put("loglevel", "warning"))
+            .put("dns", dns)
             .put("inbounds", JSONArray().put(socksIn))
-            .put("outbounds", JSONArray().put(proxy).put(direct))
-            .put("routing", routing)
+            .put("outbounds", JSONArray().put(proxy).put(direct).put(block).put(dnsOut))
+            .put("routing", JSONObject().put("domainStrategy", "AsIs").put("rules", rules))
 
         return root.toString()
     }

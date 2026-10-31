@@ -42,12 +42,13 @@ import { FREE_QUOTA_GB, type ConfigItem, type Entitlement, type SplitState, type
 /** یک ردیف مصرف — اپ یا سرور. در اپ واقعی از TrafficStats/VpnService می‌آید. */
 export type UsageRow = { label: string; mb: number; icon?: "tg" | "web" | "cam" | "play" | "sys"; flag?: string };
 
+/* رنگ پینگ: سبز تا ۱۱۰ · نارنجی ۱۱۰ تا ۲۰۰ · قرمز بالای ۲۰۰ — مثل اپ واقعی */
 export function pingTone(p: number): string {
-  return p < 60 ? "text-glow" : p < 100 ? "text-gold" : "text-danger";
+  return p <= 110 ? "text-glow" : p <= 200 ? "text-gold" : "text-danger";
 }
 
 export function Bars({ ping }: { ping: number }) {
-  const n = ping < 40 ? 4 : ping < 60 ? 3 : ping < 100 ? 2 : 1;
+  const n = ping <= 70 ? 4 : ping <= 110 ? 3 : ping <= 200 ? 2 : 1;
   return (
     <span className="flex h-3 items-end gap-0.5" aria-hidden="true">
       {[1, 2, 3, 4].map((i) => (

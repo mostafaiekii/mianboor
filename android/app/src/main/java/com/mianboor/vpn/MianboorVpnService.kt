@@ -107,7 +107,7 @@ class MianboorVpnService : VpnService() {
 
         // 3) Launch the bundled xray core
         val confFile = File(filesDir, "xray.json")
-        confFile.writeText(XrayConfigBuilder.buildConfigJson(server))
+        confFile.writeText(XrayConfigBuilder.buildConfigJson(server, AppPrefs.blockQuic(this)))
         val bin = File(applicationInfo.nativeLibraryDir, "libxray.so")
         val proc = ProcessBuilder(bin.absolutePath, "run", "-c", confFile.absolutePath)
             .redirectErrorStream(true)
@@ -210,12 +210,21 @@ class MianboorVpnService : VpnService() {
           mtu: $MTU
           ipv4: 198.18.0.1
           ipv6: 'fc00::1'
+          tcp:
+            buffer-size: 1024
+            keep-alive: 15
+          udp:
+            buffer-size: 1024
+            gc-interval: 120
         socks5:
           address: 127.0.0.1
           port: ${XrayConfigBuilder.SOCKS_PORT}
           udp: 'udp'
         misc:
           log-level: warn
+          task-stack-size: 20480
+          connect-timeout: 5000
+          read-write-timeout: 60000
     """.trimIndent() + "\n"
 
     private fun waitForSocks(port: Int, timeoutMs: Long): Boolean {

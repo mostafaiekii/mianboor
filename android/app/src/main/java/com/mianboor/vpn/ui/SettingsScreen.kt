@@ -40,6 +40,8 @@ fun SettingsScreen(
     setTheme: (ThemeName) -> Unit,
     pingLive: Boolean,
     setPingLive: (Boolean) -> Unit,
+    blockQuic: Boolean,
+    setBlockQuic: (Boolean) -> Unit,
     onSupport: () -> Unit,
     onBack: () -> Unit,
 ) {
@@ -157,6 +159,19 @@ fun SettingsScreen(
                     Text(t.livePingSetDesc, color = mb.dim, fontSize = 13.sp)
                 }
                 MbSwitch(pingLive, onChange = setPingLive)
+            }
+        }
+
+        // ── block QUIC (speed) ──
+        PanelCard(Modifier.padding(top = 12.dp)) {
+            Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(ic(R.drawable.ic_ban), null, tint = mb.dim, modifier = Modifier.size(20.dp))
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(t.blockQuic, color = mb.ink, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                    Text(t.blockQuicSub, color = mb.dim, fontSize = 13.sp)
+                }
+                MbSwitch(blockQuic, onChange = setBlockQuic)
             }
         }
 

@@ -84,10 +84,11 @@ val Vazir = FontFamily(
     Font(R.font.vazirmatn_bold, FontWeight.Bold),
 )
 
-/** Ping color tone — same thresholds as the web demo. */
+/** Ping color tone — same thresholds as the web demo.
+ *  سبز تا ۱۱۰ · نارنجی ۱۱۰ تا ۲۰۰ · قرمز بالای ۲۰۰ (999 = سرور مرده) */
 fun pingColor(ping: Int, mb: MbColors): Color =
-    if (ping < 60) mb.glow else if (ping < 100) mb.gold else mb.danger
+    if (ping <= 110) mb.glow else if (ping <= 200) mb.gold else mb.danger
 
-/** Signal bar count for a ping value. */
+/** Signal bar count for a ping value — boundaries aligned with the color zones. */
 fun pingBars(ping: Int): Int =
-    if (ping < 40) 4 else if (ping < 60) 3 else if (ping < 100) 2 else 1
+    if (ping <= 70) 4 else if (ping <= 110) 3 else if (ping <= 200) 2 else 1

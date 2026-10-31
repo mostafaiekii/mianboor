@@ -121,6 +121,8 @@ interface Strings {
     val language: String
     val livePingSet: String
     val livePingSetDesc: String
+    val blockQuic: String
+    val blockQuicSub: String
     val about: String
     fun aboutLine(v: String): String
     val noKey: String
@@ -352,6 +354,8 @@ object EnStrings : Strings {
     override val language = "Language"
     override val livePingSet = "Live ping refresh"
     override val livePingSetDesc = "Re-measure server pings every 3 seconds"
+    override val blockQuic = "Faster browsing (block QUIC)"
+    override val blockQuicSub = "Forces browsers onto fast HTTP/2-over-TCP inside the tunnel. Recommended ON."
     override val about = "About"
     override fun aboutLine(v: String) = "Mianboor VPN · v$v"
     override val noKey = "No key, no sign-up — install & connect."
@@ -591,6 +595,8 @@ object FaStrings : Strings {
     override val language = "زبان"
     override val livePingSet = "به‌روزرسانی زنده پینگ"
     override val livePingSetDesc = "اندازه‌گیری دوباره پینگ سرورها هر ۳ ثانیه"
+    override val blockQuic = "مرور سریع‌تر (بستن QUIC)"
+    override val blockQuicSub = "مرورگر را به HTTP/2 روی TCPِ تونل می‌برد — سرعت باز شدن سایت‌ها بالاتر می‌ره. پیشنهاد: روشن."
     override val about = "درباره اپ"
     override fun aboutLine(v: String) = "میانبر VPN · نسخه $v"
     override val noKey = "نه کلید می‌خواد نه ثبت‌نام؛ نصب کن و وصل شو."

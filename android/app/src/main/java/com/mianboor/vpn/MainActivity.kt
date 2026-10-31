@@ -234,6 +234,7 @@ private fun MbAppInner(
     var killSwitch by remember { mutableStateOf(AppPrefs.killSwitch(context)) }
     var autoConnect by remember { mutableStateOf(AppPrefs.autoConnect(context)) }
     var pingLive by remember { mutableStateOf(AppPrefs.pingLive(context)) }
+    var blockQuic by remember { mutableStateOf(AppPrefs.blockQuic(context)) }
 
     var installedApps by remember { mutableStateOf<List<InstalledApp>>(emptyList()) }
 
@@ -288,15 +289,18 @@ private fun MbAppInner(
         }
     }
 
-    /** گرفتن اعلان‌ها از سرور: کش محلی + پاپ‌آپ جدید + نوتیف سیستم. */
+    /** گرفتن اعلان‌ها از سرور: کش محلی + پاپ‌آپ جدید + نوتیف سیستم.
+     *  لیست سرور مرجع است و کش گوشی را کامل جایگزین می‌کند — یعنی حذف یک اعلان از
+     *  پنل مدیر، تا اولین سینک بعدی از روی گوشی کاربر هم پاک می‌شود. فقط جوابِ
+     *  موفقِ سرور کش را جایگزین می‌کند (شکست شبکه = کش محلی دست‌نخورده). */
     fun refreshNotices() {
         val url = AppPrefs.serverUrl(context)
         val token = AppPrefs.clientToken(context)
         val dev = deviceId
         if (!url.startsWith("http") || token.isBlank() || dev.isBlank()) return
         scope.launch(Dispatchers.IO) {
-            val fresh = MianboorApi.notices(url, token, dev, if (premium) "premium" else "free")
-            if (fresh.isEmpty()) return@launch
+            val fresh = MianboorApi.noticesOrNull(url, token, dev, if (premium) "premium" else "free")
+                ?: return@launch // شبکه/سرور جواب نداد — کش محلی دست‌نخورده می‌ماند
             val beforeUnread = AppPrefs.noticesCache(context).count { !it.read }
             val unread = fresh.count { !it.read }
             AppPrefs.setNoticesCache(context, fresh)
@@ -645,6 +649,15 @@ private fun MbAppInner(
                 pings.putAll(results.toMap())
             }
             delay(PING_INTERVAL_MS)
+        }
+    }
+
+    // ── periodic notice refresh — حذف/تغییر اعلان‌های پنل مدیر تا حداکثر ~۱ دقیقه بعد
+    //    روی گوشی کاربر هم اعمال می‌شود (حتی اگر صندوق باز نباشد) ──
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(60_000)
+            refreshNotices()
         }
     }
 
@@ -1243,6 +1256,27 @@ private fun MbAppInner(
                         setTheme = onTheme,
                         pingLive = pingLive,
                         setPingLive = { v -> pingLive = v; AppPrefs.setPingLive(context, v) },
+                        blockQuic = blockQuic,
+                        setBlockQuic = { v ->
+                            blockQuic = v
+                            AppPrefs.setBlockQuic(context, v)
+                            // اگر VPN وصل است، تونل با تنظیم جدید دوباره برقرار شود
+                            if (VpnState.phase.value == Phase.CONNECTED) {
+                                val target = selectedConfig
+                                if (target != null) {
+                                    VpnState.phase.value = Phase.DISCONNECTING
+                                    context.startService(
+                                        Intent(context, MianboorVpnService::class.java).apply {
+                                            action = MianboorVpnService.ACTION_DISCONNECT
+                                        }
+                                    )
+                                    scope.launch {
+                                        delay(900)
+                                        launchVpn(target)
+                                    }
+                                }
+                            }
+                        },
                         onSupport = { openTelegram() },
                         onBack = { screen = Screen.HOME },
                     )
@@ -1297,7 +1331,10 @@ private fun MbAppInner(
                         onDeleteNotice = { id ->
                             scope.launch(Dispatchers.IO) {
                                 MianboorApi.adminDeleteNotice(AppPrefs.serverUrl(context), AppPrefs.adminServerKey(context), id)
-                                withContext(Dispatchers.Main) { loadAdminData() }
+                                withContext(Dispatchers.Main) {
+                                    loadAdminData()
+                                    refreshNotices() // صندوق خودِ مدیر (سمت کاربر) هم بلافاصله تازه شود
+                                }
                             }
                         },
                         latestSettings = adminLatest,

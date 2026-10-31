@@ -201,10 +201,14 @@ object MianboorApi {
     // Notices — صندوق اعلان‌ها و پاپ‌آپ
     // ------------------------------------------------------------------
 
-    /** اعلان‌های فعال سرور + پرچم خوانده‌شده برای همین دستگاه (planHint: free/premium). */
-    fun notices(serverUrl: String, clientToken: String, deviceId: String, planHint: String = ""): List<Notice> {
+    /**
+     * اعلان‌های فعال سرور + پرچم خوانده‌شده برای همین دستگاه (planHint: free/premium).
+     * خروجی null یعنی خودِ درخواست شکست خورده (شبکه/سرور) — با «سرور گفت لیست خالی است» فرق دارد.
+     * این تمایز برای sync حذف اعلان‌ها حیاتی است: فقط جواب موفق باید کش گوشی را جایگزین کند.
+     */
+    fun noticesOrNull(serverUrl: String, clientToken: String, deviceId: String, planHint: String = ""): List<Notice>? {
         val base = serverUrl.trim().trimEnd('/')
-        if (!base.startsWith("http") || clientToken.isBlank()) return emptyList()
+        if (!base.startsWith("http") || clientToken.isBlank()) return null
         val url = "$base/api/client/notices?token=" + URLEncoder.encode(clientToken, "UTF-8") +
             "&device=" + URLEncoder.encode(deviceId, "UTF-8") +
             (if (planHint.isNotBlank()) "&plan=" + URLEncoder.encode(planHint, "UTF-8") else "")
@@ -213,14 +217,18 @@ object MianboorApi {
         conn.readTimeout = 12000
         conn.setRequestProperty("Accept", "application/json")
         return try {
-            if (conn.responseCode != 200) emptyList()
+            if (conn.responseCode != 200) null
             else parseNotices(conn.inputStream.bufferedReader().use { it.readText() })
         } catch (t: Throwable) {
-            emptyList()
+            null
         } finally {
             conn.disconnect()
         }
     }
+
+    /** سازگاری با فراخوان‌های قدیمی: جواب موفق → لیست (حتا خالی)؛ شکست → لیست خالی. */
+    fun notices(serverUrl: String, clientToken: String, deviceId: String, planHint: String = ""): List<Notice> =
+        noticesOrNull(serverUrl, clientToken, deviceId, planHint) ?: emptyList()
 
     private fun parseNotices(body: String): List<Notice> =
         runCatching {

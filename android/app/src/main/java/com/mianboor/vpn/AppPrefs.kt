@@ -59,6 +59,10 @@ object AppPrefs {
     fun pingLive(c: Context): Boolean = p(c).getBoolean("ping_live", true)
     fun setPingLive(c: Context, v: Boolean) { ed(c).putBoolean("ping_live", v).apply() }
 
+    /** بستن QUIC (UDP/443) — پیش‌فرض روشن: مرورگر روی HTTP/2-TCP از داخل تونل بسیار سریع‌تر است. */
+    fun blockQuic(c: Context): Boolean = p(c).getBoolean("block_quic", true)
+    fun setBlockQuic(c: Context, v: Boolean) { ed(c).putBoolean("block_quic", v).apply() }
+
     fun killSwitch(c: Context): Boolean = p(c).getBoolean("kill_switch", true)
     fun setKillSwitch(c: Context, v: Boolean) { ed(c).putBoolean("kill_switch", v).apply() }
 
@@ -357,11 +361,23 @@ object AppPrefs {
         val a = JSONArray(p(c).getString("notices_cache", "[]") ?: "[]")
         return (0 until a.length()).map { i ->
             val o = a.getJSONObject(i)
+            val kind = if (o.optString("kind") == "popup") "popup" else "inbox"
+            val chArr = o.optJSONArray("ch")
+            val channels = mutableListOf<String>()
+            if (chArr != null) {
+                for (j in 0 until chArr.length()) {
+                    val v = chArr.optString(j)
+                    if (v == "inbox" || v == "popup" || v == "push") channels.add(v)
+                }
+            }
+            if (channels.isEmpty()) channels.add(kind)
             Notice(
                 id = o.optString("id"), title = o.optString("title"),
                 body = o.optString("body"),
-                kind = if (o.optString("kind") == "popup") "popup" else "inbox",
+                kind = kind,
                 createdAt = o.optLong("at"), read = o.optBoolean("read", false),
+                ntype = o.optString("nt", "info"), audience = o.optString("au", "all"),
+                channels = channels,
             )
         }
     }
@@ -369,9 +385,12 @@ object AppPrefs {
     fun setNoticesCache(c: Context, list: List<Notice>) {
         val a = JSONArray()
         list.forEach { n ->
+            val ch = JSONArray()
+            n.channels.forEach { ch.put(it) }
             a.put(JSONObject()
                 .put("id", n.id).put("title", n.title).put("body", n.body)
-                .put("kind", n.kind).put("at", n.createdAt).put("read", n.read))
+                .put("kind", n.kind).put("at", n.createdAt).put("read", n.read)
+                .put("nt", n.ntype).put("au", n.audience).put("ch", ch))
         }
         ed(c).putString("notices_cache", a.toString()).apply()
     }
