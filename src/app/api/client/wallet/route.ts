@@ -113,7 +113,13 @@ export async function POST(req: Request) {
     }
     const price = Math.round(base * (1 - percent / 100));
 
-    const dev = await db.device.findUnique({ where: { id: device } });
+    const dev = await db.device
+      .upsert({
+        where: { id: device },
+        create: { id: device, lastSeenAt: new Date() },
+        update: { lastSeenAt: new Date() },
+      })
+      .catch(() => null);
     if (!dev) return NextResponse.json({ ok: false, error: "device not found" }, { status: 404 });
     const now = Date.now();
     const baseUntil = dev.premiumUntil && dev.premiumUntil.getTime() > now ? dev.premiumUntil.getTime() : now;
