@@ -48,6 +48,21 @@ const POSTGRES_DDL = [
      "value" TEXT NOT NULL,
      CONSTRAINT "AppSetting_pkey" PRIMARY KEY ("key")
    )`,
+  `CREATE TABLE IF NOT EXISTS "Notice" (
+     "id" TEXT NOT NULL,
+     "title" TEXT NOT NULL,
+     "body" TEXT NOT NULL,
+     "kind" TEXT NOT NULL DEFAULT 'inbox',
+     "active" BOOLEAN NOT NULL DEFAULT true,
+     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+     CONSTRAINT "Notice_pkey" PRIMARY KEY ("id")
+   )`,
+  `CREATE TABLE IF NOT EXISTS "NoticeRead" (
+     "noticeId" TEXT NOT NULL,
+     "deviceId" TEXT NOT NULL,
+     "readAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+     CONSTRAINT "NoticeRead_pkey" PRIMARY KEY ("noticeId","deviceId")
+   )`,
   // ستون‌هایی که ممکن است در نسخه‌های قدیمی دیتابیس نباشند
   `ALTER TABLE "VpnConfig" ADD COLUMN IF NOT EXISTS "premium" BOOLEAN NOT NULL DEFAULT false`,
   `ALTER TABLE "VpnConfig" ADD COLUMN IF NOT EXISTS "country" TEXT NOT NULL DEFAULT 'نامشخص'`,
@@ -84,6 +99,20 @@ const SQLITE_DDL = [
   `CREATE TABLE IF NOT EXISTS "AppSetting" (
      "key" TEXT NOT NULL PRIMARY KEY,
      "value" TEXT NOT NULL
+   )`,
+  `CREATE TABLE IF NOT EXISTS "Notice" (
+     "id" TEXT NOT NULL PRIMARY KEY,
+     "title" TEXT NOT NULL,
+     "body" TEXT NOT NULL,
+     "kind" TEXT NOT NULL DEFAULT 'inbox',
+     "active" BOOLEAN NOT NULL DEFAULT true,
+     "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+   )`,
+  `CREATE TABLE IF NOT EXISTS "NoticeRead" (
+     "noticeId" TEXT NOT NULL,
+     "deviceId" TEXT NOT NULL,
+     "readAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+     PRIMARY KEY ("noticeId","deviceId")
    )`,
 ];
 

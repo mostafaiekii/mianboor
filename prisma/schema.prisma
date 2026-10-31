@@ -44,3 +44,22 @@ model AppSetting {
   key   String @id
   value String
 }
+
+// اعلان‌های مدیریت — صندوق کاربر یا پاپ‌آپ داخل اپ (از پنل مدیریت ارسال می‌شود)
+model Notice {
+  id        String   @id @default(cuid())
+  title     String
+  body      String
+  kind      String   @default("inbox") // inbox | popup
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+}
+
+// وضعیت خواندن هر اعلان به تفکیک دستگاه
+model NoticeRead {
+  noticeId String
+  deviceId String
+  readAt   DateTime @default(now())
+
+  @@id([noticeId, deviceId])
+}

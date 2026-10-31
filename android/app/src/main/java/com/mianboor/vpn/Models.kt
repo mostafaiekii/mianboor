@@ -33,3 +33,13 @@ data class DeviceRecord(
     val reinstalls: Int,
     val seen: String,
 )
+
+/** اعلان مدیریت — صندوق کاربر (بل زنگ) یا پاپ‌آپ داخل اپ. */
+data class Notice(
+    val id: String,
+    val title: String,
+    val body: String,
+    val kind: String,     // inbox | popup
+    val createdAt: Long,  // epoch ms
+    val read: Boolean = false,
+)

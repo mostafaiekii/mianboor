@@ -25,6 +25,10 @@ interface Strings {
     val noMatch: String
     val livePing: String
     val syncErrorTitle: String
+    val inbox: String
+    val inboxEmpty: String
+    val markAllRead: String
+    val popupOk: String
     val best: String
     val premiumLockSub: String
     val planFree: String
@@ -172,6 +176,10 @@ object EnStrings : Strings {
     override val noMatch = "No servers match."
     override val livePing = "Live ping"
     override val syncErrorTitle = "Last sync to server failed"
+    override val inbox = "Inbox"
+    override val inboxEmpty = "No notices yet — you're all caught up"
+    override val markAllRead = "Mark all read"
+    override val popupOk = "Got it"
     override val best = "BEST"
     override val premiumLockSub = "Premium server · tap to unlock"
     override val planFree = "Free Plan"
@@ -339,6 +347,10 @@ object FaStrings : Strings {
     override val noMatch = "سروری پیدا نشد."
     override val livePing = "پینگ زنده"
     override val syncErrorTitle = "آخرین سنک با سرور ناموفق بود"
+    override val inbox = "اعلان‌ها"
+    override val inboxEmpty = "هنوز اعلانی نداری"
+    override val markAllRead = "خواندن همه"
+    override val popupOk = "متوجه شدم"
     override val best = "برترین"
     override val premiumLockSub = "سرور پرمیوم · برای باز شدن بزن"
     override val planFree = "پلن رایگان"

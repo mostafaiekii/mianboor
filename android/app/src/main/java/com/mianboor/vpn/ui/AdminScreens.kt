@@ -5,6 +5,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.background
+import com.mianboor.vpn.Notice
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -1064,6 +1065,9 @@ fun AdminPanel(
     onExit: () -> Unit,
     toast: (String) -> Unit,
     serverOld: Boolean = false,
+    notices: List<Notice> = emptyList(),
+    onAddNotice: (String, String, String) -> Unit = { _, _, _ -> },
+    onDeleteNotice: (String) -> Unit = {},
 ) {
     val mb = LocalMb.current
     var tab by remember { mutableStateOf("configs") }
@@ -1118,6 +1122,7 @@ fun AdminPanel(
                     "configs" to "Configs",
                     "orders" to "Orders",
                     "users" to "Users",
+                    "notices" to "Notices",
                     "server" to "Server",
                 ).forEach { (tb, label) ->
                     Box(
@@ -1152,7 +1157,124 @@ fun AdminPanel(
                 }
             }
 
-            if (tab == "configs") {
+            if (tab == "notices") {
+                var nTitle by remember { mutableStateOf("") }
+                var nBody by remember { mutableStateOf("") }
+                var nPopup by remember { mutableStateOf(false) }
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState())
+                        .padding(top = 12.dp),
+                ) {
+                    Text(
+                        "Delivered to every user — inbox bell, or popup on next launch",
+                        color = mb.dim, fontSize = 12.sp,
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(mb.night)
+                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                    ) {
+                        BasicTextField(
+                            value = nTitle,
+                            onValueChange = { nTitle = it },
+                            singleLine = true,
+                            textStyle = androidx.compose.ui.text.TextStyle(color = mb.ink, fontSize = 13.sp),
+                            modifier = Modifier.fillMaxWidth(),
+                            decorationBox = { inner ->
+                                if (nTitle.isEmpty()) Text("Title…", color = mb.dim, fontSize = 13.sp)
+                                inner()
+                            },
+                        )
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(mb.night)
+                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                    ) {
+                        BasicTextField(
+                            value = nBody,
+                            onValueChange = { nBody = it },
+                            minLines = 3,
+                            textStyle = androidx.compose.ui.text.TextStyle(color = mb.ink, fontSize = 13.sp),
+                            modifier = Modifier.fillMaxWidth(),
+                            decorationBox = { inner ->
+                                if (nBody.isEmpty()) Text("Message…", color = mb.dim, fontSize = 13.sp)
+                                inner()
+                            },
+                        )
+                    }
+                    Row(
+                        Modifier.fillMaxWidth().padding(top = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            if (nPopup) "Popup on next launch" else "Silent inbox",
+                            color = mb.dim, fontSize = 12.sp, modifier = Modifier.weight(1f),
+                        )
+                        MbSwitch(checked = nPopup, onChange = { nPopup = it })
+                        Spacer(Modifier.width(10.dp))
+                        Box(
+                            Modifier
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(mb.gold)
+                                .clickable {
+                                    if (nTitle.isNotBlank() && nBody.isNotBlank()) {
+                                        onAddNotice(nTitle.trim(), nBody.trim(), if (nPopup) "popup" else "inbox")
+                                        nTitle = ""
+                                        nBody = ""
+                                    }
+                                }
+                                .padding(horizontal = 16.dp, vertical = 8.dp),
+                        ) {
+                            Text("Send", color = mb.night, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                    Spacer(Modifier.height(14.dp))
+                    if (notices.isEmpty()) {
+                        Text("No notices sent yet", color = mb.dim, fontSize = 12.sp)
+                    }
+                    notices.forEach { n ->
+                        Box(
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = 8.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(mb.panel)
+                                .padding(12.dp),
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Column(Modifier.weight(1f)) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        if (n.kind == "popup") {
+                                            Text("POPUP", color = mb.gold, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                            Spacer(Modifier.width(6.dp))
+                                        }
+                                        Text(
+                                            n.title,
+                                            color = mb.ink, fontSize = 13.sp,
+                                            fontWeight = FontWeight.SemiBold, maxLines = 1,
+                                        )
+                                    }
+                                    Text(n.body, color = mb.dim, fontSize = 12.sp, maxLines = 2)
+                                }
+                                Icon(
+                                    ic(R.drawable.ic_trash_2), "delete",
+                                    tint = mb.dim,
+                                    modifier = Modifier.size(17.dp).clickable { onDeleteNotice(n.id) },
+                                )
+                            }
+                        }
+                    }
+                }
+            } else if (tab == "configs") {
                 Row(
                     Modifier.fillMaxWidth().padding(top = 12.dp),
                     verticalAlignment = Alignment.CenterVertically,

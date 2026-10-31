@@ -198,6 +198,101 @@ object MianboorApi {
     }
 
     // ------------------------------------------------------------------
+    // Notices — صندوق اعلان‌ها و پاپ‌آپ
+    // ------------------------------------------------------------------
+
+    /** اعلان‌های فعال سرور + پرچم خوانده‌شده برای همین دستگاه. */
+    fun notices(serverUrl: String, clientToken: String, deviceId: String): List<Notice> {
+        val base = serverUrl.trim().trimEnd('/')
+        if (!base.startsWith("http") || clientToken.isBlank()) return emptyList()
+        val url = "$base/api/client/notices?token=" + URLEncoder.encode(clientToken, "UTF-8") +
+            "&device=" + URLEncoder.encode(deviceId, "UTF-8")
+        val conn = URL(url).openConnection() as HttpURLConnection
+        conn.connectTimeout = 8000
+        conn.readTimeout = 12000
+        conn.setRequestProperty("Accept", "application/json")
+        return try {
+            if (conn.responseCode != 200) emptyList()
+            else parseNotices(conn.inputStream.bufferedReader().use { it.readText() })
+        } catch (t: Throwable) {
+            emptyList()
+        } finally {
+            conn.disconnect()
+        }
+    }
+
+    private fun parseNotices(body: String): List<Notice> =
+        runCatching {
+            val arr = JSONObject(body).optJSONArray("notices") ?: JSONArray()
+            (0 until arr.length()).mapNotNull { i ->
+                val o = arr.getJSONObject(i)
+                val id = o.optString("id")
+                if (id.isBlank()) return@mapNotNull null
+                Notice(
+                    id = id,
+                    title = o.optString("title").ifBlank { "Mianboor" },
+                    body = o.optString("body"),
+                    kind = if (o.optString("kind") == "popup") "popup" else "inbox",
+                    createdAt = parseEpochMillis(o.opt("createdAt")),
+                    read = o.optBoolean("read", false),
+                )
+            }
+        }.getOrDefault(emptyList())
+
+    /** علامت‌گذاری یک اعلان به‌عنوان خوانده‌شده برای این دستگاه. */
+    fun markNoticeRead(serverUrl: String, clientToken: String, deviceId: String, id: String) {
+        val base = serverUrl.trim().trimEnd('/')
+        if (!base.startsWith("http") || clientToken.isBlank() || id.isBlank()) return
+        val payload = JSONObject().put("token", clientToken).put("device", deviceId).put("id", id)
+        val conn = URL("$base/api/client/notices").openConnection() as HttpURLConnection
+        conn.connectTimeout = 8000
+        conn.readTimeout = 12000
+        conn.requestMethod = "POST"
+        conn.setRequestProperty("Content-Type", "application/json")
+        try {
+            conn.doOutput = true
+            conn.outputStream.use { it.write(payload.toString().toByteArray(Charsets.UTF_8)) }
+            conn.responseCode
+        } catch (t: Throwable) {
+        } finally {
+            conn.disconnect()
+        }
+    }
+
+    /** فهرست همهٔ اعلان‌ها برای تب Notices پنل مدیر. */
+    fun adminNotices(serverUrl: String, adminKey: String): List<Notice> = runCatching {
+        val conn = adminConn(serverUrl, adminKey, "/api/admin/notices", "GET")
+        try {
+            if (conn.responseCode != 200) emptyList()
+            else parseNotices(conn.inputStream.bufferedReader().use { it.readText() })
+        } finally {
+            conn.disconnect()
+        }
+    }.getOrDefault(emptyList())
+
+    /** ارسال اعلان جدید (صندوق یا پاپ‌آپ) از پنل مدیر. */
+    fun adminAddNotice(serverUrl: String, adminKey: String, title: String, body: String, kind: String): Boolean =
+        runCatching {
+            val conn = adminConn(serverUrl, adminKey, "/api/admin/notices", "POST")
+            try {
+                sendJson(conn, JSONObject().put("title", title).put("body", body).put("kind", kind))
+                readOk(conn)
+            } finally {
+                conn.disconnect()
+            }
+        }.getOrDefault(false)
+
+    /** حذف اعلان از پنل مدیر. */
+    fun adminDeleteNotice(serverUrl: String, adminKey: String, id: String): Boolean = runCatching {
+        val conn = adminConn(serverUrl, adminKey, "/api/admin/notices?id=" + URLEncoder.encode(id, "UTF-8"), "DELETE")
+        try {
+            readOk(conn)
+        } finally {
+            conn.disconnect()
+        }
+    }.getOrDefault(false)
+
+    // ------------------------------------------------------------------
     // Server management API (key-authenticated)
     // ------------------------------------------------------------------
 

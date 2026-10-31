@@ -350,4 +350,33 @@ object AppPrefs {
 
     fun unsentOrders(c: Context): JSONArray = JSONArray(p(c).getString("unsent_orders", "[]") ?: "[]")
     fun setUnsentOrders(c: Context, a: JSONArray) { ed(c).putString("unsent_orders", a.toString()).apply() }
+
+    // ── اعلان‌ها (صندوق + پاپ‌آپ) ──
+
+    fun noticesCache(c: Context): List<Notice> {
+        val a = JSONArray(p(c).getString("notices_cache", "[]") ?: "[]")
+        return (0 until a.length()).map { i ->
+            val o = a.getJSONObject(i)
+            Notice(
+                id = o.optString("id"), title = o.optString("title"),
+                body = o.optString("body"),
+                kind = if (o.optString("kind") == "popup") "popup" else "inbox",
+                createdAt = o.optLong("at"), read = o.optBoolean("read", false),
+            )
+        }
+    }
+
+    fun setNoticesCache(c: Context, list: List<Notice>) {
+        val a = JSONArray()
+        list.forEach { n ->
+            a.put(JSONObject()
+                .put("id", n.id).put("title", n.title).put("body", n.body)
+                .put("kind", n.kind).put("at", n.createdAt).put("read", n.read))
+        }
+        ed(c).putString("notices_cache", a.toString()).apply()
+    }
+
+    /** اعلان‌های پاپ‌آپ که یک‌بار نمایش داده شده‌اند — تا دوباره تکرار نشوند. */
+    fun popupSeen(c: Context): Set<String> = stringSet(c, "popup_seen")
+    fun addPopupSeen(c: Context, id: String) { setStringSet(c, "popup_seen", popupSeen(c) + id) }
 }

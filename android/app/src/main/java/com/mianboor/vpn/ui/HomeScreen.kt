@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -74,6 +75,8 @@ fun HomeScreen(
     updateTag: String? = null,
     onUpdateClick: () -> Unit = {},
     onDismissUpdate: () -> Unit = {},
+    unreadNotices: Int = 0,
+    onOpenInbox: () -> Unit = {},
 ) {
     val t = stringsOf(lang)
     val mb = LocalMb.current
@@ -144,6 +147,32 @@ fun HomeScreen(
             Spacer(Modifier.width(10.dp))
             Brand(lang)
             Spacer(Modifier.weight(1f))
+            Box {
+                Icon(
+                    ic(R.drawable.ic_bell), t.inbox,
+                    tint = if (unreadNotices > 0) mb.gold else mb.dim,
+                    modifier = Modifier.size(21.dp).clickable { onOpenInbox() },
+                )
+                if (unreadNotices > 0) {
+                    Box(
+                        Modifier
+                            .align(Alignment.TopEnd)
+                            .offset(x = 6.dp, y = (-4).dp)
+                            .size(15.dp)
+                            .clip(CircleShape)
+                            .background(mb.gold),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            "$unreadNotices",
+                            color = mb.night,
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Bold,
+                        )
+                    }
+                }
+            }
+            Spacer(Modifier.width(14.dp))
             Icon(
                 ic(R.drawable.ic_send), t.support,
                 tint = mb.dim, modifier = Modifier.size(20.dp).clickable { onSupport() },

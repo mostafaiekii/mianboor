@@ -2,8 +2,10 @@ package com.mianboor.vpn
 
 import android.Manifest
 import android.app.Activity
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.net.VpnService
@@ -45,10 +47,12 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -85,6 +89,7 @@ import com.mianboor.vpn.ui.AdminLogin
 import com.mianboor.vpn.ui.AdminPanel
 import com.mianboor.vpn.ui.FREE_QUOTA_GB
 import com.mianboor.vpn.ui.HomeScreen
+import com.mianboor.vpn.ui.InboxScreen
 import com.mianboor.vpn.ui.InstalledApp
 import com.mianboor.vpn.ui.Lang
 import com.mianboor.vpn.ui.LocalMb
@@ -109,7 +114,7 @@ import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.security.MessageDigest
 
-enum class Screen { HOME, SERVERS, ACCOUNT, SETTINGS, SPLIT, LOGIN, ADMIN }
+enum class Screen { HOME, SERVERS, ACCOUNT, SETTINGS, SPLIT, INBOX, LOGIN, ADMIN }
 
 data class Entitlement(val plan: String, val expiresAt: Long)
 
@@ -219,6 +224,11 @@ private fun MbAppInner(
     var updateTag by remember { mutableStateOf<String?>(null) }
     var serverOld by remember { mutableStateOf(false) }
 
+    // ── اعلان‌ها: صندوق + پاپ‌آپ ──
+    var notices by remember { mutableStateOf(AppPrefs.noticesCache(context)) }
+    var popupNotice by remember { mutableStateOf<Notice?>(null) }
+    var otaDownloadId by remember { mutableLongStateOf(-1L) }
+
     var splitMode by remember { mutableStateOf(AppPrefs.splitMode(context)) }
     var splitApps by remember { mutableStateOf(AppPrefs.splitApps(context)) }
     var killSwitch by remember { mutableStateOf(AppPrefs.killSwitch(context)) }
@@ -228,6 +238,7 @@ private fun MbAppInner(
     var installedApps by remember { mutableStateOf<List<InstalledApp>>(emptyList()) }
 
     var adminUnlocked by remember { mutableStateOf(false) }
+    var adminNotices by remember { mutableStateOf<List<Notice>>(emptyList()) }
     var adminPass by remember { mutableStateOf(AppPrefs.adminPass(context)) }
     var premiumOv by remember { mutableStateOf(AppPrefs.premiumOv(context)) }
     var disabledOv by remember { mutableStateOf(AppPrefs.stringSet(context, "disabled_ov")) }
@@ -365,6 +376,7 @@ private fun MbAppInner(
                     // plan == null یعنی سرور قدیمی — بنر هشدار در پنل مدیر نشان داده می‌شود
                     serverOld = result.plan == null
                     rebuildConfigs()
+                    refreshNotices()
                     onDone(true)
                     // سفارش‌های ارسال‌نشدهٔ قبلی را دوباره بفرست
                     val unsent = AppPrefs.unsentOrders(context)
@@ -407,9 +419,11 @@ private fun MbAppInner(
         scope.launch(Dispatchers.IO) {
             val orders = runCatching { MianboorApi.adminListOrders(url, key) }.getOrDefault(emptyList())
             val devices = runCatching { MianboorApi.adminListDevices(url, key) }.getOrDefault(emptyList())
+            val noticesList = runCatching { MianboorApi.adminNotices(url, key) }.getOrDefault(emptyList())
             withContext(Dispatchers.Main) {
                 serverOrders = orders
                 serverDevices = devices
+                adminNotices = noticesList
                 adminBusy = false
                 val pending = orders.count { it.status == "pending" }
                 if (pending > 0) toast(t.pendingOrders(pending))
@@ -583,6 +597,27 @@ private fun MbAppInner(
                 withContext(Dispatchers.Main) { updateTag = tag }
             }
         }
+    }
+
+    // ── OTA: گیرندهٔ پایان دانلود → باز کردن خودکار نصب‌کننده ──
+    DisposableEffect(Unit) {
+        val receiver = object : BroadcastReceiver() {
+            override fun onReceive(c: Context?, i: Intent?) {
+                val id = i?.getLongExtra(android.app.DownloadManager.EXTRA_DOWNLOAD_ID, -1L) ?: return
+                if (id != otaDownloadId) return
+                runCatching {
+                    val dm = getSystemService(Context.DOWNLOAD_SERVICE) as android.app.DownloadManager
+                    val uri = dm.getUriForDownloadedFile(id) ?: return
+                    startActivity(
+                        Intent(Intent.ACTION_VIEW)
+                            .setDataAndType(uri, "application/vnd.android.package-archive")
+                            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK),
+                    )
+                }
+            }
+        }
+        context.registerReceiver(receiver, IntentFilter(android.app.DownloadManager.ACTION_DOWNLOAD_COMPLETE))
+        onDispose { runCatching { context.unregisterReceiver(receiver) } }
     }
 
     // ── rotating cover messages while busy ──
@@ -902,15 +937,87 @@ private fun MbAppInner(
         toast(t.copied)
     }
 
+    /** گرفتن اعلان‌ها از سرور: کش محلی + پاپ‌آپ جدید + نوتیف سیستم. */
+    fun refreshNotices() {
+        val url = AppPrefs.serverUrl(context)
+        val token = AppPrefs.clientToken(context)
+        val dev = deviceId
+        if (!url.startsWith("http") || token.isBlank() || dev.isBlank()) return
+        scope.launch(Dispatchers.IO) {
+            val fresh = MianboorApi.notices(url, token, dev)
+            if (fresh.isEmpty()) return@launch
+            val beforeUnread = AppPrefs.noticesCache(context).count { !it.read }
+            val unread = fresh.count { !it.read }
+            AppPrefs.setNoticesCache(context, fresh)
+            withContext(Dispatchers.Main) {
+                notices = fresh
+                val seen = AppPrefs.popupSeen(context)
+                if (popupNotice == null) {
+                    fresh.firstOrNull { it.kind == "popup" && !it.read && it.id !in seen }?.let { pn ->
+                        popupNotice = pn
+                        AppPrefs.addPopupSeen(context, pn.id)
+                    }
+                }
+                if (unread > beforeUnread) postNoticeNotification(unread)
+            }
+        }
+    }
+
+    /** نوتیف سیستم — اعلان جدید در نوار وضعیت گوشی. */
+    fun postNoticeNotification(unread: Int) {
+        try {
+            val nm = getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+            nm.createNotificationChannel(
+                android.app.NotificationChannel("notices", "Mianboor", android.app.NotificationManager.IMPORTANCE_DEFAULT),
+            )
+            val fa = AppPrefs.lang(this) == "fa"
+            val pi = android.app.PendingIntent.getActivity(
+                this, 41, Intent(this, MainActivity::class.java),
+                android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE,
+            )
+            val notif = android.app.Notification.Builder(this, "notices")
+                .setSmallIcon(R.drawable.ic_bell)
+                .setContentTitle("Mianboor")
+                .setContentText(if (fa) "$unread اعلان جدید داری" else "You have $unread new notice(s)")
+                .setContentIntent(pi)
+                .setAutoCancel(true)
+            nm.notify(4101, notif.build())
+        } catch (t: Throwable) {
+        }
+    }
+
+    /** OTA: دانلود مستقیم APK نسخهٔ جدید و باز کردن خودکار نصب‌کننده. */
+    fun downloadAndInstallUpdate() {
+        val url = AppPrefs.latestUpdateUrl(context).ifBlank { "https://github.com/mostafaiekii/mianboor/releases/latest" }
+        if (!url.endsWith(".apk")) {
+            runCatching { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
+            return
+        }
+        try {
+            val dm = getSystemService(Context.DOWNLOAD_SERVICE) as android.app.DownloadManager
+            if (otaDownloadId != -1L) dm.remove(otaDownloadId)
+            val req = android.app.DownloadManager.Request(Uri.parse(url))
+                .setTitle("Mianboor update")
+                .setMimeType("application/vnd.android.package-archive")
+                .setNotificationVisibility(android.app.DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+                .setDestinationInExternalFilesDir(this, null, "ota/update.apk")
+            otaDownloadId = dm.enqueue(req)
+            Toast.makeText(this, if (AppPrefs.lang(this) == "fa") "دانلود شروع شد…" else "Download started…", Toast.LENGTH_SHORT).show()
+        } catch (t: Throwable) {
+            runCatching { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
+        }
+    }
+
     // ── back handling ──
     // fresh pull every time the servers list is opened
     LaunchedEffect(screen) {
         if (screen == Screen.SERVERS) refreshRemote()
         if (screen == Screen.ADMIN) loadAdminData()
+        if (screen == Screen.INBOX) refreshNotices()
     }
-    BackHandler(enabled = screen in setOf(Screen.SERVERS, Screen.SETTINGS, Screen.SPLIT, Screen.LOGIN, Screen.ACCOUNT)) {
+    BackHandler(enabled = screen in setOf(Screen.SERVERS, Screen.SETTINGS, Screen.SPLIT, Screen.INBOX, Screen.LOGIN, Screen.ACCOUNT)) {
         screen = when (screen) {
-            Screen.SERVERS, Screen.SETTINGS -> Screen.HOME
+            Screen.SERVERS, Screen.SETTINGS, Screen.INBOX -> Screen.HOME
             Screen.SPLIT -> Screen.ACCOUNT
             Screen.LOGIN -> Screen.ACCOUNT
             else -> Screen.HOME
@@ -977,20 +1084,38 @@ private fun MbAppInner(
                         onPickServer = { screen = Screen.SERVERS },
                         onOpenSettings = { screen = Screen.SETTINGS },
                         onSupport = { openTelegram() },
+                        unreadNotices = notices.count { !it.read },
+                        onOpenInbox = { screen = Screen.INBOX },
                         downMbps = downMbps,
                         upMbps = upMbps,
                         originIp = originIp,
                         originCc = originCc,
                         showFlash = showFlash,
                         updateTag = updateTag,
-                        onUpdateClick = {
-                            runCatching {
-                                val url = AppPrefs.latestUpdateUrl(context)
-                                    .ifBlank { "https://github.com/mostafaiekii/mianboor/releases/latest" }
-                                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                        onUpdateClick = { downloadAndInstallUpdate() },
+                        onDismissUpdate = { updateTag = null },
+                    )
+                    Screen.INBOX -> InboxScreen(
+                        lang = lang,
+                        notices = notices,
+                        onOpenNotice = { id ->
+                            notices = notices.map { if (it.id == id) it.copy(read = true) else it }
+                            AppPrefs.setNoticesCache(context, notices)
+                            scope.launch(Dispatchers.IO) {
+                                MianboorApi.markNoticeRead(AppPrefs.serverUrl(context), AppPrefs.clientToken(context), deviceId, id)
                             }
                         },
-                        onDismissUpdate = { updateTag = null },
+                        onMarkAll = {
+                            val unreadIds = notices.filter { !it.read }.map { it.id }
+                            notices = notices.map { it.copy(read = true) }
+                            AppPrefs.setNoticesCache(context, notices)
+                            scope.launch(Dispatchers.IO) {
+                                unreadIds.forEach { id ->
+                                    MianboorApi.markNoticeRead(AppPrefs.serverUrl(context), AppPrefs.clientToken(context), deviceId, id)
+                                }
+                            }
+                        },
+                        onBack = { screen = Screen.HOME },
                     )
                     Screen.SERVERS -> ServersScreen(
                         lang = lang,
@@ -1077,6 +1202,23 @@ private fun MbAppInner(
                         },
                         onTestKey = { k, cb -> testServerKey(k, cb) },
                         onSavePayInfo = { savePayInfo(it) },
+                        notices = adminNotices,
+                        onAddNotice = { title, body, kind ->
+                            scope.launch(Dispatchers.IO) {
+                                val ok = MianboorApi.adminAddNotice(AppPrefs.serverUrl(context), AppPrefs.adminServerKey(context), title, body, kind)
+                                withContext(Dispatchers.Main) {
+                                    val fa = AppPrefs.lang(context) == "fa"
+                                    toast(if (ok) (if (fa) "اعلان ارسال شد" else "Notice sent") else (if (fa) "ارسال ناموفق بود" else "Send failed"))
+                                    if (ok) loadAdminData()
+                                }
+                            }
+                        },
+                        onDeleteNotice = { id ->
+                            scope.launch(Dispatchers.IO) {
+                                MianboorApi.adminDeleteNotice(AppPrefs.serverUrl(context), AppPrefs.adminServerKey(context), id)
+                                withContext(Dispatchers.Main) { loadAdminData() }
+                            }
+                        },
                         onRefreshAdmin = { loadAdminData(); refreshRemote() },
                         onDevicePremium = { dev, days -> serverDevicePremium(dev, days) },
                         onToggleConfig = { k, v -> toggleConfig(k, v) },
@@ -1148,6 +1290,34 @@ private fun MbAppInner(
                             scope.launch { rebuildConfigs() }
                         }
                     }
+                },
+            )
+        }
+
+        // ── پاپ‌آپ اعلان مدیریت ──
+        popupNotice?.let { pn ->
+            AlertDialog(
+                onDismissRequest = { popupNotice = null },
+                containerColor = mb.panel,
+                title = { Text(pn.title, color = mb.ink, fontWeight = FontWeight.Bold, fontSize = 17.sp) },
+                text = { Text(pn.body, color = mb.dim, fontSize = 14.sp) },
+                confirmButton = {
+                    Text(
+                        t.popupOk,
+                        color = mb.gold,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(10.dp))
+                            .clickable {
+                                popupNotice = null
+                                notices = notices.map { if (it.id == pn.id) it.copy(read = true) else it }
+                                AppPrefs.setNoticesCache(context, notices)
+                                scope.launch(Dispatchers.IO) {
+                                    MianboorApi.markNoticeRead(AppPrefs.serverUrl(context), AppPrefs.clientToken(context), deviceId, pn.id)
+                                }
+                            }
+                            .padding(horizontal = 12.dp, vertical = 6.dp),
+                    )
                 },
             )
         }
