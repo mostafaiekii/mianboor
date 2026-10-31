@@ -13,19 +13,23 @@ import { isAdminReq } from "@/lib/admin-auth";
  * GET  /api/admin/settings → خواندن مقادیر فعلی
  */
 const KEYS = ["pay_card", "pay_holder", "pay_note"] as const;
+const OTA_KEYS = ["latest_name", "latest_code", "latest_url"] as const;
 
 export async function GET(req: Request) {
   if (!(await isAdminReq(req))) {
     return NextResponse.json({ ok: false, error: "دسترسی غیرمجاز" }, { status: 401 });
   }
   await ensureDb();
-  const rows = await db.appSetting.findMany({ where: { key: { in: [...KEYS] } } });
+  const rows = await db.appSetting.findMany({ where: { key: { in: [...KEYS, ...OTA_KEYS] } } });
   const get = (k: string) => rows.find((r) => r.key === k)?.value ?? "";
   return NextResponse.json({
     ok: true,
     payCard: get("pay_card"),
     payHolder: get("pay_holder"),
     payNote: get("pay_note"),
+    latestVersion: get("latest_name"),
+    latestCode: Number(get("latest_code")) || 0,
+    latestUrl: get("latest_url"),
   });
 }
 

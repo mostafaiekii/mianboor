@@ -29,6 +29,10 @@ const POSTGRES_DDL = [
      "premiumUntil" TIMESTAMP(3),
      "label" TEXT NOT NULL DEFAULT '',
      "appVersion" TEXT NOT NULL DEFAULT '',
+     "refCode" TEXT NOT NULL DEFAULT '',
+     "referredBy" TEXT NOT NULL DEFAULT '',
+     "refGiftPending" INTEGER NOT NULL DEFAULT 0,
+     "refCount" INTEGER NOT NULL DEFAULT 0,
      "lastSeenAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
      "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
      CONSTRAINT "Device_pkey" PRIMARY KEY ("id")
@@ -53,6 +57,9 @@ const POSTGRES_DDL = [
      "title" TEXT NOT NULL,
      "body" TEXT NOT NULL,
      "kind" TEXT NOT NULL DEFAULT 'inbox',
+     "ntype" TEXT NOT NULL DEFAULT 'info',
+     "audience" TEXT NOT NULL DEFAULT 'all',
+     "channels" TEXT NOT NULL DEFAULT '["inbox"]',
      "active" BOOLEAN NOT NULL DEFAULT true,
      "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
      CONSTRAINT "Notice_pkey" PRIMARY KEY ("id")
@@ -66,6 +73,16 @@ const POSTGRES_DDL = [
   // ستون‌هایی که ممکن است در نسخه‌های قدیمی دیتابیس نباشند
   `ALTER TABLE "VpnConfig" ADD COLUMN IF NOT EXISTS "premium" BOOLEAN NOT NULL DEFAULT false`,
   `ALTER TABLE "VpnConfig" ADD COLUMN IF NOT EXISTS "country" TEXT NOT NULL DEFAULT 'نامشخص'`,
+  // رفرال — دعوت دوستان و روزهای هدیه
+  `ALTER TABLE "Device" ADD COLUMN IF NOT EXISTS "refCode" TEXT NOT NULL DEFAULT ''`,
+  `ALTER TABLE "Device" ADD COLUMN IF NOT EXISTS "referredBy" TEXT NOT NULL DEFAULT ''`,
+  `ALTER TABLE "Device" ADD COLUMN IF NOT EXISTS "refGiftPending" INTEGER NOT NULL DEFAULT 0`,
+  `ALTER TABLE "Device" ADD COLUMN IF NOT EXISTS "refCount" INTEGER NOT NULL DEFAULT 0`,
+  `CREATE INDEX IF NOT EXISTS "Device_refCode_idx" ON "Device" ("refCode")`,
+  // اعلان‌ها — نوع، مخاطب و کانال‌های ارسال
+  `ALTER TABLE "Notice" ADD COLUMN IF NOT EXISTS "ntype" TEXT NOT NULL DEFAULT 'info'`,
+  `ALTER TABLE "Notice" ADD COLUMN IF NOT EXISTS "audience" TEXT NOT NULL DEFAULT 'all'`,
+  `ALTER TABLE "Notice" ADD COLUMN IF NOT EXISTS "channels" TEXT NOT NULL DEFAULT '["inbox"]'`,
   `CREATE INDEX IF NOT EXISTS "Order_deviceId_idx" ON "Order" ("deviceId")`,
 ];
 
@@ -84,6 +101,10 @@ const SQLITE_DDL = [
      "premiumUntil" DATETIME,
      "label" TEXT NOT NULL DEFAULT '',
      "appVersion" TEXT NOT NULL DEFAULT '',
+     "refCode" TEXT NOT NULL DEFAULT '',
+     "referredBy" TEXT NOT NULL DEFAULT '',
+     "refGiftPending" INTEGER NOT NULL DEFAULT 0,
+     "refCount" INTEGER NOT NULL DEFAULT 0,
      "lastSeenAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
      "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
    )`,
@@ -105,6 +126,9 @@ const SQLITE_DDL = [
      "title" TEXT NOT NULL,
      "body" TEXT NOT NULL,
      "kind" TEXT NOT NULL DEFAULT 'inbox',
+     "ntype" TEXT NOT NULL DEFAULT 'info',
+     "audience" TEXT NOT NULL DEFAULT 'all',
+     "channels" TEXT NOT NULL DEFAULT '["inbox"]',
      "active" BOOLEAN NOT NULL DEFAULT true,
      "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
    )`,

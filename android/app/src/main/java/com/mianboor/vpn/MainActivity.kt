@@ -93,6 +93,8 @@ import com.mianboor.vpn.ui.InboxScreen
 import com.mianboor.vpn.ui.InstalledApp
 import com.mianboor.vpn.ui.Lang
 import com.mianboor.vpn.ui.LocalMb
+import com.mianboor.vpn.ui.ReferralScreen
+import com.mianboor.vpn.ui.SupportChatScreen
 import com.mianboor.vpn.ui.MbThemes
 import com.mianboor.vpn.ui.PlansSheet
 import com.mianboor.vpn.ui.ServersScreen
@@ -114,7 +116,7 @@ import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.security.MessageDigest
 
-enum class Screen { HOME, SERVERS, ACCOUNT, SETTINGS, SPLIT, INBOX, LOGIN, ADMIN }
+enum class Screen { HOME, SERVERS, ACCOUNT, SETTINGS, SPLIT, INBOX, REFERRAL, SUPPORT, LOGIN, ADMIN }
 
 data class Entitlement(val plan: String, val expiresAt: Long)
 
@@ -239,6 +241,7 @@ private fun MbAppInner(
 
     var adminUnlocked by remember { mutableStateOf(false) }
     var adminNotices by remember { mutableStateOf<List<Notice>>(emptyList()) }
+    var adminLatest by remember { mutableStateOf<AdminSettings?>(null) }
     var adminPass by remember { mutableStateOf(AppPrefs.adminPass(context)) }
     var premiumOv by remember { mutableStateOf(AppPrefs.premiumOv(context)) }
     var disabledOv by remember { mutableStateOf(AppPrefs.stringSet(context, "disabled_ov")) }
@@ -294,7 +297,7 @@ private fun MbAppInner(
         val dev = deviceId
         if (!url.startsWith("http") || token.isBlank() || dev.isBlank()) return
         scope.launch(Dispatchers.IO) {
-            val fresh = MianboorApi.notices(url, token, dev)
+            val fresh = MianboorApi.notices(url, token, dev, if (premium) "premium" else "free")
             if (fresh.isEmpty()) return@launch
             val beforeUnread = AppPrefs.noticesCache(context).count { !it.read }
             val unread = fresh.count { !it.read }
@@ -303,7 +306,7 @@ private fun MbAppInner(
                 notices = fresh
                 val seen = AppPrefs.popupSeen(context)
                 if (popupNotice == null) {
-                    fresh.firstOrNull { it.kind == "popup" && !it.read && it.id !in seen }?.let { pn ->
+                    fresh.firstOrNull { it.channels.contains("popup") && !it.read && it.id !in seen }?.let { pn ->
                         popupNotice = pn
                         AppPrefs.addPopupSeen(context, pn.id)
                     }
@@ -481,6 +484,71 @@ private fun MbAppInner(
         }
     }
 
+    // ── دعوت دوستان (رفرال) ──
+    var refInfo by remember { mutableStateOf<RefInfo?>(null) }
+    var refBusy by remember { mutableStateOf(false) }
+
+    fun loadReferral() {
+        val url = AppPrefs.serverUrl(context)
+        val token = AppPrefs.clientToken(context)
+        if (!url.startsWith("http") || token.isBlank() || deviceId.isBlank()) return
+        scope.launch(Dispatchers.IO) {
+            val info = runCatching { MianboorApi.referralInfo(url, token, deviceId) }.getOrNull()
+            withContext(Dispatchers.Main) { refInfo = info }
+        }
+    }
+
+    fun registerReferralCode(code: String) {
+        if (refBusy) return
+        val url = AppPrefs.serverUrl(context)
+        val token = AppPrefs.clientToken(context)
+        if (!url.startsWith("http") || token.isBlank()) {
+            toast(t.refOffline)
+            return
+        }
+        refBusy = true
+        scope.launch(Dispatchers.IO) {
+            val err = runCatching { MianboorApi.referralRegister(url, token, deviceId, code) }.getOrDefault("error")
+            withContext(Dispatchers.Main) {
+                refBusy = false
+                when (err) {
+                    null -> {
+                        toast(t.refOk)
+                        loadReferral()
+                    }
+                    "already referred" -> toast(t.refAlready)
+                    "self code" -> toast(t.refSelf)
+                    "code not found" -> toast(t.refBad)
+                    else -> toast(t.refOffline)
+                }
+            }
+        }
+    }
+
+    fun claimRefGift() {
+        if (refBusy) return
+        val url = AppPrefs.serverUrl(context)
+        val token = AppPrefs.clientToken(context)
+        if (!url.startsWith("http") || token.isBlank()) {
+            toast(t.refOffline)
+            return
+        }
+        refBusy = true
+        scope.launch(Dispatchers.IO) {
+            val claimed = runCatching { MianboorApi.referralClaim(url, token, deviceId) }.getOrNull()
+            withContext(Dispatchers.Main) {
+                refBusy = false
+                if (claimed != null) {
+                    toast(t.claimedOk(claimed))
+                    loadReferral()
+                    scope.launch(Dispatchers.IO) { refreshRemote() }
+                } else {
+                    toast(t.refOffline)
+                }
+            }
+        }
+    }
+
     /** بارگذاری داده‌های پنل مدیر از سرور (سفارش‌ها + دستگاه‌ها). */
     fun loadAdminData() {
         val url = AppPrefs.serverUrl(context)
@@ -491,10 +559,12 @@ private fun MbAppInner(
             val orders = runCatching { MianboorApi.adminListOrders(url, key) }.getOrDefault(emptyList())
             val devices = runCatching { MianboorApi.adminListDevices(url, key) }.getOrDefault(emptyList())
             val noticesList = runCatching { MianboorApi.adminNotices(url, key) }.getOrDefault(emptyList())
+            val settings = runCatching { MianboorApi.adminGetSettings(url, key) }.getOrNull()
             withContext(Dispatchers.Main) {
                 serverOrders = orders
                 serverDevices = devices
                 adminNotices = noticesList
+                adminLatest = settings
                 adminBusy = false
                 val pending = orders.count { it.status == "pending" }
                 if (pending > 0) toast(t.pendingOrders(pending))
@@ -990,25 +1060,6 @@ private fun MbAppInner(
         }
     }
 
-    // ── reinstall simulation (anti-fraud) ──
-    fun reinstallSim() {
-        trialUsed = true
-        reinstalls += 1
-        AppPrefs.setTrialUsed(context, true)
-        AppPrefs.setReinstalls(context, reinstalls)
-        AppPrefs.resetUsage(context)
-        usedGb = FREE_QUOTA_GB.toDouble()
-        VpnState.phase.value = Phase.IDLE
-        plansReason = null
-        adminUnlocked = false
-        screen = Screen.HOME
-        entitlement = Entitlement("free", 0)
-        AppPrefs.setPlan(context, "free", 0)
-        orders = emptyList()
-        AppPrefs.setOrders(context, emptyList())
-        toast(t.reinstallDoneToast)
-    }
-
     fun openTelegram() {
         runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(TG_SUPPORT))) }
     }
@@ -1024,10 +1075,12 @@ private fun MbAppInner(
         if (screen == Screen.SERVERS) refreshRemote()
         if (screen == Screen.ADMIN) loadAdminData()
         if (screen == Screen.INBOX) refreshNotices()
+        if (screen == Screen.REFERRAL) loadReferral()
     }
-    BackHandler(enabled = screen in setOf(Screen.SERVERS, Screen.SETTINGS, Screen.SPLIT, Screen.INBOX, Screen.LOGIN, Screen.ACCOUNT)) {
+    BackHandler(enabled = screen in setOf(Screen.SERVERS, Screen.SETTINGS, Screen.SPLIT, Screen.INBOX, Screen.REFERRAL, Screen.SUPPORT, Screen.LOGIN, Screen.ACCOUNT)) {
         screen = when (screen) {
             Screen.SERVERS, Screen.SETTINGS, Screen.INBOX -> Screen.HOME
+            Screen.REFERRAL, Screen.SUPPORT -> Screen.ACCOUNT
             Screen.SPLIT -> Screen.ACCOUNT
             Screen.LOGIN -> Screen.ACCOUNT
             else -> Screen.HOME
@@ -1165,7 +1218,27 @@ private fun MbAppInner(
                         onOpenSplit = { screen = Screen.SPLIT },
                         onUpgrade = { plansReason = "renew" },
                         onSupport = { openTelegram() },
+                        onOpenReferral = { screen = Screen.REFERRAL },
+                        onOpenSupportChat = { screen = Screen.SUPPORT },
+                        giftDays = refInfo?.giftDays ?: 0,
                         toast = { toast(it) },
+                    )
+                    Screen.REFERRAL -> ReferralScreen(
+                        lang = lang,
+                        code = refInfo?.code ?: "",
+                        giftDays = refInfo?.giftDays ?: 0,
+                        friends = refInfo?.friends ?: emptyList(),
+                        busy = refBusy,
+                        onClaim = { claimRefGift() },
+                        onRegister = { registerReferralCode(it) },
+                        onBack = { screen = Screen.ACCOUNT },
+                        toast = { toast(it) },
+                    )
+                    Screen.SUPPORT -> SupportChatScreen(
+                        lang = lang,
+                        serverUrl = AppPrefs.serverUrl(context),
+                        onBack = { screen = Screen.ACCOUNT },
+                        onHumanSupport = { openTelegram() },
                     )
                     Screen.SETTINGS -> SettingsScreen(
                         lang = lang,
@@ -1174,7 +1247,6 @@ private fun MbAppInner(
                         setTheme = onTheme,
                         pingLive = pingLive,
                         setPingLive = { v -> pingLive = v; AppPrefs.setPingLive(context, v) },
-                        onReinstall = { reinstallSim() },
                         onSupport = { openTelegram() },
                         onBack = { screen = Screen.HOME },
                     )
@@ -1213,9 +1285,12 @@ private fun MbAppInner(
                         onTestKey = { k, cb -> testServerKey(k, cb) },
                         onSavePayInfo = { savePayInfo(it) },
                         notices = adminNotices,
-                        onAddNotice = { title, body, kind ->
+                        onAddNotice = { title, body, ntype, aud, channels ->
                             scope.launch(Dispatchers.IO) {
-                                val ok = MianboorApi.adminAddNotice(AppPrefs.serverUrl(context), AppPrefs.adminServerKey(context), title, body, kind)
+                                val ok = MianboorApi.adminAddNotice(
+                                    AppPrefs.serverUrl(context), AppPrefs.adminServerKey(context),
+                                    title, body, ntype, aud, channels,
+                                )
                                 withContext(Dispatchers.Main) {
                                     val fa = AppPrefs.lang(context) == "fa"
                                     toast(if (ok) (if (fa) "اعلان ارسال شد" else "Notice sent") else (if (fa) "ارسال ناموفق بود" else "Send failed"))
@@ -1227,6 +1302,20 @@ private fun MbAppInner(
                             scope.launch(Dispatchers.IO) {
                                 MianboorApi.adminDeleteNotice(AppPrefs.serverUrl(context), AppPrefs.adminServerKey(context), id)
                                 withContext(Dispatchers.Main) { loadAdminData() }
+                            }
+                        },
+                        latestSettings = adminLatest,
+                        onPublishUpdate = { ver, code, u ->
+                            if (AppPrefs.adminServerKey(context).isBlank()) {
+                                toast(t.updNoKey)
+                            } else {
+                                scope.launch(Dispatchers.IO) {
+                                    val ok = MianboorApi.adminSetLatest(AppPrefs.serverUrl(context), AppPrefs.adminServerKey(context), ver, code, u)
+                                    withContext(Dispatchers.Main) {
+                                        toast(if (ok) t.updOk else t.updFail)
+                                        if (ok) loadAdminData()
+                                    }
+                                }
                             }
                         },
                         onRefreshAdmin = { loadAdminData(); refreshRemote() },

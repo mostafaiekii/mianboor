@@ -1066,8 +1066,10 @@ fun AdminPanel(
     toast: (String) -> Unit,
     serverOld: Boolean = false,
     notices: List<Notice> = emptyList(),
-    onAddNotice: (String, String, String) -> Unit = { _, _, _ -> },
+    onAddNotice: (String, String, String, String, List<String>) -> Unit = { _, _, _, _, _ -> },
     onDeleteNotice: (String) -> Unit = {},
+    latestSettings: com.mianboor.vpn.AdminSettings? = null,
+    onPublishUpdate: (String, Int, String) -> Unit = { _, _, _ -> },
 ) {
     val mb = LocalMb.current
     var tab by remember { mutableStateOf("configs") }
@@ -1115,7 +1117,8 @@ fun AdminPanel(
                     .padding(top = 16.dp)
                     .clip(RoundedCornerShape(12.dp))
                     .background(mb.panel)
-                    .padding(4.dp),
+                    .padding(4.dp)
+                    .horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 listOf(
@@ -1123,15 +1126,15 @@ fun AdminPanel(
                     "orders" to "Orders",
                     "users" to "Users",
                     "notices" to "Notices",
+                    "update" to "Update",
                     "server" to "Server",
                 ).forEach { (tb, label) ->
                     Box(
                         Modifier
-                            .weight(1f)
                             .clip(RoundedCornerShape(9.dp))
                             .background(if (tab == tb) mb.night else androidx.compose.ui.graphics.Color.Transparent)
                             .clickable { tab = tb }
-                            .padding(vertical = 9.dp),
+                            .padding(horizontal = 13.dp, vertical = 9.dp),
                         contentAlignment = Alignment.Center,
                     ) {
                         Text(
@@ -1160,7 +1163,11 @@ fun AdminPanel(
             if (tab == "notices") {
                 var nTitle by remember { mutableStateOf("") }
                 var nBody by remember { mutableStateOf("") }
+                var nType by remember { mutableStateOf("info") }
+                var nAud by remember { mutableStateOf("all") }
+                var nInbox by remember { mutableStateOf(true) }
                 var nPopup by remember { mutableStateOf(false) }
+                var nPush by remember { mutableStateOf(false) }
                 Column(
                     Modifier
                         .fillMaxWidth()
@@ -1168,7 +1175,7 @@ fun AdminPanel(
                         .padding(top = 12.dp),
                 ) {
                     Text(
-                        "Delivered to every user — inbox bell, or popup on next launch",
+                        t.nTypeLabel + " · " + t.nAudience + " · " + t.nDelivery,
                         color = mb.dim, fontSize = 12.sp,
                     )
                     Spacer(Modifier.height(8.dp))
@@ -1211,32 +1218,125 @@ fun AdminPanel(
                             },
                         )
                     }
-                    Row(
-                        Modifier.fillMaxWidth().padding(top = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text(
-                            if (nPopup) "Popup on next launch" else "Silent inbox",
-                            color = mb.dim, fontSize = 12.sp, modifier = Modifier.weight(1f),
-                        )
-                        MbSwitch(checked = nPopup, onChange = { nPopup = it })
-                        Spacer(Modifier.width(10.dp))
-                        Box(
-                            Modifier
-                                .clip(RoundedCornerShape(10.dp))
-                                .background(mb.gold)
-                                .clickable {
-                                    if (nTitle.isNotBlank() && nBody.isNotBlank()) {
-                                        onAddNotice(nTitle.trim(), nBody.trim(), if (nPopup) "popup" else "inbox")
-                                        nTitle = ""
-                                        nBody = ""
-                                    }
+
+                    // ── type chips ──
+                    Text(t.nTypeLabel, color = mb.dim, fontSize = 12.sp, modifier = Modifier.padding(top = 12.dp))
+                    Row(Modifier.fillMaxWidth().padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        listOf("info" to t.kInfo, "gift" to t.kGift, "warn" to t.kWarn, "update" to t.kUpdate)
+                            .forEach { (k, label) ->
+                                Box(
+                                    Modifier
+                                        .clip(RoundedCornerShape(50))
+                                        .background(if (nType == k) mb.glow.copy(alpha = 0.15f) else mb.night)
+                                        .border(
+                                            1.dp,
+                                            if (nType == k) mb.glow.copy(alpha = 0.4f) else mb.panelEdge,
+                                            RoundedCornerShape(50),
+                                        )
+                                        .clickable { nType = k }
+                                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                                ) {
+                                    Text(
+                                        label,
+                                        color = if (nType == k) mb.glow else mb.dim,
+                                        fontSize = 11.sp, fontWeight = FontWeight.Bold,
+                                    )
                                 }
-                                .padding(horizontal = 16.dp, vertical = 8.dp),
-                        ) {
-                            Text("Send", color = mb.night, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                            }
+                    }
+
+                    // ── audience chips ──
+                    Text(t.nAudience, color = mb.dim, fontSize = 12.sp, modifier = Modifier.padding(top = 10.dp))
+                    Row(Modifier.fillMaxWidth().padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        listOf("all" to t.aAll, "free" to t.aFree, "premium" to t.aPremium)
+                            .forEach { (k, label) ->
+                                Box(
+                                    Modifier
+                                        .clip(RoundedCornerShape(50))
+                                        .background(if (nAud == k) mb.glow.copy(alpha = 0.15f) else mb.night)
+                                        .border(
+                                            1.dp,
+                                            if (nAud == k) mb.glow.copy(alpha = 0.4f) else mb.panelEdge,
+                                            RoundedCornerShape(50),
+                                        )
+                                        .clickable { nAud = k }
+                                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                                ) {
+                                    Text(
+                                        label,
+                                        color = if (nAud == k) mb.glow else mb.dim,
+                                        fontSize = 11.sp, fontWeight = FontWeight.Bold,
+                                    )
+                                }
+                            }
+                    }
+
+                    // ── delivery toggles ──
+                    Text(t.nDelivery, color = mb.dim, fontSize = 12.sp, modifier = Modifier.padding(top = 10.dp))
+                    Row(Modifier.fillMaxWidth().padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        listOf(
+                            Triple("inbox", t.dInbox, true),
+                            Triple("popup", t.dPopup, false),
+                            Triple("push", t.dPush, false),
+                        ).forEach { (k, label, fixed) ->
+                            val on = when (k) {
+                                "inbox" -> nInbox
+                                "popup" -> nPopup
+                                else -> nPush
+                            }
+                            Box(
+                                Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(if (on) mb.glow.copy(alpha = 0.1f) else mb.night)
+                                    .border(
+                                        1.dp,
+                                        if (on) mb.glow.copy(alpha = 0.4f) else mb.panelEdge,
+                                        RoundedCornerShape(12.dp),
+                                    )
+                                    .clickable {
+                                        when (k) {
+                                            "inbox" -> nInbox = !nInbox || (!nPopup && !nPush)
+                                            "popup" -> nPopup = !nPopup || (!nInbox && !nPush)
+                                            else -> nPush = !nPush || (!nInbox && !nPopup)
+                                        }
+                                    }
+                                    .padding(vertical = 9.dp),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Text(
+                                    label,
+                                    color = if (on) mb.ink else mb.dim,
+                                    fontSize = 12.sp, fontWeight = FontWeight.Bold,
+                                )
+                            }
                         }
                     }
+
+                    // ── send ──
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(top = 12.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(mb.gold)
+                            .clickable {
+                                val channels = mutableListOf<String>()
+                                if (nInbox) channels.add("inbox")
+                                if (nPopup) channels.add("popup")
+                                if (nPush) channels.add("push")
+                                if (nTitle.isNotBlank() && nBody.isNotBlank() && channels.isNotEmpty()) {
+                                    onAddNotice(nTitle.trim(), nBody.trim(), nType, nAud, channels)
+                                    nTitle = ""
+                                    nBody = ""
+                                }
+                            }
+                            .padding(vertical = 12.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(t.nSend, color = mb.night, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                    }
+
                     Spacer(Modifier.height(14.dp))
                     if (notices.isEmpty()) {
                         Text("No notices sent yet", color = mb.dim, fontSize = 12.sp)
@@ -1253,16 +1353,29 @@ fun AdminPanel(
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Column(Modifier.weight(1f)) {
                                     Row(verticalAlignment = Alignment.CenterVertically) {
-                                        if (n.kind == "popup") {
-                                            Text("POPUP", color = mb.gold, fontSize = 9.sp, fontWeight = FontWeight.Bold)
-                                            Spacer(Modifier.width(6.dp))
+                                        val kindLabel = when (n.ntype) {
+                                            "gift" -> t.kGift
+                                            "warn" -> t.kWarn
+                                            "update" -> t.kUpdate
+                                            else -> t.kInfo
                                         }
-                                        Text(
-                                            n.title,
-                                            color = mb.ink, fontSize = 13.sp,
-                                            fontWeight = FontWeight.SemiBold, maxLines = 1,
-                                        )
+                                        Text(kindLabel, color = mb.glow, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                        Spacer(Modifier.width(6.dp))
+                                        Text(n.audience, color = mb.dim, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                        if (n.channels.contains("popup")) {
+                                            Spacer(Modifier.width(6.dp))
+                                            Text("POPUP", color = mb.gold, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                        }
+                                        if (n.channels.contains("push")) {
+                                            Spacer(Modifier.width(6.dp))
+                                            Text("PUSH", color = mb.dim, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                        }
                                     }
+                                    Text(
+                                        n.title,
+                                        color = mb.ink, fontSize = 13.sp,
+                                        fontWeight = FontWeight.SemiBold, maxLines = 1,
+                                    )
                                     Text(n.body, color = mb.dim, fontSize = 12.sp, maxLines = 2)
                                 }
                                 Icon(
@@ -1274,7 +1387,128 @@ fun AdminPanel(
                         }
                     }
                 }
-            } else if (tab == "configs") {
+            } else if (tab == "update") {
+                var uVer by remember { mutableStateOf("") }
+                var uCode by remember { mutableStateOf("") }
+                var uUrl by remember { mutableStateOf("") }
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState())
+                        .padding(top = 12.dp),
+                ) {
+                    // ── announced version card ──
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(mb.panel)
+                            .padding(14.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text(t.updCurVer, color = mb.dim, fontSize = 12.sp)
+                            Text(
+                                latestSettings?.latestVersion?.takeIf { it.isNotBlank() }?.let { "v$it" } ?: "—",
+                                color = mb.ink, fontSize = 17.sp, fontWeight = FontWeight.Bold,
+                            )
+                            Text(
+                                "code " + (latestSettings?.latestCode ?: 0).toString(),
+                                color = mb.dim, fontSize = 11.sp,
+                            )
+                        }
+                        Icon(ic(R.drawable.ic_rotate_ccw), "refresh", tint = mb.dim,
+                            modifier = Modifier.size(18.dp).clickable { onRefreshAdmin() })
+                    }
+                    Text(t.updCurSub, color = mb.dim, fontSize = 11.sp, lineHeight = 16.sp,
+                        modifier = Modifier.padding(top = 6.dp))
+
+                    Spacer(Modifier.height(12.dp))
+                    Text(t.updPubTitle, color = mb.ink, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+
+                    Spacer(Modifier.height(8.dp))
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(mb.night)
+                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                    ) {
+                        BasicTextField(
+                            value = uVer,
+                            onValueChange = { uVer = it },
+                            singleLine = true,
+                            textStyle = androidx.compose.ui.text.TextStyle(color = mb.ink, fontSize = 13.sp),
+                            modifier = Modifier.fillMaxWidth(),
+                            decorationBox = { inner ->
+                                if (uVer.isEmpty()) Text(t.updVerLabel, color = mb.dim, fontSize = 13.sp)
+                                inner()
+                            },
+                        )
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(mb.night)
+                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                    ) {
+                        BasicTextField(
+                            value = uCode,
+                            onValueChange = { v -> uCode = v.filter { c -> c.isDigit() }.take(7) },
+                            singleLine = true,
+                            textStyle = androidx.compose.ui.text.TextStyle(color = mb.ink, fontSize = 13.sp),
+                            modifier = Modifier.fillMaxWidth(),
+                            decorationBox = { inner ->
+                                if (uCode.isEmpty()) Text(t.updCodeLabel, color = mb.dim, fontSize = 13.sp)
+                                inner()
+                            },
+                        )
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(mb.night)
+                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                    ) {
+                        BasicTextField(
+                            value = uUrl,
+                            onValueChange = { uUrl = it },
+                            singleLine = true,
+                            textStyle = androidx.compose.ui.text.TextStyle(color = mb.ink, fontSize = 13.sp),
+                            modifier = Modifier.fillMaxWidth(),
+                            decorationBox = { inner ->
+                                if (uUrl.isEmpty()) Text(t.updUrlLabel, color = mb.dim, fontSize = 13.sp)
+                                inner()
+                            },
+                        )
+                    }
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(top = 12.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(mb.gold)
+                            .clickable {
+                                val codeNum = uCode.toIntOrNull() ?: 0
+                                if (codeNum > 0 && uVer.isNotBlank()) {
+                                    onPublishUpdate(uVer.trim(), codeNum, uUrl.trim())
+                                    uVer = ""
+                                    uCode = ""
+                                    uUrl = ""
+                                }
+                            }
+                            .padding(vertical = 12.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(t.updPublish, color = mb.night, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                    }
+                    Spacer(Modifier.height(16.dp))
+                }
+            } else if (tab == "configs") {            } else if (tab == "configs") {
                 Row(
                     Modifier.fillMaxWidth().padding(top = 12.dp),
                     verticalAlignment = Alignment.CenterVertically,

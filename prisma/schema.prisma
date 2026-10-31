@@ -20,12 +20,18 @@ model VpnConfig {
 
 // دستگاه‌های نصب‌شده — با هر sync ثبت/به‌روز می‌شوند؛ پرمیوم بودن اینجا تعیین می‌شود
 model Device {
-  id           String    @id // MB-XXXX-XXXX (ANDROID_ID hash از اپ)
-  premiumUntil DateTime?
-  label        String    @default("") // مدل گوشی (اختیاری، از اپ می‌آید)
-  appVersion   String    @default("")
-  lastSeenAt   DateTime  @default(now())
-  createdAt    DateTime  @default(now())
+  id             String    @id // MB-XXXX-XXXX (ANDROID_ID hash از اپ)
+  premiumUntil   DateTime?
+  label          String    @default("") // مدل گوشی (اختیاری، از اپ می‌آید)
+  appVersion     String    @default("")
+  refCode        String    @default("") // کد معرف این دستگاه (دعوت دوستان)
+  referredBy     String    @default("") // کد معرفی که این دستگاه با آن ثبت شده
+  refGiftPending Int       @default(0)  // روزهای هدیهٔ دریافت‌نشده (رفرال)
+  refCount       Int       @default(0)  // تعداد دوستانی که با این کد ثبت شده‌اند
+  lastSeenAt     DateTime  @default(now())
+  createdAt      DateTime  @default(now())
+
+  @@index([refCode])
 }
 
 // سفارش‌های خرید — روی سرور ثبت می‌شوند تا پس از بررسی تأیید شوند
@@ -50,7 +56,10 @@ model Notice {
   id        String   @id @default(cuid())
   title     String
   body      String
-  kind      String   @default("inbox") // inbox | popup
+  kind      String   @default("inbox") // inbox | popup  (legacy — از channels مشتق می‌شود)
+  ntype     String   @default("info")  // info | gift | warn | update
+  audience  String   @default("all")   // all | free | premium
+  channels  String   @default("[\"inbox\"]") // JSON: ["inbox","popup","push"]
   active    Boolean  @default(true)
   createdAt DateTime @default(now())
 }

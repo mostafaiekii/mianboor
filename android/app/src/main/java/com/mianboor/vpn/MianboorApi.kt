@@ -201,12 +201,13 @@ object MianboorApi {
     // Notices — صندوق اعلان‌ها و پاپ‌آپ
     // ------------------------------------------------------------------
 
-    /** اعلان‌های فعال سرور + پرچم خوانده‌شده برای همین دستگاه. */
-    fun notices(serverUrl: String, clientToken: String, deviceId: String): List<Notice> {
+    /** اعلان‌های فعال سرور + پرچم خوانده‌شده برای همین دستگاه (planHint: free/premium). */
+    fun notices(serverUrl: String, clientToken: String, deviceId: String, planHint: String = ""): List<Notice> {
         val base = serverUrl.trim().trimEnd('/')
         if (!base.startsWith("http") || clientToken.isBlank()) return emptyList()
         val url = "$base/api/client/notices?token=" + URLEncoder.encode(clientToken, "UTF-8") +
-            "&device=" + URLEncoder.encode(deviceId, "UTF-8")
+            "&device=" + URLEncoder.encode(deviceId, "UTF-8") +
+            (if (planHint.isNotBlank()) "&plan=" + URLEncoder.encode(planHint, "UTF-8") else "")
         val conn = URL(url).openConnection() as HttpURLConnection
         conn.connectTimeout = 8000
         conn.readTimeout = 12000
@@ -228,13 +229,25 @@ object MianboorApi {
                 val o = arr.getJSONObject(i)
                 val id = o.optString("id")
                 if (id.isBlank()) return@mapNotNull null
+                // کانال‌های ارسال — سازگار با ردیف‌های قدیمی که فقط kind دارند
+                val channels = mutableListOf<String>()
+                o.optJSONArray("channels")?.let { ca ->
+                    for (j in 0 until ca.length()) {
+                        val c = ca.optString(j)
+                        if (c == "inbox" || c == "popup" || c == "push") channels.add(c)
+                    }
+                }
+                if (channels.isEmpty()) channels.add(if (o.optString("kind") == "popup") "popup" else "inbox")
                 Notice(
                     id = id,
                     title = o.optString("title").ifBlank { "Mianboor" },
                     body = o.optString("body"),
-                    kind = if (o.optString("kind") == "popup") "popup" else "inbox",
+                    kind = if (channels.contains("popup")) "popup" else "inbox",
                     createdAt = parseEpochMillis(o.opt("createdAt")),
                     read = o.optBoolean("read", false),
+                    ntype = listOf("info", "gift", "warn", "update").firstOrNull { it == o.optString("ntype") } ?: "info",
+                    audience = listOf("all", "free", "premium").firstOrNull { it == o.optString("audience") } ?: "all",
+                    channels = channels,
                 )
             }
         }.getOrDefault(emptyList())
@@ -270,17 +283,32 @@ object MianboorApi {
         }
     }.getOrDefault(emptyList())
 
-    /** ارسال اعلان جدید (صندوق یا پاپ‌آپ) از پنل مدیر. */
-    fun adminAddNotice(serverUrl: String, adminKey: String, title: String, body: String, kind: String): Boolean =
-        runCatching {
-            val conn = adminConn(serverUrl, adminKey, "/api/admin/notices", "POST")
-            try {
-                sendJson(conn, JSONObject().put("title", title).put("body", body).put("kind", kind))
-                readOk(conn)
-            } finally {
-                conn.disconnect()
-            }
-        }.getOrDefault(false)
+    /** ارسال اعلان جدید از پنل مدیر — نوع، مخاطب و کانال‌های ارسال کامل. */
+    fun adminAddNotice(
+        serverUrl: String,
+        adminKey: String,
+        title: String,
+        body: String,
+        ntype: String,
+        audience: String,
+        channels: List<String>,
+    ): Boolean = runCatching {
+        val conn = adminConn(serverUrl, adminKey, "/api/admin/notices", "POST")
+        try {
+            val ch = JSONArray()
+            channels.forEach { ch.put(it) }
+            sendJson(
+                conn,
+                JSONObject()
+                    .put("title", title).put("body", body)
+                    .put("ntype", ntype).put("audience", audience)
+                    .put("channels", ch),
+            )
+            readOk(conn)
+        } finally {
+            conn.disconnect()
+        }
+    }.getOrDefault(false)
 
     /** حذف اعلان از پنل مدیر. */
     fun adminDeleteNotice(serverUrl: String, adminKey: String, id: String): Boolean = runCatching {
@@ -291,6 +319,189 @@ object MianboorApi {
             conn.disconnect()
         }
     }.getOrDefault(false)
+
+    // ------------------------------------------------------------------
+    // Referral — دعوت دوستان و روزهای هدیه
+    // ------------------------------------------------------------------
+
+    /** وضعیت دعوت این دستگاه: کد معرف، دوستان، روزهای هدیهٔ دریافت‌نشده. */
+    fun referralInfo(serverUrl: String, clientToken: String, deviceId: String): RefInfo? {
+        val base = serverUrl.trim().trimEnd('/')
+        if (!base.startsWith("http") || clientToken.isBlank() || deviceId.isBlank()) return null
+        val url = "$base/api/client/referral?token=" + URLEncoder.encode(clientToken, "UTF-8") +
+            "&device=" + URLEncoder.encode(deviceId, "UTF-8")
+        val conn = URL(url).openConnection() as HttpURLConnection
+        conn.connectTimeout = 8000
+        conn.readTimeout = 12000
+        conn.setRequestProperty("Accept", "application/json")
+        return try {
+            if (conn.responseCode != 200) null
+            else runCatching {
+                val o = JSONObject(conn.inputStream.bufferedReader().use { it.readText() })
+                if (!o.optBoolean("ok", false)) return@runCatching null
+                val friends = mutableListOf<RefFriend>()
+                o.optJSONArray("friends")?.let { fa ->
+                    for (i in 0 until fa.length()) {
+                        val f = fa.optJSONObject(i) ?: continue
+                        friends.add(
+                            RefFriend(
+                                id = f.optString("id"),
+                                label = f.optString("label").ifBlank { f.optString("id") },
+                                at = f.optLong("at"),
+                                premium = f.optBoolean("premium", false),
+                            ),
+                        )
+                    }
+                }
+                RefInfo(
+                    code = o.optString("code"),
+                    giftDays = o.optInt("giftDays", 0),
+                    invitedCount = o.optInt("invitedCount", friends.size),
+                    friends = friends,
+                )
+            }.getOrNull()
+        } catch (t: Throwable) {
+            null
+        } finally {
+            conn.disconnect()
+        }
+    }
+
+    /** ثبت کد معرف دوست — هر دو طرف ۳ روز هدیه می‌گیرند. خروجی: null=موفق، وگرنه پیام خطا. */
+    fun referralRegister(serverUrl: String, clientToken: String, deviceId: String, code: String): String? {
+        val base = serverUrl.trim().trimEnd('/')
+        if (!base.startsWith("http") || clientToken.isBlank() || deviceId.isBlank()) return "offline"
+        val conn = URL("$base/api/client/referral").openConnection() as HttpURLConnection
+        conn.connectTimeout = 8000
+        conn.readTimeout = 12000
+        conn.requestMethod = "POST"
+        conn.setRequestProperty("Content-Type", "application/json")
+        return try {
+            conn.doOutput = true
+            conn.outputStream.use {
+                it.write(
+                    JSONObject()
+                        .put("token", clientToken).put("device", deviceId)
+                        .put("code", code.trim().uppercase())
+                        .toString().toByteArray(Charsets.UTF_8),
+                )
+            }
+            val body = conn.inputStream.bufferedReader().use { it.readText() }
+            val o = runCatching { JSONObject(body) }.getOrDefault(JSONObject())
+            if (conn.responseCode == 200 && o.optBoolean("ok", false)) null
+            else o.optString("error").ifBlank { "error" }
+        } catch (t: Throwable) {
+            "error"
+        } finally {
+            conn.disconnect()
+        }
+    }
+
+    /** دریافت روزهای هدیه — تعداد روزهایی که به پرمیوم اضافه شد، یا null. */
+    fun referralClaim(serverUrl: String, clientToken: String, deviceId: String): Int? {
+        val base = serverUrl.trim().trimEnd('/')
+        if (!base.startsWith("http") || clientToken.isBlank() || deviceId.isBlank()) return null
+        val conn = URL("$base/api/client/referral").openConnection() as HttpURLConnection
+        conn.connectTimeout = 8000
+        conn.readTimeout = 12000
+        conn.requestMethod = "POST"
+        conn.setRequestProperty("Content-Type", "application/json")
+        return try {
+            conn.doOutput = true
+            conn.outputStream.use {
+                it.write(
+                    JSONObject()
+                        .put("token", clientToken).put("device", deviceId)
+                        .put("action", "claim")
+                        .toString().toByteArray(Charsets.UTF_8),
+                )
+            }
+            val body = conn.inputStream.bufferedReader().use { it.readText() }
+            val o = runCatching { JSONObject(body) }.getOrDefault(JSONObject())
+            if (conn.responseCode == 200 && o.optBoolean("ok", false)) o.optInt("claimed", 0).takeIf { it > 0 }
+            else null
+        } catch (t: Throwable) {
+            null
+        } finally {
+            conn.disconnect()
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // Support chat — پشتیبانی آنلاین (AI روی سرور)
+    // ------------------------------------------------------------------
+
+    /** یک پیام ردوبدل‌شده در چت پشتیبانی. */
+    data class ChatMsg(val role: String, val content: String)
+
+    /** پرسش از دستیار پشتیبانی سرور — پاسخ متنی یا null در خطا. */
+    fun supportChat(serverUrl: String, lang: String, messages: List<ChatMsg>): String? {
+        val base = serverUrl.trim().trimEnd('/')
+        if (!base.startsWith("http")) return null
+        val conn = URL("$base/api/support-chat").openConnection() as HttpURLConnection
+        conn.connectTimeout = 9000
+        conn.readTimeout = 65000
+        conn.requestMethod = "POST"
+        conn.setRequestProperty("Content-Type", "application/json")
+        return try {
+            conn.doOutput = true
+            val arr = JSONArray()
+            messages.takeLast(10).forEach { m ->
+                arr.put(JSONObject().put("role", m.role).put("content", m.content))
+            }
+            conn.outputStream.use {
+                it.write(JSONObject().put("lang", lang).put("messages", arr).toString().toByteArray(Charsets.UTF_8))
+            }
+            if (conn.responseCode != 200) null
+            else {
+                val o = JSONObject(conn.inputStream.bufferedReader().use { it.readText() })
+                val reply = o.optString("reply").trim()
+                reply.ifBlank { null }
+            }
+        } catch (t: Throwable) {
+            null
+        } finally {
+            conn.disconnect()
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // Admin settings — تب Update پنل مدیر (اعلام نسخهٔ جدید)
+    // ------------------------------------------------------------------
+
+    /** تنظیمات فعلی سرور شامل اعلام نسخه. */
+    fun adminGetSettings(serverUrl: String, adminKey: String): AdminSettings? = runCatching {
+        val conn = adminConn(serverUrl, adminKey, "/api/admin/settings", "GET")
+        try {
+            if (conn.responseCode != 200) return@runCatching null
+            val o = JSONObject(conn.inputStream.bufferedReader().use { it.readText() })
+            AdminSettings(
+                latestVersion = o.optString("latestVersion"),
+                latestCode = o.optInt("latestCode", 0),
+                latestUrl = o.optString("latestUrl"),
+            )
+        } finally {
+            conn.disconnect()
+        }
+    }.getOrNull()
+
+    /** اعلام نسخهٔ جدید به همهٔ کاربران (همان مسیر CI). */
+    fun adminSetLatest(serverUrl: String, adminKey: String, version: String, code: Int, url: String): Boolean =
+        runCatching {
+            val conn = adminConn(serverUrl, adminKey, "/api/admin/settings", "PUT")
+            try {
+                sendJson(
+                    conn,
+                    JSONObject()
+                        .put("latestVersion", version.trim())
+                        .put("latestCode", code)
+                        .put("latestUrl", url.trim()),
+                )
+                readOk(conn)
+            } finally {
+                conn.disconnect()
+            }
+        }.getOrDefault(false)
 
     // ------------------------------------------------------------------
     // Server management API (key-authenticated)

@@ -155,6 +155,75 @@ interface Strings {
     val updateLater: String
     fun pendingOrders(n: Int): String
     val serverOldWarn: String
+
+    // ── referral — دعوت دوستان ──
+    val invite: String
+    val inviteSub: String
+    val giftNote: String
+    val yourCode: String
+    val copyBtn: String
+    val copyLink: String
+    val friendsJoined: String
+    val giftDaysLabel: String
+    fun claimGift(days: Int): String
+    val noGiftYet: String
+    val friendJoined: String
+    val friendBought: String
+    fun daysShort(days: Int): String
+    val inviteHow: String
+    val invStep1: String
+    val invStep2: String
+    val invStep3: String
+    val enterCodeTitle: String
+    val enterCodeSub: String
+    val applyCode: String
+    val refOk: String
+    val refAlready: String
+    val refBad: String
+    val refSelf: String
+    val refOffline: String
+    fun claimedOk(days: Int): String
+
+    // ── پشتیبانی آنلاین ──
+    val supportOnline: String
+    val supportSubChat: String
+    val chatWith: String
+    val aiOnline: String
+    val chatWelcome: String
+    val chatPlaceholder: String
+    val quick1: String
+    val quick2: String
+    val quick3: String
+    val quick4: String
+    val aiFailed: String
+    val chatHuman: String
+
+    // ── پنل مدیریت: تب Update + آهنگساز اعلان ──
+    val tabUpdate: String
+    val updCurVer: String
+    val updCurSub: String
+    val updPubTitle: String
+    val updVerLabel: String
+    val updCodeLabel: String
+    val updUrlLabel: String
+    val updPublish: String
+    val updOk: String
+    val updFail: String
+    val updNoKey: String
+    val nTypeLabel: String
+    val nAudience: String
+    val nDelivery: String
+    val nSend: String
+    val kInfo: String
+    val kGift: String
+    val kWarn: String
+    val kUpdate: String
+    val aAll: String
+    val aFree: String
+    val aPremium: String
+    val dInbox: String
+    val dPopup: String
+    val dPush: String
 }
 
 object EnStrings : Strings {
@@ -326,6 +395,72 @@ object EnStrings : Strings {
     override fun pendingOrders(n: Int) = "You have $n pending orders"
     override val serverOldWarn =
         "Server runs an old version — publishing configs & orders won't reach it. Redeploy the project on Vercel."
+
+    override val invite = "Invite Friends"
+    override val inviteSub = "Give 3 days, get 3 days"
+    override val giftNote = "Gift days turn into premium time on your account."
+    override val yourCode = "Your referral code"
+    override val copyBtn = "Copy"
+    override val copyLink = "Copy invite link"
+    override val friendsJoined = "Friends joined"
+    override val giftDaysLabel = "Gift days"
+    override fun claimGift(days: Int) = "Claim $days gift days"
+    override val noGiftYet = "No gift days yet — invite a friend!"
+    override val friendJoined = "joined with your code"
+    override val friendBought = "went Premium"
+    override fun daysShort(days: Int) = "+$days days"
+    override val inviteHow = "How it works"
+    override val invStep1 = "Share your code with friends"
+    override val invStep2 = "They install Mianboor and enter your code"
+    override val invStep3 = "You both get 3 days — 7 more if they go Premium"
+    override val enterCodeTitle = "Have a friend's code?"
+    override val enterCodeSub = "Enter their referral code — you both get 3 gift days"
+    override val applyCode = "Apply"
+    override val refOk = "Code applied — 3 gift days for each of you! 🎁"
+    override val refAlready = "You already joined with a code"
+    override val refBad = "Code not found"
+    override val refSelf = "That's your own code!"
+    override val refOffline = "Couldn't reach the server — check your internet"
+    override fun claimedOk(days: Int) = "$days premium days added to your account 🎉"
+
+    override val supportOnline = "Online Support"
+    override val supportSubChat = "AI chat · 24/7"
+    override val chatWith = "Support Chat"
+    override val aiOnline = "AI assistant · online"
+    override val chatWelcome = "Hi 👋 I'm the Mianboor assistant. Ask me anything — connection, plans, or your account."
+    override val chatPlaceholder = "Write a message…"
+    override val quick1 = "How do I connect?"
+    override val quick2 = "Speed is slow"
+    override val quick3 = "How to go premium?"
+    override val quick4 = "When is my order approved?"
+    override val aiFailed = "Couldn't reach the assistant — try again."
+    override val chatHuman = "For a human: @member9 on Telegram"
+
+    override val tabUpdate = "Update"
+    override val updCurVer = "Announced version"
+    override val updCurSub = "Apps compare their build against this on every sync — a higher code shows the update banner."
+    override val updPubTitle = "Announce a new version"
+    override val updVerLabel = "Version name — e.g. 1.7.0"
+    override val updCodeLabel = "versionCode — a number greater than the previous one"
+    override val updUrlLabel = "APK URL (GitHub Releases)"
+    override val updPublish = "Publish update announce"
+    override val updOk = "Announced — users get the update banner 🚀"
+    override val updFail = "Publish failed — check the server key"
+    override val updNoKey = "Set the server key in the Server tab first"
+    override val nTypeLabel = "Type"
+    override val nAudience = "Audience"
+    override val nDelivery = "Delivery"
+    override val nSend = "Send to users"
+    override val kInfo = "Info"
+    override val kGift = "Gift"
+    override val kWarn = "Warning"
+    override val kUpdate = "Update"
+    override val aAll = "Everyone"
+    override val aFree = "Free users"
+    override val aPremium = "Premium users"
+    override val dInbox = "Inbox"
+    override val dPopup = "Popup"
+    override val dPush = "Push"
 }
 
 object FaStrings : Strings {
@@ -497,6 +632,72 @@ object FaStrings : Strings {
     override fun pendingOrders(n: Int) = "$n سفارش در انتظار تأیید داری"
     override val serverOldWarn =
         "سرور نسخهٔ قدیمی است — انتشار کانفیگ و سفارش‌ها به سرور نمی‌رسد. لطفاً پروژه را روی Vercel دوباره Deploy کن."
+
+    override val invite = "دعوت دوستان"
+    override val inviteSub = "۳ روز بده، ۳ روز بگیر"
+    override val giftNote = "روزهای هدیه به‌شکل زمان پرمیوم به حسابت اضافه می‌شن."
+    override val yourCode = "کد معرف تو"
+    override val copyBtn = "کپی"
+    override val copyLink = "کپی لینک دعوت"
+    override val friendsJoined = "دوست دعوت‌شده"
+    override val giftDaysLabel = "روز هدیه"
+    override fun claimGift(days: Int) = "دریافت $days روز هدیه"
+    override val noGiftYet = "هنوز روز هدیه‌ای نداری — یه دوست رو دعوت کن!"
+    override val friendJoined = "با کد تو اومد"
+    override val friendBought = "پرمیوم خرید"
+    override fun daysShort(days: Int) = "+$days روز"
+    override val inviteHow = "چطور کار می‌کنه؟"
+    override val invStep1 = "کدت رو با دوستات به اشتراک بذار"
+    override val invStep2 = "اپ میانبر رو نصب می‌کنن و کدت رو وارد می‌کنن"
+    override val invStep3 = "هر دو ۳ روز می‌گیرید — اگه پرمیوم بخره ۷ روز دیگه"
+    override val enterCodeTitle = "کد دوستت رو داری؟"
+    override val enterCodeSub = "کد معرفش رو وارد کن — هر دو ۳ روز هدیه می‌گیرید"
+    override val applyCode = "ثبت"
+    override val refOk = "کد ثبت شد — هر دو ۳ روز هدیه گرفتید! 🎁"
+    override val refAlready = "شما قبلاً با یک کد ثبت شده‌اید"
+    override val refBad = "چنین کدی پیدا نشد"
+    override val refSelf = "این کد خودته!"
+    override val refOffline = "ارتباط با سرور برقرار نشد — اینترنتت رو چک کن"
+    override fun claimedOk(days: Int) = "$days روز پرمیوم به حسابت اضافه شد 🎉"
+
+    override val supportOnline = "پشتیبانی آنلاین"
+    override val supportSubChat = "چت با دستیار هوشمند"
+    override val chatWith = "چت پشتیبانی"
+    override val aiOnline = "دستیار هوشمند · آنلاین"
+    override val chatWelcome = "سلام 👋 دستیار میانبرم. هر سوالی داری بپرس — اتصال، پلن‌ها یا حسابت."
+    override val chatPlaceholder = "پیامت رو بنویس…"
+    override val quick1 = "چطور وصل شم؟"
+    override val quick2 = "سرعت کند شده"
+    override val quick3 = "چطور پرمیوم بشم؟"
+    override val quick4 = "سفارشم کی تأیید می‌شه؟"
+    override val aiFailed = "ارتباط با دستیار برقرار نشد — دوباره تلاش کن."
+    override val chatHuman = "پاسخ انسانی: @member9 در تلگرام"
+
+    override val tabUpdate = "آپدیت"
+    override val updCurVer = "نسخهٔ اعلام‌شده"
+    override val updCurSub = "اپ‌ها موقع هر sync نسخهٔ خودشون رو با این مقایسه می‌کنن — اگر کد بزرگ‌تر باشد بنر آپدیت نمایش داده می‌شود."
+    override val updPubTitle = "اعلام نسخهٔ جدید"
+    override val updVerLabel = "نام نسخه — مثل 1.7.0"
+    override val updCodeLabel = "versionCode — عددی بزرگ‌تر از قبلی"
+    override val updUrlLabel = "لینک APK (گیتهاب ریلیز)"
+    override val updPublish = "انتشار اعلام آپدیت"
+    override val updOk = "اعلام شد — کاربران بنر آپدیت می‌بینند 🚀"
+    override val updFail = "انتشار ناموفق بود — کلید سرور را چک کن"
+    override val updNoKey = "اول در تب سرور، کلید سرور را ست کن"
+    override val nTypeLabel = "نوع"
+    override val nAudience = "مخاطب"
+    override val nDelivery = "روش ارسال"
+    override val nSend = "ارسال به کاربران"
+    override val kInfo = "اطلاع"
+    override val kGift = "هدیه"
+    override val kWarn = "هشدار"
+    override val kUpdate = "آپدیت"
+    override val aAll = "همه"
+    override val aFree = "کاربران رایگان"
+    override val aPremium = "کاربران پرمیوم"
+    override val dInbox = "صندوق"
+    override val dPopup = "پاپ‌آپ"
+    override val dPush = "نوتیف"
 }
 
 fun stringsOf(lang: Lang): Strings = if (lang == Lang.FA) FaStrings else EnStrings

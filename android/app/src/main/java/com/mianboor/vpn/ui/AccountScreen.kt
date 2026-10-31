@@ -22,6 +22,11 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -31,6 +36,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
@@ -60,6 +66,9 @@ fun AccountScreen(
     onOpenSplit: () -> Unit,
     onUpgrade: () -> Unit,
     onSupport: () -> Unit,
+    onOpenReferral: () -> Unit,
+    onOpenSupportChat: () -> Unit,
+    giftDays: Int,
     toast: (String) -> Unit,
 ) {
     val t = stringsOf(lang)
@@ -232,7 +241,61 @@ fun AccountScreen(
                 }
             }
 
-            // ── support ──
+            // ── دعوت دوستان (رفرال) — کد معرف و روزهای هدیه ──
+            PanelCard(Modifier.padding(top = 12.dp), onClick = onOpenReferral) {
+                Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(ic(R.drawable.ic_users), null, tint = mb.glow, modifier = Modifier.size(20.dp))
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(t.invite, color = mb.ink, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                        Text(t.inviteSub, color = mb.dim, fontSize = 13.sp)
+                    }
+                    if (giftDays > 0) {
+                        Text(
+                            "+$giftDays",
+                            color = mb.gold, fontSize = 11.sp, fontWeight = FontWeight.Bold,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(50))
+                                .background(mb.gold.copy(alpha = 0.15f))
+                                .padding(horizontal = 8.dp, vertical = 3.dp),
+                        )
+                        Spacer(Modifier.width(8.dp))
+                    }
+                    FwdChevron(rtl)
+                }
+            }
+
+            // ── پشتیبانی آنلاین — چت هوشمند داخل اپ + نقطهٔ سبز چشمک‌زن ──
+            PanelCard(Modifier.padding(top = 12.dp), onClick = onOpenSupportChat) {
+                Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(ic(R.drawable.ic_sparkles), null, tint = mb.glow, modifier = Modifier.size(20.dp))
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            val pulse = rememberInfiniteTransition(label = "supp")
+                            val alpha by pulse.animateFloat(
+                                initialValue = 1f,
+                                targetValue = 0.25f,
+                                animationSpec = infiniteRepeatable(tween(750), RepeatMode.Reverse),
+                                label = "dot",
+                            )
+                            Box(
+                                Modifier
+                                    .size(7.dp)
+                                    .alpha(alpha)
+                                    .clip(CircleShape)
+                                    .background(mb.glow),
+                            )
+                            Spacer(Modifier.width(6.dp))
+                            Text(t.supportOnline, color = mb.ink, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                        }
+                        Text(t.supportSubChat, color = mb.dim, fontSize = 13.sp)
+                    }
+                    FwdChevron(rtl)
+                }
+            }
+
+            // ── support (telegram) ──
             PanelCard(Modifier.padding(top = 12.dp), onClick = onSupport) {
                 Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                     Icon(ic(R.drawable.ic_send), null, tint = mb.dim, modifier = Modifier.size(20.dp))

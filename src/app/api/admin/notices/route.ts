@@ -5,10 +5,11 @@ import { isAdminReq } from "@/lib/admin-auth";
 
 /**
  * اعلان‌های تیم میانبر — از پنل مدیریت (وب یا اپ) ارسال می‌شود و
- * در صندوق کاربران (بل زنگ صفحهٔ خانه) یا به‌صورت پاپ‌آپ داخل اپ ظاهر می‌شود.
+ * در صندوق کاربران (بل زنگ صفحهٔ خانه)، به‌صورت پاپ‌آپ داخل اپ یا
+ * نوتیف سیستم ظاهر می‌شود.
  *
  * GET    /api/admin/notices            ← فهرست همهٔ اعلان‌ها
- * POST   /api/admin/notices            { title, body, kind: "inbox"|"popup" }
+ * POST   /api/admin/notices            { title, body, ntype, audience, channels[] }
  * DELETE /api/admin/notices?id=…       ← حذف اعلان
  */
 export async function GET(req: Request) {
@@ -27,7 +28,7 @@ export async function POST(req: Request) {
   if (!(await isAdminReq(req))) {
     return NextResponse.json({ ok: false, error: "دسترسی غیرمجاز" }, { status: 401 });
   }
-  let body: { title?: string; body?: string; kind?: string };
+  let body: { title?: string; body?: string; kind?: string; ntype?: string; audience?: string; channels?: unknown };
   try {
     body = await req.json();
   } catch {
@@ -35,12 +36,37 @@ export async function POST(req: Request) {
   }
   const title = String(body.title ?? "").trim().slice(0, 120);
   const text = String(body.body ?? "").trim().slice(0, 1000);
-  const kind = body.kind === "popup" ? "popup" : "inbox";
   if (!title || !text) {
     return NextResponse.json({ ok: false, error: "عنوان و متن لازم است" }, { status: 400 });
   }
+
+  // نوع اعلان (نمایش/آیکون در صندوق کاربر)
+  const NTYPES = ["info", "gift", "warn", "update"];
+  const ntype = NTYPES.includes(String(body.ntype)) ? String(body.ntype) : "info";
+  // مخاطب
+  const AUD = ["all", "free", "premium"];
+  const audience = AUD.includes(String(body.audience)) ? String(body.audience) : "all";
+  // کانال‌های ارسال — inbox / popup / push
+  const CH = ["inbox", "popup", "push"];
+  const rawCh = Array.isArray(body.channels) ? body.channels.map(String) : [];
+  let channels = rawCh.filter((c) => CH.includes(c));
+  if (channels.length === 0) {
+    // سازگاری با نسخهٔ قبل: kind=popup فقط پاپ‌آپ، بقیه صندوق
+    channels = [body.kind === "popup" ? "popup" : "inbox"];
+  }
+  const kind = channels.includes("popup") ? "popup" : "inbox"; // legacy
+
   await ensureDb();
-  const notice = await db.notice.create({ data: { title, body: text, kind } });
+  const notice = await db.notice.create({
+    data: {
+      title,
+      body: text,
+      kind,
+      ntype,
+      audience,
+      channels: JSON.stringify(channels),
+    },
+  });
   return NextResponse.json({ ok: true, notice });
 }
 

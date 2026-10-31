@@ -48,6 +48,18 @@ export async function POST(
       create: { id: order.deviceId, premiumUntil: until, lastSeenAt: new Date() },
       update: { premiumUntil: until, lastSeenAt: new Date() },
     });
+    // پاداش رفرال: اگر خریدار با کد دوستی ثبت شده، دعوت‌کننده ۷ روز هدیه می‌گیرد
+    if (dev?.referredBy) {
+      const inviter = await db.device.findFirst({ where: { refCode: dev.referredBy } });
+      if (inviter && inviter.id !== order.deviceId) {
+        await db.device
+          .update({
+            where: { id: inviter.id },
+            data: { refGiftPending: { increment: 7 } },
+          })
+          .catch(() => undefined);
+      }
+    }
     await db.order.update({ where: { id }, data: { status: "approved" } });
     return NextResponse.json({ ok: true, premiumUntil: until.toISOString() });
   }

@@ -6,8 +6,8 @@ import { clientToken } from "@/lib/admin-auth";
 /**
  * صندوق اعلان‌های کاربر — اپ اندروید هنگام sync آن را می‌گیرد.
  *
- * GET  /api/client/notices?token=…&device=MB-…
- *      ← اعلان‌های فعال + پرچم خوانده‌شده برای همین دستگاه
+ * GET  /api/client/notices?token=…&device=MB-…&plan=premium|free
+ *      ← اعلان‌های فعال + پرچم خوانده‌شده برای همین دستگاه (فیلتر مخاطب)
  * POST /api/client/notices  { token, device, id }
  *      ← علامت‌گذاری یک اعلان به‌عنوان خوانده‌شده
  */
@@ -15,6 +15,7 @@ export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const token = searchParams.get("token") ?? "";
   const device = (searchParams.get("device") ?? "").trim().toUpperCase();
+  const plan = searchParams.get("plan") === "premium" ? "premium" : searchParams.get("plan") === "free" ? "free" : "";
   if (!token || token !== clientToken()) {
     return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
   }
@@ -30,14 +31,30 @@ export async function GET(req: Request) {
       })
     : [];
   const readSet = new Set(reads.map((r) => r.noticeId));
-  const notices = rows.map((n) => ({
-    id: n.id,
-    title: n.title,
-    body: n.body,
-    kind: n.kind,
-    createdAt: n.createdAt.getTime(),
-    read: readSet.has(n.id),
-  }));
+  const notices = rows
+    .filter((n) => !plan || n.audience === "all" || n.audience === plan) // مخاطب: همه/رایگان/پرمیوم
+    .map((n) => {
+      // کانال‌های ارسال — سازگار با ردیف‌های قدیمی که فقط kind دارند
+      let channels: string[] = [];
+      try {
+        const parsed = JSON.parse(n.channels);
+        if (Array.isArray(parsed)) channels = parsed.map(String).filter((c) => ["inbox", "popup", "push"].includes(c));
+      } catch {
+        channels = [];
+      }
+      if (channels.length === 0) channels = [n.kind === "popup" ? "popup" : "inbox"];
+      return {
+        id: n.id,
+        title: n.title,
+        body: n.body,
+        kind: n.kind,
+        ntype: n.ntype,
+        audience: n.audience,
+        channels,
+        createdAt: n.createdAt.getTime(),
+        read: readSet.has(n.id),
+      };
+    });
   return NextResponse.json({
     ok: true,
     notices,

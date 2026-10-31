@@ -31,7 +31,7 @@ import androidx.compose.ui.unit.sp
 import com.mianboor.vpn.BuildConfig
 import com.mianboor.vpn.R
 
-/** Real settings: language, soft themes, live ping engine, support, about, anti-fraud demo. */
+/** Real settings: language, soft themes, live ping engine, support, about. */
 @Composable
 fun SettingsScreen(
     lang: Lang,
@@ -40,7 +40,6 @@ fun SettingsScreen(
     setTheme: (ThemeName) -> Unit,
     pingLive: Boolean,
     setPingLive: (Boolean) -> Unit,
-    onReinstall: () -> Unit,
     onSupport: () -> Unit,
     onBack: () -> Unit,
 ) {
@@ -190,25 +189,6 @@ fun SettingsScreen(
             }
         }
 
-        // ── reinstall simulation (anti-fraud) ──
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .padding(top = 12.dp)
-                .clip(RoundedCornerShape(16.dp))
-                .background(mb.danger.copy(alpha = 0.1f))
-                .border(1.dp, mb.danger.copy(alpha = 0.4f), RoundedCornerShape(16.dp))
-                .clickable { onReinstall() }
-                .padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Icon(ic(R.drawable.ic_fingerprint), null, tint = mb.danger, modifier = Modifier.size(20.dp))
-            Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f)) {
-                Text(t.reinstallSim, color = mb.danger, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                Text(t.reinstallSimSub, color = mb.dim, fontSize = 13.sp, lineHeight = 18.sp)
-            }
-        }
         Spacer(Modifier.height(14.dp))
     }
 }
