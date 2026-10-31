@@ -337,8 +337,22 @@ object XrayConfigBuilder {
      *     IPv6 خرابِ مسیر گیر نمی‌کند و timeout نمی‌خورد (علت اصلی «کند باز شدن»).
      *  3) بستن QUIC (UDP/443) — مرورگر فوراً به HTTP/2 روی TCP برمی‌گردد که از
      *     دل تونل TCP بسیار سریع‌تر است؛ QUIC روی UDP-over-TCP همیشه سرکوب می‌شود.
+     *
+     * نسخهٔ ۲ — قابل انتخاب از تنظیمات:
+     *  - stealth="strict": تیکه‌تیکه‌کردن TLS ClientHello (fragment) برای رد شدن
+     *    از فیلترینگ سنگین — فقط روی TLS/Reality اعمال می‌شود و روی مسیرهای
+     *    عادی هیچ تاثیری ندارد.
+     *  - dnsMode: auto / cf (DoH کلودفلر) / google (DoH گوگل) / custom (IP دلخواه)
+     *    — همیشه یک سرور سادهٔ پشتیبان هم در لیست هست تا اگر DoH از مسیر تونل
+     *    جواب نداد، resolve هیچ‌وقت گیر نکند.
      */
-    fun buildConfigJson(server: ParsedServer, blockQuic: Boolean = true): String {
+    fun buildConfigJson(
+        server: ParsedServer,
+        blockQuic: Boolean = true,
+        stealth: String = "normal",
+        dnsMode: String = "auto",
+        dnsCustom: String = "",
+    ): String {
         val socksIn = JSONObject()
             .put("tag", "socks-in")
             .put("listen", "127.0.0.1")
@@ -358,6 +372,19 @@ object XrayConfigBuilder {
             "sockopt",
             JSONObject().put("tcpFastOpen", true).put("tcpNoDelay", true)
         )
+        // حالت سخت‌گیر ضد-فیلترینگ: تیکه‌تیکه‌کردن TLS ClientHello
+        if (stealth == "strict") {
+            val sec = stream.optString("security")
+            if (sec == "tls" || sec == "reality") {
+                stream.put(
+                    "fragment",
+                    JSONObject()
+                        .put("packets", "tlshello")
+                        .put("length", "100-200")
+                        .put("interval", "10-20")
+                )
+            }
+        }
         proxy.put("streamSettings", stream)
 
         val direct = JSONObject().put("tag", "direct").put("protocol", "freedom").put("settings", JSONObject())
@@ -367,10 +394,23 @@ object XrayConfigBuilder {
 
         // ماژول DNS — سرورهای DNS از مسیر پروکسی resolve می‌شوند (دیدِ لوکیشن سرور) و جواب کش می‌شود.
         // آدرس‌های ساده: بدون outboundTag هم کوئری از اولین خروجی (proxy) می‌رود — سازگار با هر نسخهٔ Xray.
+        // همیشه یک سرور سادهٔ پشتیبان آخر لیست هست تا resolve هیچ‌وقت گیر نکند.
+        val dnsServers = when (dnsMode) {
+            "cf" -> JSONArray().put("https://1.1.1.1/dns-query").put("1.1.1.1").put("8.8.8.8")
+            "google" -> JSONArray().put("https://8.8.8.8/dns-query").put("8.8.8.8").put("1.1.1.1")
+            "custom" -> {
+                val arr = JSONArray()
+                val ip = dnsCustom.trim()
+                if (ip.isNotEmpty()) arr.put(ip)
+                arr.put("8.8.8.8").put("1.1.1.1")
+                arr
+            }
+            else -> JSONArray().put("8.8.8.8").put("1.1.1.1")
+        }
         val dns = JSONObject()
             .put("queryStrategy", "UseIPv4")
             .put("disableCache", false)
-            .put("servers", JSONArray().put("8.8.8.8").put("1.1.1.1"))
+            .put("servers", dnsServers)
 
         val rules = JSONArray()
             // ۱) هِج DNS: همهٔ کوئری‌های UDP/53 از ماژول DNS محلی جواب می‌گیرند

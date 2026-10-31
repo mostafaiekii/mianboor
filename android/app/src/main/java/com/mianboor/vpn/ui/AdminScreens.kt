@@ -1070,6 +1070,11 @@ fun AdminPanel(
     onDeleteNotice: (String) -> Unit = {},
     latestSettings: com.mianboor.vpn.AdminSettings? = null,
     onPublishUpdate: (String, Int, String) -> Unit = { _, _, _ -> },
+    // ── v2: کدهای هدیه/تخفیف ──
+    codes: List<com.mianboor.vpn.AdminCode> = emptyList(),
+    onCodes: () -> Unit = {},
+    onCreateCode: (type: String, amount: Long, percent: Int, code: String) -> Unit = { _, _, _, _ -> },
+    onDeleteCode: (type: String, code: String) -> Unit = { _, _ -> },
 ) {
     val mb = LocalMb.current
     // Admin panel is English-only (like the rest of the panel chrome)
@@ -1127,6 +1132,7 @@ fun AdminPanel(
                     "configs" to "Configs",
                     "orders" to "Orders",
                     "users" to "Users",
+                    "codes" to "Codes",
                     "notices" to "Notices",
                     "update" to "Update",
                     "server" to "Server",
@@ -1388,6 +1394,132 @@ fun AdminPanel(
                             }
                         }
                     }
+                }
+            } else if (tab == "codes") {
+                // ── v2: کدهای هدیه کیف پول + کدهای تخفیف ──
+                var gAmount by remember { mutableStateOf("50000") }
+                var pPercent by remember { mutableStateOf("20") }
+                androidx.compose.runtime.LaunchedEffect(tab) { onCodes() }
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState())
+                        .padding(top = 12.dp),
+                ) {
+                    Text(t.codesGift, color = mb.ink, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                    Row(Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        BasicTextField(
+                            value = gAmount,
+                            onValueChange = { gAmount = it.filter { ch -> ch.isDigit() }.take(8) },
+                            singleLine = true,
+                            textStyle = androidx.compose.ui.text.TextStyle(color = mb.ink, fontSize = 13.sp),
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(mb.night)
+                                .padding(horizontal = 12.dp, vertical = 11.dp),
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            t.codesCreate,
+                            color = mb.night, fontSize = 12.sp, fontWeight = FontWeight.Bold,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(mb.glow)
+                                .clickable {
+                                    onCreateCode("gift", (gAmount.toLongOrNull() ?: 0L), 0, "")
+                                }
+                                .padding(horizontal = 14.dp, vertical = 11.dp),
+                        )
+                    }
+                    Text(t.codesAmount, color = mb.dim, fontSize = 10.sp, modifier = Modifier.padding(top = 3.dp))
+
+                    Text(t.codesPromo, color = mb.ink, fontSize = 13.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 14.dp))
+                    Row(Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        BasicTextField(
+                            value = pPercent,
+                            onValueChange = { pPercent = it.filter { ch -> ch.isDigit() }.take(2) },
+                            singleLine = true,
+                            textStyle = androidx.compose.ui.text.TextStyle(color = mb.ink, fontSize = 13.sp),
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(mb.night)
+                                .padding(horizontal = 12.dp, vertical = 11.dp),
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            t.codesCreate,
+                            color = mb.night, fontSize = 12.sp, fontWeight = FontWeight.Bold,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(mb.gold)
+                                .clickable {
+                                    onCreateCode("promo", 0L, (pPercent.toIntOrNull() ?: 0), "")
+                                }
+                                .padding(horizontal = 14.dp, vertical = 11.dp),
+                        )
+                    }
+                    Text(t.codesPercent, color = mb.dim, fontSize = 10.sp, modifier = Modifier.padding(top = 3.dp))
+
+                    Text("Gift codes", color = mb.ink, fontSize = 12.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 14.dp))
+                    codes.filter { it.type == "gift" }.forEach { c ->
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(top = 6.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(mb.night)
+                                .padding(horizontal = 12.dp, vertical = 9.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(c.code, color = mb.glow, fontSize = 12.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                            Text(
+                                fmtToman(c.amount) + " T" + if (c.usedBy.isNotBlank()) " · " + t.codesUsed else "",
+                                color = mb.dim, fontSize = 11.sp, modifier = Modifier.weight(1f),
+                            )
+                            Text(
+                                "✕",
+                                color = mb.danger, fontSize = 13.sp, fontWeight = FontWeight.Bold,
+                                modifier = Modifier
+                                    .clickable { onDeleteCode("gift", c.code) }
+                                    .padding(horizontal = 6.dp),
+                            )
+                        }
+                    }
+                    if (codes.filter { it.type == "gift" }.isEmpty()) {
+                        Text("—", color = mb.dim, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp))
+                    }
+
+                    Text("Promo codes", color = mb.ink, fontSize = 12.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 14.dp))
+                    codes.filter { it.type == "promo" }.forEach { c ->
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(top = 6.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(mb.night)
+                                .padding(horizontal = 12.dp, vertical = 9.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(c.code, color = mb.gold, fontSize = 12.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                            Text(
+                                "-" + c.percent + "%" + if (!c.active) " · " + t.codesUsed else "",
+                                color = mb.dim, fontSize = 11.sp, modifier = Modifier.weight(1f),
+                            )
+                            Text(
+                                "✕",
+                                color = mb.danger, fontSize = 13.sp, fontWeight = FontWeight.Bold,
+                                modifier = Modifier
+                                    .clickable { onDeleteCode("promo", c.code) }
+                                    .padding(horizontal = 6.dp),
+                            )
+                        }
+                    }
+                    if (codes.filter { it.type == "promo" }.isEmpty()) {
+                        Text("—", color = mb.dim, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp))
+                    }
+                    Spacer(Modifier.height(16.dp))
                 }
             } else if (tab == "update") {
                 var uVer by remember { mutableStateOf("") }

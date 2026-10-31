@@ -62,6 +62,12 @@ fun ServersScreen(
     onBack: () -> Unit,
     serverHost: String = "",
     syncError: String = "",
+    // ── v2 ──
+    favorites: Set<String> = emptySet(),
+    onToggleFav: (String) -> Unit = {},
+    onSpeedTest: () -> Unit = {},
+    onImport: () -> Unit = {},
+    onStatus: () -> Unit = {},
 ) {
     val t = stringsOf(lang)
     val mb = LocalMb.current
@@ -72,10 +78,11 @@ fun ServersScreen(
     val enabled = configs.filter { it.enabled }
     val freeEnabled = enabled.filter { !it.premium }
     val premEnabled = enabled.filter { it.premium }
-    // کم‌ترین پینگ همیشه بالای لیست — با هر اندازه‌گیری زنده، ترتیب خودکار به‌روز می‌شود
-    val list = (if (tab == "free") freeEnabled else premEnabled)
+    // سنجاق‌شده‌ها اول، بعد بقیه — هر دو با کم‌ترین پینگ بالا
+    val base = (if (tab == "free") freeEnabled else premEnabled)
         .filter { it.name.lowercase().contains(q.lowercase()) }
-        .sortedBy { it.ping }
+    val list = base.filter { it.key in favorites }.sortedBy { it.ping } +
+        base.filter { it.key !in favorites }.sortedBy { it.ping }
     // Smart Connect really measures: lowest live ping among the servers this user can join.
     val pool = if (premiumUser || freeEnabled.isEmpty()) enabled else freeEnabled
     val best = pool.minByOrNull { it.ping }
@@ -95,7 +102,43 @@ fun ServersScreen(
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.padding(start = 12.dp).weight(1f),
             )
-            // ── دکمه به‌روزرسانی از سرور ──
+            // ── دکمه‌های v2: اسپیدتست / ورود کانفیگ / وضعیت سرورها ──
+            Box(
+                Modifier
+                    .size(38.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(mb.panel)
+                    .border(1.dp, mb.panelEdge, RoundedCornerShape(12.dp))
+                    .clickable { onSpeedTest() },
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(ic(R.drawable.ic_activity), t.speedTest, tint = mb.glow, modifier = Modifier.size(17.dp))
+            }
+            Spacer(Modifier.width(6.dp))
+            Box(
+                Modifier
+                    .size(38.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(mb.panel)
+                    .border(1.dp, mb.panelEdge, RoundedCornerShape(12.dp))
+                    .clickable { onImport() },
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(ic(R.drawable.ic_plus), t.importTitle, tint = mb.glow, modifier = Modifier.size(17.dp))
+            }
+            Spacer(Modifier.width(6.dp))
+            Box(
+                Modifier
+                    .size(38.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(mb.panel)
+                    .border(1.dp, mb.panelEdge, RoundedCornerShape(12.dp))
+                    .clickable { onStatus() },
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(ic(R.drawable.ic_shield_check), t.statusTitle, tint = mb.glow, modifier = Modifier.size(17.dp))
+            }
+            Spacer(Modifier.width(6.dp))
             Box(
                 Modifier
                     .size(38.dp)
@@ -241,6 +284,8 @@ fun ServersScreen(
                 ServerRow(
                     c = c, lang = lang, selected = c.key == selectedKey,
                     locked = c.premium && !premiumUser, isBest = best?.key == c.key,
+                    fav = c.key in favorites,
+                    onToggleFav = onToggleFav,
                     onClick = { if (c.premium && !premiumUser) onPremiumTap() else onSelect(c.key) },
                 )
             }
@@ -259,6 +304,8 @@ private fun ServerRow(
     selected: Boolean,
     locked: Boolean,
     isBest: Boolean,
+    fav: Boolean = false,
+    onToggleFav: (String) -> Unit = {},
     onClick: () -> Unit,
 ) {
     val t = stringsOf(lang)
@@ -298,6 +345,18 @@ private fun ServerRow(
             modifier = Modifier.width(56.dp),
             textAlign = androidx.compose.ui.text.style.TextAlign.End,
         )
+        if (!locked) {
+            Spacer(Modifier.width(4.dp))
+            // ── ستارهٔ منتخب‌ها (نسخهٔ ۲) ──
+            Icon(
+                ic(R.drawable.ic_star),
+                null,
+                tint = if (fav) mb.gold else mb.ink.copy(alpha = 0.25f),
+                modifier = Modifier
+                    .size(18.dp)
+                    .clickable { onToggleFav(c.key) },
+            )
+        }
         if (isBest && !locked) {
             Spacer(Modifier.width(6.dp))
             Text(

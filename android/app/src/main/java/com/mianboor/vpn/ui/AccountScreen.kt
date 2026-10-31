@@ -68,6 +68,8 @@ fun AccountScreen(
     onSupport: () -> Unit,
     onOpenReferral: () -> Unit,
     onOpenSupportChat: () -> Unit,
+    onOpenWallet: () -> Unit = {},
+    onOpenPrivacy: () -> Unit = {},
     giftDays: Int,
     toast: (String) -> Unit,
 ) {
@@ -242,6 +244,32 @@ fun AccountScreen(
             }
 
             // ── دعوت دوستان (رفرال) — کد معرف و روزهای هدیه ──
+        // ── v2: کیف پول ──
+        PanelCard(Modifier.padding(top = 12.dp), onClick = onOpenWallet) {
+            Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(ic(R.drawable.ic_credit_card), null, tint = mb.dim, modifier = Modifier.size(20.dp))
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(t.wallet, color = mb.ink, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                    Text(t.walletSub, color = mb.dim, fontSize = 13.sp)
+                }
+                FwdChevron(rtl)
+            }
+        }
+
+        // ── v2: حریم خصوصی و بدون لاگ ──
+        PanelCard(Modifier.padding(top = 12.dp), onClick = onOpenPrivacy) {
+            Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(ic(R.drawable.ic_shield_check), null, tint = mb.dim, modifier = Modifier.size(20.dp))
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(t.privacyRow, color = mb.ink, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                    Text(t.privacyRowSub, color = mb.dim, fontSize = 13.sp)
+                }
+                FwdChevron(rtl)
+            }
+        }
+
             PanelCard(Modifier.padding(top = 12.dp), onClick = onOpenReferral) {
                 Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                     Icon(ic(R.drawable.ic_users), null, tint = mb.glow, modifier = Modifier.size(20.dp))

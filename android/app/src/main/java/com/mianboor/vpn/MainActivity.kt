@@ -105,7 +105,13 @@ import com.mianboor.vpn.ui.ThemeName
 import com.mianboor.vpn.ui.Vazir
 import com.mianboor.vpn.ui.consumeClicks
 import com.mianboor.vpn.ui.drawableToBitmap
+import com.mianboor.vpn.ui.fmtToman
 import com.mianboor.vpn.ui.stringsOf
+import com.mianboor.vpn.ui.ImportSheet
+import com.mianboor.vpn.ui.PrivacyScreen
+import com.mianboor.vpn.ui.SpeedTestSheet
+import com.mianboor.vpn.ui.StatusSheet
+import com.mianboor.vpn.ui.WalletScreen
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -116,7 +122,7 @@ import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.security.MessageDigest
 
-enum class Screen { HOME, SERVERS, ACCOUNT, SETTINGS, SPLIT, INBOX, REFERRAL, SUPPORT, LOGIN, ADMIN }
+enum class Screen { HOME, SERVERS, ACCOUNT, SETTINGS, SPLIT, INBOX, REFERRAL, SUPPORT, WALLET, PRIVACY, LOGIN, ADMIN }
 
 data class Entitlement(val plan: String, val expiresAt: Long)
 
@@ -127,7 +133,22 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        handleRefDeepLink(intent)
         setContent { MbApp() }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        handleRefDeepLink(intent)
+    }
+
+    /** دیپ‌لینک دعوت دوستان — mianboor://ref/CODE از صفحهٔ فرود سایت. */
+    private fun handleRefDeepLink(intent: Intent?) {
+        val data = intent?.data ?: return
+        if (data.scheme == "mianboor" && data.host == "ref") {
+            val code = data.lastPathSegment?.trim()?.uppercase().takeUnless { it.isNullOrBlank() } ?: return
+            VpnState.pendingRefCode.value = code
+        }
     }
 }
 
@@ -235,6 +256,25 @@ private fun MbAppInner(
     var autoConnect by remember { mutableStateOf(AppPrefs.autoConnect(context)) }
     var pingLive by remember { mutableStateOf(AppPrefs.pingLive(context)) }
     var blockQuic by remember { mutableStateOf(AppPrefs.blockQuic(context)) }
+
+    // ── v2: محافظت اتصال + ضد-فیلترینگ + DNS ──
+    var failover by remember { mutableStateOf(AppPrefs.failover(context)) }
+    var autoReconn by remember { mutableStateOf(AppPrefs.autoReconnect(context)) }
+    var stealth by remember { mutableStateOf(AppPrefs.stealth(context)) }
+    var dnsMode by remember { mutableStateOf(AppPrefs.dnsMode(context)) }
+    var dnsCustom by remember { mutableStateOf(AppPrefs.dnsCustom(context)) }
+    var favorites by remember { mutableStateOf(AppPrefs.favorites(context)) }
+
+    var adminCodes by remember { mutableStateOf<List<AdminCode>>(emptyList()) }
+
+    // ── v2: شیت‌های سرورها + کیف پول ──
+    var speedOpen by remember { mutableStateOf(false) }
+    var statusOpen by remember { mutableStateOf(false) }
+    var importOpen by remember { mutableStateOf(false) }
+    var importBusy by remember { mutableStateOf(false) }
+    var walletInfo by remember { mutableStateOf<WalletInfo?>(null) }
+    var walletBusy by remember { mutableStateOf(false) }
+    var refPrefill by remember { mutableStateOf("") }
 
     var installedApps by remember { mutableStateOf<List<InstalledApp>>(emptyList()) }
 
@@ -551,6 +591,199 @@ private fun MbAppInner(
         }
     }
 
+    // ── v2: دیپ‌لینک دعوت — mianboor://ref/CODE از صفحهٔ فرود /r/ ──
+    LaunchedEffect(Unit) {
+        VpnState.pendingRefCode.collect { code ->
+            if (!code.isNullOrBlank()) {
+                refPrefill = code
+                screen = Screen.REFERRAL
+                VpnState.pendingRefCode.value = null
+            }
+        }
+    }
+
+    // ── v2: Failover — سرور فعال مرد و کاربر خواسته؟ فوراً بهترین جایگزین ──
+    LaunchedEffect(Unit) {
+        while (true) {
+            kotlinx.coroutines.delay(2000)
+            if (phase != Phase.CONNECTED || !AppPrefs.failover(context)) continue
+            val target = selectedConfig ?: continue
+            val ping = pings[target.key] ?: 0
+            if (ping < 999) continue
+            val best = configsForPing
+                .filter { it.enabled && it.key != target.key && (pings[it.key] ?: 999) < 999 && (premium || !it.premium) }
+                .minByOrNull { pings[it.key] ?: it.ping }
+            if (best != null) {
+                withContext(Dispatchers.Main) {
+                    toast(t.failoverToast(best.name))
+                    selectedKey = best.key
+                    AppPrefs.setSelectedKey(context, best.key)
+                    launchVpn(best)
+                }
+            }
+        }
+    }
+
+    // ── v2: کیف پول ──
+    fun loadWallet() {
+        val url = AppPrefs.serverUrl(context)
+        val token = AppPrefs.clientToken(context)
+        if (!url.startsWith("http") || token.isBlank() || deviceId.isBlank()) return
+        scope.launch(Dispatchers.IO) {
+            val info = runCatching { MianboorApi.walletInfo(url, token, deviceId) }.getOrNull()
+            withContext(Dispatchers.Main) { walletInfo = info }
+        }
+    }
+
+    fun redeemWallet(code: String) {
+        if (walletBusy) return
+        val url = AppPrefs.serverUrl(context)
+        val token = AppPrefs.clientToken(context)
+        if (!url.startsWith("http") || token.isBlank()) {
+            toast(t.walletOff)
+            return
+        }
+        walletBusy = true
+        scope.launch(Dispatchers.IO) {
+            val amount = runCatching { MianboorApi.walletRedeem(url, token, deviceId, code) }.getOrNull()
+            withContext(Dispatchers.Main) {
+                walletBusy = false
+                if (amount != null) {
+                    toast(fmtToman(amount) + t.walletRedeemOk)
+                    loadWallet()
+                } else {
+                    toast(t.walletRedeemBad)
+                }
+            }
+        }
+    }
+
+    fun payWithWallet(plan: String, promo: String?) {
+        if (walletBusy) return
+        val url = AppPrefs.serverUrl(context)
+        val token = AppPrefs.clientToken(context)
+        if (!url.startsWith("http") || token.isBlank()) {
+            toast(t.walletOff)
+            return
+        }
+        walletBusy = true
+        scope.launch(Dispatchers.IO) {
+            val res = runCatching { MianboorApi.walletPay(url, token, deviceId, plan, promo) }.getOrNull()
+            withContext(Dispatchers.Main) {
+                walletBusy = false
+                if (res != null) {
+                    entitlement = Entitlement("premium", res.first)
+                    AppPrefs.setPlan(context, "premium", res.first)
+                    plansReason = null
+                    toast(t.walletPayOk)
+                    loadWallet()
+                    scope.launch(Dispatchers.IO) { refreshRemote() }
+                } else {
+                    toast(t.walletPayLow)
+                }
+            }
+        }
+    }
+
+    // ── v2: ورود کانفیگ — لینک اشتراکی/اشتراک/QR ──
+    fun addLocalServer(name: String, country: String, link: String) {
+        AppPrefs.addLocalConfig(context, name, country, link, false)
+        rebuildConfigs()
+        importOpen = false
+        toast(t.importAdded)
+    }
+
+    fun fetchSubscription(url: String) {
+        importBusy = true
+        scope.launch(Dispatchers.IO) {
+            val text = runCatching { MianboorApi.fetchText(url) }.getOrNull()
+            val links = runCatching {
+                if (text.isNullOrBlank()) throw IllegalStateException("empty")
+                val raw = text.trim()
+                val decoded = try {
+                    String(android.util.Base64.decode(raw, android.util.Base64.DEFAULT), Charsets.UTF_8)
+                } catch (t: Throwable) { raw }
+                decoded.lines()
+                    .map { it.trim() }
+                    .filter { it.startsWith("vmess://") || it.startsWith("vless://") || it.startsWith("trojan://") || it.startsWith("ss://") }
+                    .distinct()
+                    .take(20)
+            }.getOrDefault(emptyList())
+            withContext(Dispatchers.Main) {
+                importBusy = false
+                if (links.isEmpty()) {
+                    toast(t.importSubFail)
+                } else {
+                    links.forEach { link ->
+                        val parsed = XrayConfigBuilder.parseLink(link, t.importDefaultName, "de")
+                        if (parsed != null) {
+                            AppPrefs.addLocalConfig(context, parsed.name, parsed.country.ifBlank { "de" }, link, false)
+                        }
+                    }
+                    rebuildConfigs()
+                    importOpen = false
+                    toast(t.importSubOk)
+                }
+            }
+        }
+    }
+
+    val qrLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { res ->
+        val result = com.journeyapps.barcodescanner.IntentIntegrator.parseActivityResult(res.resultCode, res.data)
+        val content = result?.contents
+        if (!content.isNullOrBlank()) {
+            val parsed = XrayConfigBuilder.parseLink(content.trim(), t.importDefaultName, "de")
+            if (parsed == null) {
+                toast(t.importInvalid)
+            } else {
+                addLocalServer(parsed.name, parsed.country.ifBlank { "de" }, content.trim())
+            }
+        }
+    }
+
+    fun scanQr() {
+        val integrator = com.journeyapps.barcodescanner.IntentIntegrator(context as Activity)
+            .setDesiredBarcodeFormats(com.journeyapps.barcodescanner.IntentIntegrator.QR_CODE)
+            .setPrompt(t.qrPrompt)
+            .setBeepEnabled(false)
+            .setOrientationLocked(true)
+        qrLauncher.launch(integrator.createScanIntent())
+    }
+
+    // ── v2: کدهای هدیه/تخفیف (پنل مدیر) ──
+    fun loadAdminCodes() {
+        val url = AppPrefs.serverUrl(context)
+        val key = AppPrefs.adminServerKey(context)
+        if (!url.startsWith("http") || key.isBlank()) return
+        scope.launch(Dispatchers.IO) {
+            val list = runCatching { MianboorApi.adminCodes(url, key) }.getOrDefault(emptyList())
+            withContext(Dispatchers.Main) { adminCodes = list }
+        }
+    }
+
+    fun createCode(type: String, amount: Long, percent: Int, code: String) {
+        val url = AppPrefs.serverUrl(context)
+        val key = AppPrefs.adminServerKey(context)
+        if (!url.startsWith("http") || key.isBlank()) return
+        scope.launch(Dispatchers.IO) {
+            val created = runCatching { MianboorApi.adminCreateCode(url, key, type, amount, percent, code) }.getOrNull()
+            withContext(Dispatchers.Main) {
+                if (created != null) toast(t.codesCreated + created)
+                loadAdminCodes()
+            }
+        }
+    }
+
+    fun deleteCode(type: String, code: String) {
+        val url = AppPrefs.serverUrl(context)
+        val key = AppPrefs.adminServerKey(context)
+        if (!url.startsWith("http") || key.isBlank()) return
+        scope.launch(Dispatchers.IO) {
+            runCatching { MianboorApi.adminDeleteCode(url, key, type, code) }
+            withContext(Dispatchers.Main) { loadAdminCodes() }
+        }
+    }
+
     /** بارگذاری داده‌های پنل مدیر از سرور (سفارش‌ها + دستگاه‌ها). */
     fun loadAdminData() {
         val url = AppPrefs.serverUrl(context)
@@ -561,12 +794,14 @@ private fun MbAppInner(
             val orders = runCatching { MianboorApi.adminListOrders(url, key) }.getOrDefault(emptyList())
             val devices = runCatching { MianboorApi.adminListDevices(url, key) }.getOrDefault(emptyList())
             val noticesList = runCatching { MianboorApi.adminNotices(url, key) }.getOrDefault(emptyList())
+            val codesList = runCatching { MianboorApi.adminCodes(url, key) }.getOrDefault(emptyList())
             val settings = runCatching { MianboorApi.adminGetSettings(url, key) }.getOrNull()
             withContext(Dispatchers.Main) {
                 serverOrders = orders
                 serverDevices = devices
                 adminNotices = noticesList
                 adminLatest = settings
+                adminCodes = codesList
                 adminBusy = false
                 val pending = orders.count { it.status == "pending" }
                 if (pending > 0) toast(t.pendingOrders(pending))
@@ -693,6 +928,7 @@ private fun MbAppInner(
                 tick++
                 if (tick % 5 == 0 && pendingBytes > 0) {
                     AppPrefs.addUsage(context, pendingBytes)
+                    AppPrefs.addDailyUsage(context, pendingBytes)
                     usedGb = AppPrefs.usageBytes(context) / 1e9
                     pendingBytes = 0
                     if (!premium && usedGb >= FREE_QUOTA_GB && !trialUsed) {
@@ -813,6 +1049,20 @@ private fun MbAppInner(
         } else {
             VpnState.phase.value = Phase.IDLE
             VpnState.errorMessage.value = t.errPermission
+        }
+    }
+
+    /** تونل وصل را با تنظیمات تازه (استلث/DNS/QUIC) دوباره برپا می‌کند. */
+    fun reconnectWithPrefs() {
+        if (VpnState.phase.value != Phase.CONNECTED) return
+        val target = selectedConfig ?: return
+        VpnState.phase.value = Phase.DISCONNECTING
+        context.startService(
+            Intent(context, MianboorVpnService::class.java).setAction(MianboorVpnService.ACTION_DISCONNECT)
+        )
+        scope.launch {
+            delay(900)
+            launchVpn(target)
         }
     }
 
@@ -1103,6 +1353,7 @@ private fun MbAppInner(
     val uiState = when (phase) {
         Phase.CONNECTED -> "on"
         Phase.CONNECTING, Phase.SCANNING -> "connecting"
+        Phase.BLOCKED -> "blocked"
         else -> "off"
     }
 
@@ -1166,6 +1417,14 @@ private fun MbAppInner(
                         updateTag = updateTag,
                         onUpdateClick = { downloadAndInstallUpdate() },
                         onDismissUpdate = { updateTag = null },
+                        quotaWarnPct = if (!premium && !trialLocked && usedGb >= FREE_QUOTA_GB * 0.8)
+                            ((usedGb / FREE_QUOTA_GB) * 100).toInt().coerceIn(80, 99) else null,
+                        expiryDays = if (premium) {
+                            val d = ((entitlement.expiresAt - System.currentTimeMillis()) / 86_400_000L).toInt()
+                            if (d in 0..3) d else null
+                        } else null,
+                        onRenew = { plansReason = "renew" },
+                        stealthOn = stealth == "strict",
                     )
                     Screen.INBOX -> InboxScreen(
                         lang = lang,
@@ -1197,6 +1456,18 @@ private fun MbAppInner(
                         syncing = syncing,
                         syncOk = syncOk,
                         lastSyncAt = lastSyncAt,
+                        favorites = favorites,
+                        onToggleFav = { key ->
+                            val next = if (key in favorites) favorites - key else favorites + key
+                            favorites = next
+                            AppPrefs.setFavorites(context, next)
+                        },
+                        onSpeedTest = {
+                            if (VpnState.phase.value == Phase.CONNECTED) speedOpen = true
+                            else toast(t.speedNeedConn)
+                        },
+                        onImport = { importOpen = true },
+                        onStatus = { statusOpen = true },
                         onRefresh = { refreshRemote { ok -> if (!ok && syncOk != false) toast(t.errNetwork) } },
                         onSelect = { key ->
                             selectedKey = key
@@ -1229,8 +1500,24 @@ private fun MbAppInner(
                         onSupport = { openTelegram() },
                         onOpenReferral = { screen = Screen.REFERRAL },
                         onOpenSupportChat = { screen = Screen.SUPPORT },
+                        onOpenWallet = {
+                            loadWallet()
+                            screen = Screen.WALLET
+                        },
+                        onOpenPrivacy = { screen = Screen.PRIVACY },
                         giftDays = refInfo?.giftDays ?: 0,
                         toast = { toast(it) },
+                    )
+                    Screen.WALLET -> WalletScreen(
+                        lang = lang,
+                        wallet = walletInfo,
+                        busy = walletBusy,
+                        onRedeem = { redeemWallet(it) },
+                        onBack = { screen = Screen.ACCOUNT },
+                    )
+                    Screen.PRIVACY -> PrivacyScreen(
+                        lang = lang,
+                        onBack = { screen = Screen.ACCOUNT },
                     )
                     Screen.REFERRAL -> ReferralScreen(
                         lang = lang,
@@ -1238,6 +1525,7 @@ private fun MbAppInner(
                         giftDays = refInfo?.giftDays ?: 0,
                         friends = refInfo?.friends ?: emptyList(),
                         busy = refBusy,
+                        prefill = refPrefill,
                         onClaim = { claimRefGift() },
                         onRegister = { registerReferralCode(it) },
                         onBack = { screen = Screen.ACCOUNT },
@@ -1277,6 +1565,31 @@ private fun MbAppInner(
                                 }
                             }
                         },
+                        killSwitch = killSwitch,
+                        setKillSwitch = { v -> killSwitch = v; AppPrefs.setKillSwitch(context, v) },
+                        failover = failover,
+                        setFailover = { v -> failover = v; AppPrefs.setFailover(context, v) },
+                        autoReconn = autoReconn,
+                        setAutoReconn = { v -> autoReconn = v; AppPrefs.setAutoReconnect(context, v) },
+                        stealth = stealth,
+                        setStealth = { v ->
+                            stealth = v
+                            AppPrefs.setStealth(context, v)
+                            reconnectWithPrefs()
+                        },
+                        dnsMode = dnsMode,
+                        setDnsMode = { v ->
+                            dnsMode = v
+                            AppPrefs.setDnsMode(context, v)
+                            reconnectWithPrefs()
+                        },
+                        dnsCustom = dnsCustom,
+                        setDnsCustom = { v ->
+                            dnsCustom = v
+                            AppPrefs.setDnsCustom(context, v)
+                            reconnectWithPrefs()
+                        },
+                        onOpenPrivacy = { screen = Screen.PRIVACY },
                         onSupport = { openTelegram() },
                         onBack = { screen = Screen.HOME },
                     )
@@ -1299,6 +1612,10 @@ private fun MbAppInner(
                         onCancel = { screen = Screen.ACCOUNT },
                     )
                     Screen.ADMIN -> AdminPanel(
+                        codes = adminCodes,
+                        onCodes = { loadAdminCodes() },
+                        onCreateCode = { type, amount, percent, code -> createCode(type, amount, percent, code) },
+                        onDeleteCode = { type, code -> deleteCode(type, code) },
                         configs = configs,
                         orders = serverOrders,
                         devices = serverDevices,
@@ -1392,11 +1709,45 @@ private fun MbAppInner(
         }
 
         // ── plans sheet ──
+        // ── v2 sheets: اسپیدتست، وضعیت سرورها، ورود کانفیگ ──
+        if (speedOpen) {
+            SpeedTestSheet(lang = lang, server = selectedConfig, onClose = { speedOpen = false })
+        }
+        if (statusOpen) {
+            StatusSheet(lang = lang, configs = liveConfigs, onClose = { statusOpen = false })
+        }
+        if (importOpen) {
+            ImportSheet(
+                lang = lang,
+                busy = importBusy,
+                onClose = { importOpen = false },
+                onAddLink = { name, country, link -> addLocalServer(name, country, link) },
+                onFetchSub = { fetchSubscription(it) },
+                onScanQr = { scanQr() },
+                toast = { toast(it) },
+            )
+        }
+
         PlansSheet(
             visible = plansReason != null,
             lang = lang,
             reason = plansReason ?: "renew",
             payInfo = payInfo,
+            walletBalance = walletInfo?.balance ?: 0L,
+            onOpenWallet = {
+                plansReason = null
+                loadWallet()
+                screen = Screen.WALLET
+            },
+            onWalletPay = { plan, promo -> payWithWallet(plan, promo) },
+            onCheckPromo = { code, cb ->
+                scope.launch(Dispatchers.IO) {
+                    val pct = runCatching {
+                        MianboorApi.promoCheck(AppPrefs.serverUrl(context), AppPrefs.clientToken(context), deviceId, code)
+                    }.getOrNull()
+                    withContext(Dispatchers.Main) { cb(pct) }
+                }
+            },
             onClose = { plansReason = null },
             onCreateOrder = { plan, via, onResult -> createOrder(plan, via, onResult) },
         )

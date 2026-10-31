@@ -39,8 +39,8 @@ android {
         applicationId = "com.mianboor.vpn"
         minSdk = 26
         targetSdk = 34
-        versionCode = 15
-        versionName = "1.8.0"
+        versionCode = 16
+        versionName = "2.0.0"
 
         ndk {
             abiFilters += "arm64-v8a"
@@ -120,4 +120,8 @@ dependencies {
     debugImplementation("androidx.compose.ui:ui-tooling")
 
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
+
+    // v2: اسکن QR کانفیگ — دوربین + مجوز درون کتابخانه مدیریت می‌شود
+    implementation("androidx.appcompat:appcompat:1.6.1")
+    implementation("com.journeyapps:zxing-android-embedded:4.3.0")
 }

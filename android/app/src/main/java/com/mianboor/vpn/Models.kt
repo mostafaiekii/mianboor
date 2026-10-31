@@ -63,6 +63,31 @@ data class RefInfo(
     val friends: List<RefFriend>,
 )
 
+/** یک تراکنش کیف پول (نسخهٔ ۲) — از سرور. */
+data class WalletTx(
+    val id: String,
+    val kind: String,      // topup | redeem | pay
+    val amount: Long,      // + شارژ / − پرداخت (تومان)
+    val label: String,
+    val at: Long,
+)
+
+/** وضعیت کیف پول دستگاه. */
+data class WalletInfo(
+    val balance: Long,
+    val txs: List<WalletTx>,
+)
+
+/** کد هدیه/تخفیف در پنل مدیر. */
+data class AdminCode(
+    val type: String,      // gift | promo
+    val code: String,
+    val amount: Long,      // gift
+    val percent: Int,      // promo
+    val usedBy: String,
+    val active: Boolean,
+)
+
 /** تنظیمات اعلام نسخه (تب Update پنل مدیر). */
 data class AdminSettings(
     val latestVersion: String = "",

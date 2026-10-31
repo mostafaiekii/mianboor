@@ -881,4 +881,196 @@ object MianboorApi {
             false
         }
     }
+
+    // ------------------------------------------------------------------
+    // v2 — کیف پول، کدهای هدیه/تخفیف، ورود اشتراک
+    // ------------------------------------------------------------------
+
+    /** وضعیت کیف پول دستگاه: موجودی + تراکنش‌ها. */
+    fun walletInfo(serverUrl: String, clientToken: String, deviceId: String): WalletInfo? {
+        val base = serverUrl.trim().trimEnd('/')
+        if (!base.startsWith("http") || clientToken.isBlank() || deviceId.isBlank()) return null
+        val url = "$base/api/client/wallet?token=" + URLEncoder.encode(clientToken, "UTF-8") +
+            "&device=" + URLEncoder.encode(deviceId, "UTF-8")
+        val conn = URL(url).openConnection() as HttpURLConnection
+        conn.connectTimeout = 8000
+        conn.readTimeout = 12000
+        conn.setRequestProperty("Accept", "application/json")
+        return try {
+            if (conn.responseCode != 200) null
+            else runCatching {
+                val o = JSONObject(conn.inputStream.bufferedReader().use { it.readText() })
+                if (!o.optBoolean("ok", false)) return@runCatching null
+                val txs = mutableListOf<WalletTx>()
+                o.optJSONArray("txs")?.let { ta ->
+                    for (i in 0 until ta.length()) {
+                        val t = ta.optJSONObject(i) ?: continue
+                        txs.add(
+                            WalletTx(
+                                id = t.optString("id"),
+                                kind = t.optString("kind"),
+                                amount = t.optLong("amount"),
+                                label = t.optString("label"),
+                                at = t.optLong("at"),
+                            ),
+                        )
+                    }
+                }
+                WalletInfo(balance = o.optLong("balance", 0L), txs = txs)
+            }.getOrNull()
+        } catch (t: Throwable) {
+            null
+        } finally {
+            conn.disconnect()
+        }
+    }
+
+    /** اجرای یک اکشن کیف پول. خروجی: Pair(ok, پیام خطا/مقدار JSON). */
+    private fun walletAction(
+        serverUrl: String,
+        clientToken: String,
+        deviceId: String,
+        payload: JSONObject,
+    ): Pair<Boolean, JSONObject> {
+        val base = serverUrl.trim().trimEnd('/')
+        if (!base.startsWith("http") || clientToken.isBlank() || deviceId.isBlank()) {
+            return false to JSONObject()
+        }
+        val conn = URL("$base/api/client/wallet").openConnection() as HttpURLConnection
+        conn.connectTimeout = 8000
+        conn.readTimeout = 15000
+        conn.requestMethod = "POST"
+        conn.setRequestProperty("Content-Type", "application/json")
+        return try {
+            conn.doOutput = true
+            conn.outputStream.use {
+                it.write(payload.put("token", clientToken).put("device", deviceId).toString().toByteArray(Charsets.UTF_8))
+            }
+            val body = conn.inputStream.bufferedReader().use { it.readText() }
+            val o = runCatching { JSONObject(body) }.getOrDefault(JSONObject())
+            (conn.responseCode == 200 && o.optBoolean("ok", false)) to o
+        } catch (t: Throwable) {
+            false to JSONObject()
+        } finally {
+            conn.disconnect()
+        }
+    }
+
+    /** ردیم کد هدیه — مقدار تومان اضافه‌شده یا null. */
+    fun walletRedeem(serverUrl: String, clientToken: String, deviceId: String, code: String): Long? {
+        val (ok, o) = walletAction(
+            serverUrl, clientToken, deviceId,
+            JSONObject().put("action", "redeem").put("code", code.trim().uppercase()),
+        )
+        return if (ok) o.optLong("amount", 0L) else null
+    }
+
+    /** بررسی کد تخفیف — درصد معتبر یا null. */
+    fun promoCheck(serverUrl: String, clientToken: String, deviceId: String, code: String): Int? {
+        val (ok, o) = walletAction(
+            serverUrl, clientToken, deviceId,
+            JSONObject().put("action", "promo").put("code", code.trim().uppercase()),
+        )
+        return if (ok) o.optInt("percent", 0).takeIf { it > 0 } else null
+    }
+
+    /**
+     * پرداخت پلن از کیف پول — فعال‌سازی آنی.
+     * خروجی: Pair(premiumUntil epoch, balance جدید) یا null در خطا.
+     */
+    fun walletPay(
+        serverUrl: String,
+        clientToken: String,
+        deviceId: String,
+        plan: String,
+        promo: String?,
+    ): Pair<Long, Long>? {
+        val payload = JSONObject().put("action", "pay").put("plan", plan)
+        if (!promo.isNullOrBlank()) payload.put("promo", promo.trim().uppercase())
+        val (ok, o) = walletAction(serverUrl, clientToken, deviceId, payload)
+        return if (ok) o.optLong("premiumUntil", 0L).takeIf { it > 0 }?.let { it to o.optLong("balance", 0L) } else null
+    }
+
+    /** فهرست کدهای هدیه/تخفیف (پنل مدیر). */
+    fun adminCodes(serverUrl: String, adminKey: String): List<AdminCode> = runCatching {
+        val conn = adminConn(serverUrl, adminKey, "/api/admin/codes", "GET")
+        try {
+            if (conn.responseCode != 200) return@runCatching emptyList()
+            val o = JSONObject(conn.inputStream.bufferedReader().use { it.readText() })
+            val out = mutableListOf<AdminCode>()
+            o.optJSONArray("gift")?.let { a ->
+                for (i in 0 until a.length()) {
+                    val c = a.optJSONObject(i) ?: continue
+                    out.add(
+                        AdminCode("gift", c.optString("code"), c.optLong("amount"), 0, c.optString("usedBy"), true),
+                    )
+                }
+            }
+            o.optJSONArray("promo")?.let { a ->
+                for (i in 0 until a.length()) {
+                    val c = a.optJSONObject(i) ?: continue
+                    out.add(
+                        AdminCode("promo", c.optString("code"), 0, c.optInt("percent"), "", c.optBoolean("active", true)),
+                    )
+                }
+            }
+            out
+        } finally {
+            conn.disconnect()
+        }
+    }.getOrDefault(emptyList())
+
+    /** ساخت کد هدیه/تخفیف (پنل مدیر) — کد ساخته‌شده یا null. */
+    fun adminCreateCode(serverUrl: String, adminKey: String, type: String, amount: Long, percent: Int, code: String): String? =
+        runCatching {
+            val conn = adminConn(serverUrl, adminKey, "/api/admin/codes", "POST")
+            try {
+                val payload = JSONObject().put("type", type)
+                if (type == "gift") payload.put("amount", amount) else payload.put("percent", percent)
+                if (code.isNotBlank()) payload.put("code", code.trim().uppercase())
+                sendJson(conn, payload)
+                if (conn.responseCode != 200) return@runCatching null
+                val o = JSONObject(conn.inputStream.bufferedReader().use { it.readText() })
+                if (!o.optBoolean("ok", false)) null else o.optString("code").ifBlank { null }
+            } finally {
+                conn.disconnect()
+            }
+        }.getOrNull()
+
+    /** حذف کد هدیه/تخفیف (پنل مدیر). */
+    fun adminDeleteCode(serverUrl: String, adminKey: String, type: String, code: String): Boolean =
+        runCatching {
+            val conn = adminConn(
+                serverUrl, adminKey,
+                "/api/admin/codes?type=$type&code=" + URLEncoder.encode(code, "UTF-8"),
+                "DELETE",
+            )
+            try {
+                readOk(conn)
+            } finally {
+                conn.disconnect()
+            }
+        }.getOrDefault(false)
+
+    /**
+     * دانلود متن لینک اشتراک (ورود کانفیگ v2) — متن خام یا null.
+     * خروجی می‌تواند base64 کل یا خط‌به‌خط لینک باشد؛ پارس در ImportSheet انجام می‌شود.
+     */
+    fun fetchText(url: String, timeoutMs: Int = 15000): String? {
+        val u = url.trim()
+        if (!u.startsWith("http")) return null
+        val conn = URL(u).openConnection() as HttpURLConnection
+        conn.connectTimeout = timeoutMs
+        conn.readTimeout = timeoutMs
+        conn.setRequestProperty("Accept", "*/*")
+        conn.setRequestProperty("User-Agent", "Mianboor/2.0")
+        return try {
+            if (conn.responseCode != 200) null
+            else conn.inputStream.bufferedReader().use { it.readText() }.take(512_000)
+        } catch (t: Throwable) {
+            null
+        } finally {
+            conn.disconnect()
+        }
+    }
 }

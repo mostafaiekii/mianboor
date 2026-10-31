@@ -69,6 +69,35 @@ object AppPrefs {
     fun autoConnect(c: Context): Boolean = p(c).getBoolean("auto_connect", false)
     fun setAutoConnect(c: Context, v: Boolean) { ed(c).putBoolean("auto_connect", v).apply() }
 
+    // ── v2: محافظت اتصال و تنظیمات ضد-فیلترینگ ──
+
+    /** تعویض خودکار سرور وقتی سرور فعال می‌میرد. */
+    fun failover(c: Context): Boolean = p(c).getBoolean("failover", true)
+    fun setFailover(c: Context, v: Boolean) { ed(c).putBoolean("failover", v).apply() }
+
+    /** اتصال مجدد خودکار بعد از تغییر شبکه (وای‌فای/دیتا). */
+    fun autoReconnect(c: Context): Boolean = p(c).getBoolean("auto_reconnect", true)
+    fun setAutoReconnect(c: Context, v: Boolean) { ed(c).putBoolean("auto_reconnect", v).apply() }
+
+    /** حالت ضد-فیلترینگ: normal | strict (تیکه‌تیکه‌کردن TLS). */
+    fun stealth(c: Context): String = p(c).getString("stealth", "normal") ?: "normal"
+    fun setStealth(c: Context, v: String) { ed(c).putString("stealth", v).apply() }
+
+    /** DNS رمزنگاری‌شده: auto | cf | google | custom. */
+    fun dnsMode(c: Context): String = p(c).getString("dns_mode", "auto") ?: "auto"
+    fun setDnsMode(c: Context, v: String) { ed(c).putString("dns_mode", v).apply() }
+
+    fun dnsCustom(c: Context): String = p(c).getString("dns_custom", "") ?: ""
+    fun setDnsCustom(c: Context, v: String) { ed(c).putString("dns_custom", v.trim()).apply() }
+
+    /** سرورهای سنجاق‌شده (★) — کلید کانفیگ‌ها. */
+    fun favorites(c: Context): Set<String> = stringSet(c, "favorites")
+    fun setFavorites(c: Context, v: Set<String>) { setStringSet(c, "favorites", v) }
+
+    /** سرورهای مرده (شبیه‌سازی قطعی از موتور پینگ) — برای Failover سریع سرویس. */
+    fun deadServers(c: Context): Set<String> = stringSet(c, "dead_servers")
+    fun setDeadServers(c: Context, v: Set<String>) { setStringSet(c, "dead_servers", v) }
+
     // ── split tunneling ───────────────────────────────────────────────
 
     fun splitMode(c: Context): String = p(c).getString("split_mode", "exclude") ?: "exclude"
@@ -343,6 +372,29 @@ object AppPrefs {
     fun appMonthKey(c: Context): String = p(c).getString("app_month", "") ?: ""
     fun setAppMonth(c: Context, key: String, acc: String) { ed(c).putString("app_month", key).putString("app_acc", acc).apply() }
     fun appAcc(c: Context): String = p(c).getString("app_acc", "{}") ?: "{}"
+
+    // ── v2: تاریخچهٔ مصرف روزانه (۱۴ روز اخیر) — برای نمودار ──
+
+    private fun dayKey(): String = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+
+    /** Map از "yyyy-MM-dd" به بایت‌های مصرف‌شدهٔ آن روز — فقط ۱۴ روز آخر نگه داشته می‌شود. */
+    fun dailyUsage(c: Context): Map<String, Long> {
+        val o = JSONObject(p(c).getString("daily_usage", "{}") ?: "{}")
+        val m = mutableMapOf<String, Long>()
+        o.keys().forEach { k -> m[k] = o.optLong(k, 0L) }
+        return m
+    }
+
+    fun addDailyUsage(c: Context, bytes: Long) {
+        if (bytes <= 0) return
+        val o = JSONObject(p(c).getString("daily_usage", "{}") ?: "{}")
+        val key = dayKey()
+        o.put(key, o.optLong(key, 0L) + bytes)
+        // فقط ۱۴ روز آخر
+        val cutoff = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date(System.currentTimeMillis() - 14L * 86_400_000))
+        o.keys().asSequence().toList().forEach { k -> if (k < cutoff) o.remove(k) }
+        ed(c).putString("daily_usage", o.toString()).apply()
+    }
 
     // ── monthly per-server traffic ──
 

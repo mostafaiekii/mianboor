@@ -67,7 +67,7 @@ fun fmtBytes(b: Long): String {
 @Composable
 fun HomeScreen(
     lang: Lang,
-    state: String,                    // "off" | "connecting" | "on"
+    state: String,                    // "off" | "connecting" | "on" | "blocked"
     onToggle: () -> Unit,
     seconds: Int,
     server: ConfigItem?,
@@ -85,13 +85,20 @@ fun HomeScreen(
     onDismissUpdate: () -> Unit = {},
     unreadNotices: Int = 0,
     onOpenInbox: () -> Unit = {},
+    // ── v2 ──
+    quotaWarnPct: Int? = null,
+    expiryDays: Int? = null,
+    onRenew: () -> Unit = {},
+    stealthOn: Boolean = false,
 ) {
     val t = stringsOf(lang)
     val mb = LocalMb.current
     val rtl = lang == Lang.FA
     val on = state == "on"
     val busy = state == "connecting"
+    val blocked = state == "blocked"
     val label = when {
+        blocked -> t.blockedTitle
         on -> t.connected
         busy -> t.connecting
         else -> t.notConnected
@@ -141,6 +148,23 @@ fun HomeScreen(
                         modifier = Modifier
                             .padding(top = 3.dp)
                             .clickable { onDismissUpdate() },
+                    )
+                }
+            }
+        }
+
+        // ── بنرهای هشدار: مصرف ۸۰٪ و انقضای نزدیک پلن (نسخهٔ ۲) ──
+        if (quotaWarnPct != null || expiryDays != null) {
+            Column(Modifier.fillMaxWidth().padding(top = 10.dp)) {
+                if (quotaWarnPct != null) {
+                    HomeWarnBanner(
+                        text = t.quotaWarn(quotaWarnPct), cta = t.quotaWarnCta, onClick = onRenew,
+                    )
+                }
+                if (expiryDays != null) {
+                    Box(Modifier.height(8.dp))
+                    HomeWarnBanner(
+                        text = t.expiryWarn(expiryDays), cta = t.expiryWarnCta, onClick = onRenew,
                     )
                 }
             }
@@ -234,7 +258,7 @@ fun HomeScreen(
                 )
             }
             PowerRing(
-                on = on, busy = busy, onTap = onToggle,
+                on = on, busy = busy, blocked = blocked, onTap = onToggle,
                 modifier = Modifier.size(176.dp),
             )
         }
@@ -243,14 +267,38 @@ fun HomeScreen(
         Column(Modifier.fillMaxWidth().padding(top = 14.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             Text(
                 label,
-                color = if (on) mb.glow else mb.ink,
+                color = when {
+                    blocked -> mb.danger
+                    on -> mb.glow
+                    else -> mb.ink
+                },
                 fontSize = 24.sp, fontWeight = FontWeight.Bold,
             )
             Text(
-                if (on) fmtTimer(seconds) else t.tapProtect,
+                when {
+                    blocked -> t.blockedSub
+                    on -> fmtTimer(seconds)
+                    else -> t.tapProtect
+                },
                 color = mb.dim, fontSize = 15.sp,
+                textAlign = TextAlign.Center,
                 modifier = Modifier.padding(top = 4.dp),
             )
+            if (stealthOn && on) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .padding(top = 8.dp)
+                        .clip(RoundedCornerShape(50))
+                        .background(mb.glow.copy(alpha = 0.10f))
+                        .border(1.dp, mb.glow.copy(alpha = 0.4f), RoundedCornerShape(50))
+                        .padding(horizontal = 12.dp, vertical = 5.dp),
+                ) {
+                    Icon(ic(R.drawable.ic_shield_alert), null, tint = mb.glow, modifier = Modifier.size(13.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text(t.stealthBadge, color = mb.glow, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                }
+            }
             if (showFlash && on && server != null) {
                 // فلش لحظه اتصال: پرچم مبدا → متن → پرچم سرور
                 Row(
@@ -382,10 +430,10 @@ private fun UsageCard(title: String, icon: Int, bytes: Long, tint: Color, modifi
 
 /**
  * The demo power button: static panel-edge ring when off, glowing double ring
- * when on, spinning arc when connecting.
+ * when on, spinning arc when connecting — and a red blocked ring for Kill Switch.
  */
 @Composable
-private fun PowerRing(on: Boolean, busy: Boolean, onTap: () -> Unit, modifier: Modifier = Modifier) {
+private fun PowerRing(on: Boolean, busy: Boolean, blocked: Boolean = false, onTap: () -> Unit, modifier: Modifier = Modifier) {
     val mb = LocalMb.current
     val spin = rememberInfiniteTransition(label = "spin")
     val angle by spin.animateFloat(
@@ -406,6 +454,9 @@ private fun PowerRing(on: Boolean, busy: Boolean, onTap: () -> Unit, modifier: M
             if (on) {
                 drawCircle(mb.glow, radius = rOuter, style = Stroke(4.dp.toPx()))
                 drawCircle(mb.glow.copy(alpha = 0.25f), radius = rOuter, style = Stroke(9.dp.toPx()))
+            } else if (blocked) {
+                drawCircle(mb.danger, radius = rOuter, style = Stroke(4.dp.toPx()))
+                drawCircle(mb.danger.copy(alpha = 0.25f), radius = rOuter, style = Stroke(9.dp.toPx()))
             } else if (busy) {
                 rotate(angle, Offset(cx, cy)) {
                     drawArc(
@@ -429,9 +480,41 @@ private fun PowerRing(on: Boolean, busy: Boolean, onTap: () -> Unit, modifier: M
         ) {
             Icon(
                 ic(R.drawable.ic_power), null,
-                tint = if (on) mb.glow else mb.dim,
+                tint = when {
+                    on -> mb.glow
+                    blocked -> mb.danger
+                    else -> mb.dim
+                },
                 modifier = Modifier.size(48.dp),
             )
         }
+    }
+}
+
+/** بنر هشدار خانه — متن + دکمهٔ اقدام (نسخهٔ ۲). */
+@Composable
+private fun HomeWarnBanner(text: String, cta: String, onClick: () -> Unit) {
+    val mb = LocalMb.current
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .background(mb.gold.copy(alpha = 0.10f))
+            .border(1.dp, mb.gold.copy(alpha = 0.4f), RoundedCornerShape(14.dp))
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(ic(R.drawable.ic_crown), null, tint = mb.gold, modifier = Modifier.size(16.dp))
+        Spacer(Modifier.width(8.dp))
+        Text(text, color = mb.ink, fontSize = 12.sp, lineHeight = 17.sp, modifier = Modifier.weight(1f))
+        Spacer(Modifier.width(8.dp))
+        Text(
+            cta, color = mb.night, fontSize = 11.sp, fontWeight = FontWeight.Bold,
+            modifier = Modifier
+                .clip(RoundedCornerShape(50))
+                .background(mb.gold)
+                .clickable { onClick() }
+                .padding(horizontal = 10.dp, vertical = 5.dp),
+        )
     }
 }

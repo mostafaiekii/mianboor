@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -23,6 +24,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -31,7 +33,7 @@ import androidx.compose.ui.unit.sp
 import com.mianboor.vpn.BuildConfig
 import com.mianboor.vpn.R
 
-/** Real settings: language, soft themes, live ping engine, support, about. */
+/** Real settings: protection, stealth, DNS, language, themes, live ping, support, about. */
 @Composable
 fun SettingsScreen(
     lang: Lang,
@@ -42,6 +44,19 @@ fun SettingsScreen(
     setPingLive: (Boolean) -> Unit,
     blockQuic: Boolean,
     setBlockQuic: (Boolean) -> Unit,
+    killSwitch: Boolean,
+    setKillSwitch: (Boolean) -> Unit,
+    failover: Boolean,
+    setFailover: (Boolean) -> Unit,
+    autoReconn: Boolean,
+    setAutoReconn: (Boolean) -> Unit,
+    stealth: String,
+    setStealth: (String) -> Unit,
+    dnsMode: String,
+    setDnsMode: (String) -> Unit,
+    dnsCustom: String,
+    setDnsCustom: (String) -> Unit,
+    onOpenPrivacy: () -> Unit,
     onSupport: () -> Unit,
     onBack: () -> Unit,
 ) {
@@ -63,8 +78,87 @@ fun SettingsScreen(
         Text(t.settings, color = mb.ink, fontSize = 24.sp, fontWeight = FontWeight.Bold,
             modifier = Modifier.padding(top = 12.dp))
 
-        // ── language ──
+        // ── v2: محافظت اتصال — Kill Switch / Failover / Auto-reconnect ──
         PanelCard(Modifier.padding(top = 16.dp)) {
+            Column(Modifier.fillMaxWidth().padding(16.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(ic(R.drawable.ic_shield_check), null, tint = mb.glow, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text(t.connSection, color = mb.ink, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                }
+                Spacer(Modifier.height(12.dp))
+                SettingSwitchRow(t.killSwitch, t.killSwitchSub, killSwitch) { setKillSwitch(it) }
+                SettingSwitchRow(t.failover, t.failoverSub, failover) { setFailover(it) }
+                SettingSwitchRow(t.autoReconn, t.autoReconnSub, autoReconn) { setAutoReconn(it) }
+            }
+        }
+
+        // ── v2: حالت ضد-فیلترینگ ──
+        PanelCard(Modifier.padding(top = 12.dp)) {
+            Column(Modifier.fillMaxWidth().padding(16.dp)) {
+                Text(t.stealth, color = mb.ink, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                Text(t.stealthSub, color = mb.dim, fontSize = 13.sp, modifier = Modifier.padding(top = 4.dp))
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(top = 12.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(mb.night)
+                        .padding(4.dp),
+                ) {
+                    LangButton(t.stealthNormal, stealth == "normal", Modifier.weight(1f)) { setStealth("normal") }
+                    LangButton(t.stealthStrict, stealth == "strict", Modifier.weight(1f)) { setStealth("strict") }
+                }
+            }
+        }
+
+        // ── v2: DNS رمزنگاری‌شده ──
+        PanelCard(Modifier.padding(top = 12.dp)) {
+            Column(Modifier.fillMaxWidth().padding(16.dp)) {
+                Text(t.dns, color = mb.ink, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                Text(t.dnsSub, color = mb.dim, fontSize = 13.sp, modifier = Modifier.padding(top = 4.dp))
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(top = 12.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(mb.night)
+                        .padding(4.dp),
+                ) {
+                    LangButton(t.dnsAuto, dnsMode == "auto", Modifier.weight(1f)) { setDnsMode("auto") }
+                    LangButton(t.dnsCf, dnsMode == "cf", Modifier.weight(1f)) { setDnsMode("cf") }
+                    LangButton(t.dnsGoogle, dnsMode == "google", Modifier.weight(1f)) { setDnsMode("google") }
+                    LangButton(t.dnsCustom, dnsMode == "custom", Modifier.weight(1f)) { setDnsMode("custom") }
+                }
+                if (dnsMode == "custom") {
+                    Column(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(top = 8.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(mb.night)
+                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                    ) {
+                        BasicTextField(
+                            value = dnsCustom,
+                            onValueChange = { v -> setDnsCustom(v.filter { it.isLetterOrDigit() || it == '.' || it == ':' }) },
+                            singleLine = true,
+                            textStyle = TextStyle(color = mb.ink, fontSize = 13.sp),
+                            modifier = Modifier.fillMaxWidth(),
+                            decorationBox = { inner ->
+                                Box {
+                                    if (dnsCustom.isEmpty()) Text(t.dnsCustomHint, color = mb.dim, fontSize = 13.sp)
+                                    inner()
+                                }
+                            },
+                        )
+                    }
+                }
+            }
+        }
+
+        // ── language ──
+        PanelCard(Modifier.padding(top = 12.dp)) {
             Column(Modifier.fillMaxWidth().padding(16.dp)) {
                 Text(t.language, color = mb.ink, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                 Row(
@@ -175,6 +269,19 @@ fun SettingsScreen(
             }
         }
 
+        // ── v2: حریم خصوصی و بدون لاگ ──
+        PanelCard(Modifier.padding(top = 12.dp), onClick = onOpenPrivacy) {
+            Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(ic(R.drawable.ic_shield_check), null, tint = mb.dim, modifier = Modifier.size(20.dp))
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(t.privacyRow, color = mb.ink, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                    Text(t.privacyRowSub, color = mb.dim, fontSize = 13.sp)
+                }
+                FwdChevron(rtl)
+            }
+        }
+
         // ── support ──
         PanelCard(Modifier.padding(top = 12.dp), onClick = onSupport) {
             Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -224,6 +331,20 @@ private fun LangButton(label: String, active: Boolean, modifier: Modifier = Modi
             color = if (active) mb.ink else mb.dim,
             fontSize = 14.sp,
             fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal,
+            maxLines = 1,
         )
+    }
+}
+
+/** ردیف کلید در کارت محافظت اتصال (نسخهٔ ۲). */
+@Composable
+private fun SettingSwitchRow(title: String, sub: String, checked: Boolean, onChange: (Boolean) -> Unit) {
+    val mb = LocalMb.current
+    Row(Modifier.fillMaxWidth().padding(vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            Text(title, color = mb.ink, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+            Text(sub, color = mb.dim, fontSize = 12.sp, lineHeight = 16.sp)
+        }
+        MbSwitch(checked, onChange = onChange)
     }
 }

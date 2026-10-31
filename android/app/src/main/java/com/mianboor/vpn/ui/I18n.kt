@@ -228,6 +228,100 @@ interface Strings {
     val dInbox: String
     val dPopup: String
     val dPush: String
+
+    // ── v2: محافظت اتصال + امکانات جدید ──
+    val connSection: String
+    val failover: String
+    val failoverSub: String
+    val autoReconn: String
+    val autoReconnSub: String
+    val stealth: String
+    val stealthSub: String
+    val stealthNormal: String
+    val stealthStrict: String
+    val stealthBadge: String
+    val blockedTitle: String
+    val blockedSub: String
+    val dns: String
+    val dnsSub: String
+    val dnsAuto: String
+    val dnsCf: String
+    val dnsGoogle: String
+    val dnsCustom: String
+    val dnsCustomHint: String
+    val speedTest: String
+    val speedResultSub: String
+    val speedPing: String
+    val speedDown: String
+    val speedUp: String
+    val speedTesting: String
+    val speedDone: String
+    val speedFail: String
+    val speedNeedConn: String
+    val statusTitle: String
+    val statusSub: String
+    val statusDown: String
+    val statusLive: String
+    val importTitle: String
+    val importLinkTab: String
+    val importSubTab: String
+    val importLinkHint: String
+    val importSubHint: String
+    val importName: String
+    val importDefaultName: String
+    val importAdd: String
+    val importInvalid: String
+    val importFetch: String
+    val importFetching: String
+    val importAdded: String
+    val importSubOk: String
+    val importSubFail: String
+    val qrScan: String
+    val qrPrompt: String
+    val qrNote: String
+    val wallet: String
+    val walletSub: String
+    val walletBalance: String
+    val toman: String
+    val walletTopupNote: String
+    val walletRedeem: String
+    val walletRedeemPh: String
+    val walletRedeemBtn: String
+    val walletTxs: String
+    val txTopup: String
+    val txPay: String
+    val walletRedeemOk: String
+    val walletRedeemBad: String
+    val walletPayOk: String
+    val walletPayLow: String
+    val walletOff: String
+    val promoPh: String
+    val promoApply: String
+    val promoBad: String
+    val payWallet: String
+    val walletPayNote: String
+    val walletOpenRow: String
+    val quotaWarnCta: String
+    val expiryWarnCta: String
+    val usageChart: String
+    val usageChartSub: String
+    val chartToday: String
+    val privacyRow: String
+    val privacyRowSub: String
+    val codesTab: String
+    val codesGift: String
+    val codesPromo: String
+    val codesAmount: String
+    val codesPercent: String
+    val codesCreate: String
+    val codesDelete: String
+    val codesUsed: String
+    val codesCreated: String
+
+    fun quotaWarn(pct: Int): String
+    fun expiryWarn(days: Int): String
+    fun failoverToast(server: String): String
+    fun promoOk(pct: Int): String
 }
 
 object EnStrings : Strings {
@@ -469,6 +563,100 @@ object EnStrings : Strings {
     override val dInbox = "Inbox"
     override val dPopup = "Popup"
     override val dPush = "Push"
+
+    // ── v2 ──
+    override val connSection = "Connection protection"
+    override val failover = "Auto failover"
+    override val failoverSub = "Switch to the best server if the current one dies"
+    override val autoReconn = "Auto reconnect"
+    override val autoReconnSub = "Rejoin after Wi-Fi / data changes"
+    override val stealth = "Anti-censorship mode"
+    override val stealthSub = "Strict mode fragments TLS to beat heavy filtering"
+    override val stealthNormal = "Normal"
+    override val stealthStrict = "Strict"
+    override val stealthBadge = "Stealth"
+    override val blockedTitle = "Blocked by Kill Switch"
+    override val blockedSub = "Internet is cut to protect your IP — tap to reconnect"
+    override val dns = "DNS"
+    override val dnsSub = "Encrypted DNS inside the tunnel"
+    override val dnsAuto = "Auto"
+    override val dnsCf = "Cloudflare DoH"
+    override val dnsGoogle = "Google DoH"
+    override val dnsCustom = "Custom IP"
+    override val dnsCustomHint = "e.g. 178.22.122.100"
+    override val speedTest = "Speed test"
+    override val speedResultSub = "Measured over the live tunnel"
+    override val speedPing = "Latency"
+    override val speedDown = "Download"
+    override val speedUp = "Upload"
+    override val speedTesting = "Testing…"
+    override val speedDone = "Done"
+    override val speedFail = "Test failed — connect first, then try again"
+    override val speedNeedConn = "Connect first — the test runs inside the tunnel"
+    override val statusTitle = "Server status"
+    override val statusSub = "Health of every server right now"
+    override val statusDown = "offline"
+    override val statusLive = "live"
+    override val importTitle = "Import config"
+    override val importLinkTab = "Share link"
+    override val importSubTab = "Subscription"
+    override val importLinkHint = "vless:// · vmess:// · trojan:// · ss://"
+    override val importSubHint = "https://your-subscription-url"
+    override val importName = "Name (optional)"
+    override val importDefaultName = "Custom server"
+    override val importAdd = "Add server"
+    override val importInvalid = "Link looks invalid — check and try again"
+    override val importFetch = "Fetch servers"
+    override val importFetching = "Fetching…"
+    override val importAdded = "Server added to your list"
+    override val importSubOk = "Servers imported from subscription"
+    override val importSubFail = "Couldn't fetch the subscription URL"
+    override val qrScan = "Scan QR code"
+    override val qrPrompt = "Point the camera at the config QR code"
+    override val qrNote = "Camera permission is asked only for scanning — nothing is recorded"
+    override val wallet = "Wallet"
+    override val walletSub = "Balance, gift codes & payments"
+    override val walletBalance = "Balance"
+    override val toman = "T"
+    override val walletTopupNote = "Top up with gift codes from support, or ask the team to charge your wallet."
+    override val walletRedeem = "Redeem gift code"
+    override val walletRedeemPh = "e.g. MB-XXXXXX"
+    override val walletRedeemBtn = "Redeem"
+    override val walletTxs = "Transactions"
+    override val txTopup = "Wallet top-up"
+    override val txPay = "Plan purchase"
+    override val walletRedeemOk = " added to your wallet 🎉"
+    override val walletRedeemBad = "Invalid or already-used code"
+    override val walletPayOk = "Paid from wallet — premium activated 🎉"
+    override val walletPayLow = "Not enough balance — redeem a gift code first"
+    override val walletOff = "Couldn't reach the wallet — check your connection"
+    override val promoPh = "Promo code"
+    override val promoApply = "Apply"
+    override val promoBad = "Invalid promo code"
+    override val payWallet = "Pay with wallet · "
+    override val walletPayNote = "Instant activation from your balance"
+    override val walletOpenRow = "Open wallet →"
+    override val quotaWarnCta = "Get a plan"
+    override val expiryWarnCta = "Renew now"
+    override val usageChart = "Last 14 days"
+    override val usageChartSub = "Daily tunnel usage (GB)"
+    override val chartToday = "Today"
+    override val privacyRow = "Privacy & No-logs"
+    override val privacyRowSub = "What we collect — and what we never do"
+    override val codesTab = "Codes"
+    override val codesGift = "Gift codes"
+    override val codesPromo = "Promo codes"
+    override val codesAmount = "Amount (T)"
+    override val codesPercent = "Percent %"
+    override val codesCreate = "Create"
+    override val codesDelete = "Delete"
+    override val codesUsed = "used"
+    override val codesCreated = "Code created: "
+
+    override fun quotaWarn(pct: Int) = "$pct% of your free quota is used — grab a plan before it runs out"
+    override fun expiryWarn(days: Int) = "Your plan ends in $days days — renew to stay protected"
+    override fun failoverToast(server: String) = "Server dropped — switched to $server"
+    override fun promoOk(pct: Int) = "$pct% off applied 🎉"
 }
 
 object FaStrings : Strings {
@@ -710,6 +898,100 @@ object FaStrings : Strings {
     override val dInbox = "صندوق"
     override val dPopup = "پاپ‌آپ"
     override val dPush = "نوتیف"
+
+    // ── نسخهٔ ۲ ──
+    override val connSection = "محافظت اتصال"
+    override val failover = "تعویض خودکار سرور"
+    override val failoverSub = "اگه سرور فعلی بمیره، خودکار به بهترین سرور می‌ره"
+    override val autoReconn = "اتصال مجدد خودکار"
+    override val autoReconnSub = "بعد از تغییر وای‌فای/دیتا دوباره وصل می‌شه"
+    override val stealth = "حالت ضد-فیلترینگ"
+    override val stealthSub = "حالت سخت‌گیر TLS رو تیکه‌تیکه می‌کنه تا از فیلترینگ سنگین رد شه"
+    override val stealthNormal = "عادی"
+    override val stealthStrict = "سخت‌گیر"
+    override val stealthBadge = "استلث"
+    override val blockedTitle = "کلید قطع اضطراری فعال شد"
+    override val blockedSub = "اینترنت قطعه تا آی‌پی‌ت لو نره — برای بازگشت لمس کن"
+    override val dns = "DNS"
+    override val dnsSub = "DNS رمزنگاری‌شده داخل تونل"
+    override val dnsAuto = "خودکار"
+    override val dnsCf = "کلودفلر DoH"
+    override val dnsGoogle = "گوگل DoH"
+    override val dnsCustom = "IP دلخواه"
+    override val dnsCustomHint = "مثلاً 178.22.122.100"
+    override val speedTest = "اسپیدتست"
+    override val speedResultSub = "اندازه‌گیری از داخل تونل زنده"
+    override val speedPing = "تأخیر"
+    override val speedDown = "دانلود"
+    override val speedUp = "آپلود"
+    override val speedTesting = "در حال تست…"
+    override val speedDone = "تموم شد"
+    override val speedFail = "تست نشد — اول وصل شو و دوباره امتحان کن"
+    override val speedNeedConn = "اول وصل شو — تست از داخل تونل انجام می‌شه"
+    override val statusTitle = "وضعیت سرورها"
+    override val statusSub = "سلامت هر سرور در همین لحظه"
+    override val statusDown = "قطع"
+    override val statusLive = "زنده"
+    override val importTitle = "ورود کانفیگ"
+    override val importLinkTab = "لینک کانفیگ"
+    override val importSubTab = "لینک اشتراک"
+    override val importLinkHint = "vless:// · vmess:// · trojan:// · ss://"
+    override val importSubHint = "https://آدرس-اشتراک-تو"
+    override val importName = "نام (اختیاری)"
+    override val importDefaultName = "سرور شخصی"
+    override val importAdd = "افزودن سرور"
+    override val importInvalid = "لینک معتبر به نظر نمی‌رسه — دوباره چک کن"
+    override val importFetch = "دریافت سرورها"
+    override val importFetching = "در حال دریافت…"
+    override val importAdded = "سرور به لیستت اضافه شد"
+    override val importSubOk = "سرورها از اشتراک وارد شدن"
+    override val importSubFail = "دریافت لینک اشتراک نشد"
+    override val qrScan = "اسکن کد QR"
+    override val qrPrompt = "دوربین رو روی کد QR کانفیگ بگیر"
+    override val qrNote = "مجوز دوربین فقط برای اسکن می‌خواد — هیچ چیزی ذخیره نمی‌شه"
+    override val wallet = "کیف پول"
+    override val walletSub = "موجودی، کد هدیه و پرداخت‌ها"
+    override val walletBalance = "موجودی"
+    override val toman = "تومان"
+    override val walletTopupNote = "شارژ با کد هدیه از پشتیبانی، یا از تیم بخواه کیف پولت رو شارژ کنه."
+    override val walletRedeem = "ردیم کد هدیه"
+    override val walletRedeemPh = "مثلاً MB-XXXXXX"
+    override val walletRedeemBtn = "ردیم کن"
+    override val walletTxs = "تراکنش‌ها"
+    override val txTopup = "شارژ کیف پول"
+    override val txPay = "خرید پلن"
+    override val walletRedeemOk = " تومان به کیف پولت اضافه شد 🎉"
+    override val walletRedeemBad = "کد نامعتبره یا قبلاً استفاده شده"
+    override val walletPayOk = "از کیف پول پرداخت شد — پرمیوم فعال شد 🎉"
+    override val walletPayLow = "موجودی کافی نیست — اول کد هدیه ردیم کن"
+    override val walletOff = "ارتباط با کیف پول برقرار نشد — اینترنتت رو چک کن"
+    override val promoPh = "کد تخفیف"
+    override val promoApply = "اعمال"
+    override val promoBad = "کد تخفیف معتبر نیست"
+    override val payWallet = "پرداخت با کیف پول · "
+    override val walletPayNote = "فعال‌سازی آنی از موجودی کیف پول"
+    override val walletOpenRow = "رفتن به کیف پول ←"
+    override val quotaWarnCta = "خرید پلن"
+    override val expiryWarnCta = "همین حالا تمدید"
+    override val usageChart = "۱۴ روز اخیر"
+    override val usageChartSub = "مصرف روزانهٔ تونل (گیگابایت)"
+    override val chartToday = "امروز"
+    override val privacyRow = "حریم خصوصی و بدون لاگ"
+    override val privacyRowSub = "چی ذخیره می‌کنیم — و چی هرگز"
+    override val codesTab = "کدها"
+    override val codesGift = "کد هدیه"
+    override val codesPromo = "کد تخفیف"
+    override val codesAmount = "مبلغ (تومان)"
+    override val codesPercent = "درصد %"
+    override val codesCreate = "ساخت کد"
+    override val codesDelete = "حذف"
+    override val codesUsed = "مصرف‌شده"
+    override val codesCreated = "کد ساخته شد: "
+
+    override fun quotaWarn(pct: Int) = "$pct٪ حجم رایگانت مصرف شده — قبل از تموم شدن یه پلن بگیر"
+    override fun expiryWarn(days: Int) = "پلنت $days روز دیگه تموم می‌شه — برای تمدید بزن"
+    override fun failoverToast(server: String) = "سرور قطع شد — منتقل شدی به $server"
+    override fun promoOk(pct: Int) = "$pct٪ تخفیف اعمال شد 🎉"
 }
 
 fun stringsOf(lang: Lang): Strings = if (lang == Lang.FA) FaStrings else EnStrings

@@ -38,6 +38,8 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.graphics.drawscope.rotate
@@ -71,6 +73,10 @@ fun PlansSheet(
     lang: Lang,
     reason: String,           // "renew" | "premium-lock" | "trial-over"
     payInfo: PayInfo,
+    walletBalance: Long = 0L,
+    onOpenWallet: () -> Unit = {},
+    onWalletPay: (planId: String, promo: String?) -> Unit = { _, _ -> },
+    onCheckPromo: (code: String, cb: (Int?) -> Unit) -> Unit = { _, cb -> cb(null) },
     onClose: () -> Unit,
     onCreateOrder: (planId: String, via: String, onResult: (String) -> Unit) -> Unit,
 ) {
@@ -83,6 +89,15 @@ fun PlansSheet(
     var busy by remember { mutableStateOf(false) }
     var orderId by remember { mutableStateOf("") }
     var resetKey by remember { mutableStateOf(0) }
+    var promo by remember { mutableStateOf("") }
+    var promoPct by remember { mutableStateOf(0) }
+    var promoBad by remember { mutableStateOf(false) }
+
+    /** قیمت نهایی پس از تخفیف — در پرداخت کیف پول و سفارش اعمال می‌شود. */
+    fun discountedPrice(planId: String): Long {
+        val base = when (planId) { "p1" -> 200_000L; "p3" -> 400_000L; else -> 700_000L }
+        return if (promoPct > 0) Math.round(base * (100 - promoPct) / 100.0) else base
+    }
 
     // reset flow when re-opened
     androidx.compose.runtime.LaunchedEffect(visible, resetKey) {
@@ -292,10 +307,59 @@ fun PlansSheet(
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Text(
-                            "${t.continuePay} — ${priceStr(sel.key)}",
+                            "${t.continuePay} — " + (if (promoPct > 0) fmtToman(discountedPrice(plan)) + " " + t.toman else priceStr(sel.key)),
                             color = mb.night, fontSize = 15.sp, fontWeight = FontWeight.Bold,
                             textAlign = TextAlign.Center,
                         )
+                    }
+
+                    // ── v2: کد تخفیف ──
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(top = 10.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(mb.night)
+                            .padding(horizontal = 12.dp, vertical = 9.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(ic(R.drawable.ic_key_round), null, tint = mb.gold, modifier = Modifier.size(15.dp))
+                        Spacer(Modifier.width(8.dp))
+                        BasicTextField(
+                            value = promo,
+                            onValueChange = { v -> promo = v.uppercase().take(24); promoBad = false },
+                            singleLine = true,
+                            textStyle = TextStyle(color = mb.ink, fontSize = 13.sp),
+                            modifier = Modifier.weight(1f),
+                            decorationBox = { inner ->
+                                Box {
+                                    if (promo.isEmpty()) Text(t.promoPh, color = mb.dim, fontSize = 13.sp)
+                                    inner()
+                                }
+                            },
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            t.promoApply,
+                            color = if (promo.isBlank()) mb.dim else mb.glow,
+                            fontSize = 13.sp, fontWeight = FontWeight.Bold,
+                            modifier = Modifier
+                                .clickable(enabled = promo.isNotBlank()) {
+                                    onCheckPromo(promo.trim().uppercase()) { pct ->
+                                        if (pct != null && pct > 0) {
+                                            promoPct = pct
+                                            promoBad = false
+                                        } else {
+                                            promoPct = 0
+                                            promoBad = true
+                                        }
+                                    }
+                                }
+                                .padding(horizontal = 6.dp, vertical = 4.dp),
+                        )
+                    }
+                    if (promoBad && promoPct == 0) {
+                        Text(t.promoBad, color = mb.danger, fontSize = 11.sp, modifier = Modifier.padding(top = 4.dp))
                     }
                 }
 
@@ -303,6 +367,43 @@ fun PlansSheet(
                     Text(
                         t.payTitle, color = mb.ink, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
                         modifier = Modifier.padding(top = 12.dp),
+                    )
+                    // ── v2: پرداخت با کیف پول — فعال‌سازی آنی ──
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(top = 8.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(mb.night)
+                            .border(
+                                1.dp,
+                                if (walletBalance >= discountedPrice(plan)) mb.glow.copy(alpha = 0.5f) else mb.panelEdge,
+                                RoundedCornerShape(12.dp),
+                            )
+                            .clickable(enabled = !busy) {
+                                onWalletPay(plan, if (promoPct > 0) promo.trim().uppercase() else null)
+                            }
+                            .padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(ic(R.drawable.ic_credit_card), null, tint = mb.glow, modifier = Modifier.size(20.dp))
+                        Spacer(Modifier.width(12.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(t.payWallet + fmtToman(walletBalance) + " " + t.toman, color = mb.ink, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                            Text(t.walletPayNote, color = mb.dim, fontSize = 12.sp, modifier = Modifier.padding(top = 2.dp))
+                        }
+                        Text(
+                            fmtToman(discountedPrice(plan)),
+                            color = mb.ink, fontSize = 13.sp, fontWeight = FontWeight.Bold,
+                        )
+                    }
+                    Text(
+                        t.walletOpenRow,
+                        color = mb.glow, fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier
+                            .padding(top = 6.dp)
+                            .clickable { onOpenWallet() }
+                            .padding(vertical = 2.dp),
                     )
                     // card to card
                     Row(

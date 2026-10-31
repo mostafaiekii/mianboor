@@ -3,4 +3,7 @@
     <string name="app_name">Mianboor</string>
     <string name="notif_title">Mianboor فعال است</string>
     <string name="notif_text">اتصال امن شما برقرار است</string>
+    <string name="notif_blocked">اینترنت توسط Kill Switch بسته شده — برای بازگشت اپ را باز کن</string>
+    <string name="tile_label">Mianboor VPN</string>
+    <string name="qr_scanner">اسکن کد QR</string>
 </resources>

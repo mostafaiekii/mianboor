@@ -93,6 +93,9 @@ fun UsageSheet(
                 modifier = Modifier.padding(top = 4.dp),
             )
 
+            // ── v2: نمودار مصرف ۱۴ روز اخیر ──
+            UsageChart14(lang)
+
             if (apps.isEmpty() && servers.isEmpty()) {
                 Text(
                     "—",
@@ -130,6 +133,59 @@ fun UsageSheet(
                 }
             }
             Spacer(Modifier.height(8.dp))
+        }
+    }
+}
+
+/** نمودار مصرف ۱۴ روز اخیر — واقعی از AppPrefs.dailyUsage (نسخهٔ ۲). */
+@Composable
+private fun UsageChart14(lang: Lang) {
+    val t = stringsOf(lang)
+    val mb = LocalMb.current
+    val context = LocalContext.current
+    val days = remember {
+        val map = AppPrefs.dailyUsage(context)
+        val fmt = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US)
+        val lbl = java.text.SimpleDateFormat("EEE", java.util.Locale.US)
+        (13 downTo 0).map { i ->
+            val d = java.util.Date(System.currentTimeMillis() - i * 86_400_000L)
+            val key = fmt.format(d)
+            Triple(lbl.format(d), map[key] ?: 0L, i == 0)
+        }
+    }
+    val max = days.maxOfOrNull { it.second }?.coerceAtLeast(1L) ?: 1L
+
+    Column(Modifier.fillMaxWidth().padding(top = 14.dp)) {
+        Text(t.usageChart, color = mb.ink, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+        Text(t.usageChartSub, color = mb.dim, fontSize = 10.sp, modifier = Modifier.padding(top = 2.dp))
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .padding(top = 8.dp)
+                .height(64.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .background(mb.night)
+                .padding(horizontal = 10.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.Bottom,
+            horizontalArrangement = Arrangement.spacedBy(3.dp),
+        ) {
+            days.forEach { (_, bytes, isToday) ->
+                Box(
+                    Modifier
+                        .weight(1f)
+                        .fillMaxHeight(Math.max(0.03f, (bytes.toFloat() / max)))
+                        .background(
+                            if (isToday) mb.gold else mb.glow.copy(alpha = 0.7f),
+                            RoundedCornerShape(topStart = 2.dp, topEnd = 2.dp),
+                        ),
+                )
+            }
+        }
+        Row(
+            Modifier.fillMaxWidth().padding(top = 3.dp),
+            horizontalArrangement = Arrangement.End,
+        ) {
+            Text(t.chartToday, color = mb.dim, fontSize = 9.sp)
         }
     }
 }

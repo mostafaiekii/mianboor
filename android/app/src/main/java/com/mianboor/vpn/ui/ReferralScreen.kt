@@ -54,12 +54,14 @@ fun ReferralScreen(
     onRegister: (String) -> Unit,
     onBack: () -> Unit,
     toast: (String) -> Unit,
+    /** کد از دیپ‌لینک mianboor://ref/ — در فیلد از پیش پر می‌شود. */
+    prefill: String = "",
 ) {
     val t = stringsOf(lang)
     val mb = LocalMb.current
     val rtl = lang == Lang.FA
     val clipboard = LocalClipboardManager.current
-    var codeInput by remember { mutableStateOf("") }
+    var codeInput by remember(prefill) { mutableStateOf(prefill) }
 
     val inviteLink = "https://mianboor.vercel.app/r/$code"
     fun agoLabel(atMs: Long): String {
