@@ -1072,6 +1072,8 @@ fun AdminPanel(
     onPublishUpdate: (String, Int, String) -> Unit = { _, _, _ -> },
 ) {
     val mb = LocalMb.current
+    // Admin panel is English-only (like the rest of the panel chrome)
+    val t: Strings = EnStrings
     var tab by remember { mutableStateOf("configs") }
     var adding by remember { mutableStateOf(false) }
 
