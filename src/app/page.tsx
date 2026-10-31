@@ -1021,6 +1021,44 @@ export default function VpnDemoPage() {
             </div>
           </div>
         </div>
+
+        {/* ── TEMP: logo picker — local preview only, never committed ── */}
+        <div
+          dir="rtl"
+          className="fixed bottom-24 left-3 z-50 w-[300px] rounded-2xl border border-gold/40 bg-[#0A102A]/95 p-3 shadow-2xl backdrop-blur"
+        >
+          <p className="mb-2 text-xs font-bold text-gold">
+            انتخاب لوگو — یکی را بگو (A تا E)
+            <span className="ms-1 font-normal text-dim">موقتی</span>
+          </p>
+          <div className="grid grid-cols-3 gap-2">
+            {[
+              ["A", "گردنهٔ خورشید"],
+              ["B", "شیر و خورشید"],
+              ["C", "طاق ایرانی"],
+              ["D", "شمسهٔ هشت‌پر"],
+              ["E", "سپر مسیر"],
+            ].map(([k, name]) => (
+              <a
+                key={k}
+                href={`/logo-preview/${k.toLowerCase()}.svg`}
+                target="_blank"
+                rel="noreferrer"
+                className="group rounded-xl border border-panel-edge bg-panel p-1.5 text-center transition-colors hover:border-glow/60"
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element -- local SVG preview */}
+                <img
+                  src={`/logo-preview/${k.toLowerCase()}.svg`}
+                  alt={`logo ${k}`}
+                  className="mx-auto h-16 w-16 rounded-lg"
+                />
+                <span className="mt-1 block text-[10px] font-bold text-ink group-hover:text-glow">
+                  {k} · {name}
+                </span>
+              </a>
+            ))}
+          </div>
+        </div>
       </div>
     </main>
   );
