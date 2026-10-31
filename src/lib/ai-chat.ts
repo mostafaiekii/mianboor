@@ -76,7 +76,6 @@ export async function chatCompletion(
 /* پاسخ‌دهندهٔ قانون‌محور — چایک‌بکِ سریع پشتیبانی برای production       */
 /* ------------------------------------------------------------------ */
 
-const fa = (s: string) => s;
 const TG = "@member9";
 
 export function supportFallback(messages: ChatMessage[]): string {
