@@ -74,6 +74,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true, reply });
   } catch (err) {
     console.error("support-chat failed:", err);
-    return NextResponse.json({ ok: false, reply: "" }, { status: 200 });
+    // TODO: remove debug after diagnosis
+    return NextResponse.json({ ok: false, reply: "", debug: String(err).slice(0, 250) }, { status: 200 });
   }
 }
