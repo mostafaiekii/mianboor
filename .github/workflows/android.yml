@@ -82,7 +82,7 @@ jobs:
             -PMIANOOR_SERVER_URL="$SERVER_URL" \
             -PMIANOOR_CLIENT_TOKEN="$CLIENT_TOKEN" \
             -PMIANOOR_ADMIN_KEY="${MIANOOR_ADMIN_KEY:-}" \
-            -PMB_STORE_FILE=android/keystore/release.jks \
+            -PMB_STORE_FILE="$GITHUB_WORKSPACE/android/keystore/release.jks" \
             -PMB_STORE_PASSWORD="$MB_STORE_PASSWORD" \
             -PMB_KEY_ALIAS="$MB_KEY_ALIAS" \
             -PMB_KEY_PASSWORD="$MB_KEY_PASSWORD"

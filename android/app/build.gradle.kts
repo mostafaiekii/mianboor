@@ -8,10 +8,24 @@ android {
     compileSdk = 34
 
     // ── release keystore (CI injects via -P props from GitHub secrets) ──
-    // Falls back to the debug key for local builds so they stay installable.
-    val mbStoreFile = (project.findProperty("MB_STORE_FILE") as String?)?.let { file(it) }
+    // The -P path may be absolute (CI) or relative to the repo/module — try every
+    // base so the keystore is ALWAYS found. If it were missing, release builds
+    // would silently fall back to the debug key, which is REGENERATED RANDOMLY on
+    // every CI runner — each release would get a different signature and users
+    // could no longer update the app over the previous one.
+    val mbStorePath = project.findProperty("MB_STORE_FILE") as String?
+    val mbStoreFile: java.io.File? = mbStorePath?.let { raw ->
+        listOfNotNull(
+            file(raw),
+            rootDir.resolve(raw),
+            rootDir.parentFile?.resolve(raw),
+        ).firstOrNull { it.exists() }
+    }
+    if (mbStoreFile == null) {
+        logger.warn("MB_STORE_FILE keystore not found — release APK will be signed with the DEBUG key (unstable across CI runners).")
+    }
     signingConfigs {
-        if (mbStoreFile != null && mbStoreFile.exists()) {
+        if (mbStoreFile != null) {
             create("mianboorRelease") {
                 storeFile = mbStoreFile
                 storePassword = (project.findProperty("MB_STORE_PASSWORD") as String?) ?: ""
@@ -25,8 +39,8 @@ android {
         applicationId = "com.mianboor.vpn"
         minSdk = 26
         targetSdk = 34
-        versionCode = 11
-        versionName = "1.6.2"
+        versionCode = 12
+        versionName = "1.6.3"
 
         ndk {
             abiFilters += "arm64-v8a"
@@ -56,7 +70,7 @@ android {
             // Signed with the stable release key (from CI secrets) when present —
             // a consistent signature lowers Play Protect flags across updates.
             // Local builds fall back to the debug key so they stay installable.
-            signingConfig = if (mbStoreFile != null && mbStoreFile.exists())
+            signingConfig = if (mbStoreFile != null)
                 signingConfigs.getByName("mianboorRelease")
             else
                 signingConfigs.getByName("debug")

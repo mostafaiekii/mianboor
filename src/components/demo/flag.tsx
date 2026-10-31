@@ -80,8 +80,8 @@ const BODIES: Record<string, React.ReactNode> = {
   de: (
     <>
       <rect width="36" height="12" fill={BLACK} />
-      <rect y="12" width="36" height="12" fill="#DD7C08" />
-      <rect y="24" width="36" height="12" fill={YELLOW} />
+      <rect y="12" width="36" height="12" fill="#DD0000" />
+      <rect y="24" width="36" height="12" fill="#FFCC00" />
     </>
   ),
   fi: (

@@ -687,7 +687,17 @@ private fun MbAppInner(
                 }
             }
         }
-        context.registerReceiver(receiver, IntentFilter(android.app.DownloadManager.ACTION_DOWNLOAD_COMPLETE))
+        // RECEIVER_NOT_EXPORTED — on Android 14+ (targetSdk 34) a runtime receiver
+        // must declare export behavior or some OEM ROMs throw SecurityException at
+        // launch. System broadcasts (DownloadManager) still reach NOT_EXPORTED receivers.
+        runCatching {
+            androidx.core.content.ContextCompat.registerReceiver(
+                context,
+                receiver,
+                IntentFilter(android.app.DownloadManager.ACTION_DOWNLOAD_COMPLETE),
+                androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED,
+            )
+        }
         onDispose { runCatching { context.unregisterReceiver(receiver) } }
     }
 

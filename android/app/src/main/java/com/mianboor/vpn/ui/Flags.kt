@@ -101,9 +101,10 @@ fun Flag(code: String, side: Dp, modifier: Modifier = Modifier) {
                 rect(0f, 24f, 36f, 12f, F_BLUE)
             }
             "de" -> {
-                rect(0f, 0f, 36f, 12f, F_BLACK)
-                rect(0f, 12f, 36f, 12f, F_ORANGE)
-                rect(0f, 24f, 36f, 12f, F_YELLOW)
+                // Germany — modern federal flag: black–red–gold
+                rect(0f, 0f, 36f, 12f, Color(0xFF000000))
+                rect(0f, 12f, 36f, 12f, Color(0xFFDD0000))
+                rect(0f, 24f, 36f, 12f, Color(0xFFFFCC00))
             }
             "fi" -> {
                 rect(0f, 0f, 36f, 36f, F_WHITE)
