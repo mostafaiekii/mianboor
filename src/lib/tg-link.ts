@@ -56,9 +56,16 @@ export function parseTgProxyLink(link: string): ParsedTgProxyLink | null {
 
   if (kind === "mtproto") {
     const secret = (p.secret ?? "").trim();
-    // secret ام‌تی‌پروتو هگز است (معمولاً ۱۶/۳۲ یا با پیشوند ee/dd) — حداقل ۸ کاراکتر هگز
-    if (!secret || !/^[0-9a-fA-F]{8,}$/.test(secret)) return null;
-    return { server, port, kind, secret: secret.toLowerCase() };
+    // دو قالب واقعی secret ام‌تی‌پروتو:
+    //  ۱) hex ساده (۱۶/۳۲ کاراکتر یا با پیشوند ee/dd به‌صورت هگز)
+    //  ۲) حالت TLS/fakedTLS — پیشوند ee + بدنهٔ base64url (حروف بزرگ/کوچک، «-» و «_»)
+    //     این همان قالبی است که تلگرام امروز با «Copy Proxy Link» می‌دهد و
+    //     پذیرشش باعث رفع خطای «افزودن ناموفق بود» می‌شود.
+    if (!secret || !/^[0-9a-zA-Z_=+-]{8,512}$/.test(secret)) return null;
+    // فقط secret های کاملاً هگز lowercase می‌شوند — base64url به حروف حساس است
+    // و lowercase کردنش پروکسی را خراب می‌کند.
+    const normalized = /^[0-9a-f]+$/i.test(secret) ? secret.toLowerCase() : secret;
+    return { server, port, kind, secret: normalized };
   }
 
   // socks — user/pass اختیاری است

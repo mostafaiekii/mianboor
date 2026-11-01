@@ -185,11 +185,14 @@ export interface TgProxy {
   ping: number;
 }
 
-/** لیست جایگزین دمو — وقتی API در دسترس نیست (ok:false / demo:true / قطعی شبکه) */
+/** لیست جایگزین دمو — وقتی API در دسترس نیست (ok:false / demo:true / قطعی شبکه)
+ *  یکی از ردیف‌ها عمداً country:"gift" است تا پرچم طلایی هدیه + 🎁 هم در دمو دیده شود
+ *  (در اپ واقعی، پروکسی‌های تازه‌افزوده‌شده پیش‌فرض gift هستند). */
 export const TG_PROXY_FALLBACK: TgProxy[] = [
   { id: "tp1", title: "پروکسی طلایی تلگرام", server: "91.107.213.199", port: 443, kind: "mtproto", secret: "ee1603010200ee1603010200aabbccdd", country: "fi", ping: 64 },
   { id: "tp2", title: "پروکسی تلگرام اروپا", server: "5.188.206.14", port: 8443, kind: "mtproto", secret: "dd0000000000000aabbccddeeff00112233445566778899aabbccddeeff0011", country: "nl", ping: 98 },
   { id: "tp3", title: "پروکسی تلگرام ترکیه", server: "soc.mianboor.xyz", port: 1080, kind: "socks", secret: null, country: "tr", ping: 143 },
+  { id: "tp4", title: "پروکسی هدیه — لوکیشن نامشخص", server: "95.161.76.100", port: 443, kind: "mtproto", secret: "eeAbCdEfGhIjKlMnOpQrStUvWxYz0123456789-_AbCdEfGh", country: "gift", ping: 187 },
 ];
 
 /** آستانهٔ هشدار مصرف رایگان */

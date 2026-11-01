@@ -285,6 +285,8 @@ private fun MbAppInner(
     var adminLatest by remember { mutableStateOf<AdminSettings?>(null) }
     var adminPass by remember { mutableStateOf(AppPrefs.adminPass(context)) }
     var premiumOv by remember { mutableStateOf(AppPrefs.premiumOv(context)) }
+    // v2.1.1: پرچمِ بازنویسی‌شدهٔ کانفیگ‌ها (تغییر کشور بعد از ثبت)
+    var countryOv by remember { mutableStateOf(AppPrefs.countryOv(context)) }
     var disabledOv by remember { mutableStateOf(AppPrefs.stringSet(context, "disabled_ov")) }
     var hiddenOv by remember { mutableStateOf(AppPrefs.stringSet(context, "hidden_ov")) }
     var blockRoot by remember { mutableStateOf(true) }
@@ -405,7 +407,9 @@ private fun MbAppInner(
                 if (key in hiddenOv) return@forEach
                 add(
                     ConfigItem(
-                        key = key, name = cc.name, country = cc.country,
+                        key = key, name = cc.name,
+                        // پرچمِ تغییرشده از پنل مدیر مقدم بر کشورِ سرور است
+                        country = countryOv[key] ?: cc.country,
                         protocol = parsed.protocol, host = parsed.host, port = parsed.port,
                         ping = 90, premium = premiumOv[key] ?: cc.premium,
                         enabled = cc.active && key !in disabledOv, link = cc.link, local = false,
@@ -417,7 +421,8 @@ private fun MbAppInner(
                 val key = "loc:${lc.id}"
                 add(
                     ConfigItem(
-                        key = key, name = lc.name, country = lc.country,
+                        key = key, name = lc.name,
+                        country = countryOv[key] ?: lc.country,
                         protocol = parsed.protocol, host = parsed.host, port = parsed.port,
                         ping = 90, premium = premiumOv[key] ?: lc.premium,
                         enabled = lc.enabled, link = lc.link, local = true,
@@ -781,14 +786,63 @@ private fun MbAppInner(
         if (!url.startsWith("http") || key.isBlank()) return
         val fa = AppPrefs.lang(context) == "fa"
         scope.launch(Dispatchers.IO) {
-            val created = runCatching { MianboorApi.adminAddTgProxy(url, key, link, title) }.getOrNull()
+            // پیام دقیق سرور گرفته می‌شود — مثلا «لینک پروکسی نامعتبر است»
+            var srvErr = ""
+            val created = runCatching {
+                MianboorApi.adminAddTgProxy(url, key, link, title) { e -> srvErr = e }
+            }.getOrNull()
             withContext(Dispatchers.Main) {
-                toast(
-                    if (created != null) (if (fa) "پروکسی اضافه شد" else "Proxy added")
-                    else (if (fa) "افزودن ناموفق بود — لینک را چک کن" else "Add failed — check the link"),
-                )
+                when {
+                    created != null -> toast(if (fa) "پروکسی اضافه شد" else "Proxy added")
+                    srvErr.isNotBlank() -> toast(srvErr)
+                    else -> toast(
+                        if (fa) "افزودن ناموفق بود — لینک را چک کن" else "Add failed — check the link",
+                    )
+                }
                 loadAdminTgProxies()
             }
+        }
+    }
+
+    /** v2.1.1: تغییر پرچم پروکسی تلگرام از پنل مدیر (PATCH سرور + همین لحظه در لیست). */
+    fun changeTgProxyFlag(id: String, cc: String) {
+        adminTgProxies = adminTgProxies.map {
+            if (it.id == id) it.copy(country = cc) else it
+        }
+        val url = AppPrefs.serverUrl(context)
+        val key = AppPrefs.adminServerKey(context)
+        if (!url.startsWith("http") || key.isBlank()) return
+        scope.launch(Dispatchers.IO) {
+            val ok = runCatching { MianboorApi.adminPatchTgProxy(url, key, id, cc) }.getOrDefault(false)
+            withContext(Dispatchers.Main) {
+                val fa = AppPrefs.lang(context) == "fa"
+                if (!ok) toast(if (fa) "تغییر پرچم ناموفق بود" else "Flag change failed")
+            }
+        }
+    }
+
+    /** v2.1.1: تغییر پرچم کانفیگ از پنل مدیر — سروری و محلی + بازنویسی محلی برای نمایش فوری. */
+    fun changeConfigFlag(key: String, cc: String) {
+        countryOv = countryOv + (key to cc)
+        AppPrefs.setCountryOv(context, countryOv)
+        rebuildConfigs()
+        if (key.startsWith("srv:")) {
+            val url = AppPrefs.serverUrl(context)
+            val srvKey = AppPrefs.adminServerKey(context)
+            if (!url.startsWith("http") || srvKey.isBlank()) return
+            scope.launch(Dispatchers.IO) {
+                // کشور واقعی روی سرور هم عوض می‌شود تا همهٔ گوشی‌ها بگیرندش
+                runCatching {
+                    MianboorApi.adminPatchConfig(url, srvKey, key.removePrefix("srv:"), JSONObject().put("country", cc))
+                }
+            }
+        } else {
+            // کانفیگ محلی — مستقیم در حافظهٔ دستگاه اصلاح می‌شود
+            val id = key.removePrefix("loc:")
+            AppPrefs.setLocalConfigs(
+                context,
+                AppPrefs.localConfigs(context).map { if (it.id == id) it.copy(country = cc) else it },
+            )
         }
     }
 
@@ -1746,6 +1800,7 @@ private fun MbAppInner(
                         onTgRefresh = { loadAdminTgProxies() },
                         onAddTgProxy = { link, title -> addAdminTgProxy(link, title) },
                         onDeleteTgProxy = { id -> deleteAdminTgProxy(id) },
+                        onTgFlag = { id, cc -> changeTgProxyFlag(id, cc) },
                         configs = configs,
                         orders = serverOrders,
                         devices = serverDevices,
@@ -1803,6 +1858,7 @@ private fun MbAppInner(
                         onToggleConfig = { k, v -> toggleConfig(k, v) },
                         onDeleteConfig = { k -> deleteConfig(k) },
                         onTogglePremium = { k -> togglePremium(k) },
+                        onConfigFlag = { k, cc -> changeConfigFlag(k, cc) },
                         onAddConfig = { n, c, l, p -> addConfig(n, c, l, p) },
                         onOrderAction = { id, action -> serverOrderAction(id, action) },
                         onBlockRoot = { blockRoot = it },

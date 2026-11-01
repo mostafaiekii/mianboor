@@ -74,7 +74,9 @@ export async function POST(req: Request) {
   }
 
   const title = String(body.title ?? "").trim() || "پروکسی تلگرام";
-  const country = String(body.country ?? "").trim() || null;
+  // پیش‌فرض «gift» — لوکیشن پروکسی تلگرام از لینک معلوم نیست؛ مدیر بعداً از پنل
+  // می‌تواند پرچم واقعی را براش بگذارد (PATCH /api/admin/tgproxies/[id]).
+  const country = String(body.country ?? "").trim().toLowerCase() || "gift";
 
   if (!server) {
     return NextResponse.json({ ok: false, error: "سرور لازم است" }, { status: 400 });

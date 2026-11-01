@@ -341,13 +341,13 @@ fun HomeScreen(
             }
         }
 
-        // ── v2.1: دکمهٔ پروکسی تلگرام — دقیقا زیر دکمهٔ اتصال اصلی، سمت چپ صفحه ──
+        // ── v2.1: دکمهٔ پروکسی تلگرام — دقیقا زیر دکمهٔ اتصال اصلی، وسط صفحه ──
         // افکت شیشه‌ای: هر ۵ ثانیه یک رفلکس نور مورب از روی دکمه می‌گذرد
         Row(
             Modifier
                 .fillMaxWidth()
                 .padding(top = 10.dp),
-            horizontalArrangement = Arrangement.End,
+            horizontalArrangement = Arrangement.Center,
         ) {
             val shine = rememberInfiniteTransition(label = "tgshine")
             val shineX by shine.animateFloat(

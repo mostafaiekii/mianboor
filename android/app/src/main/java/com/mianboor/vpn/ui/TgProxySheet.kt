@@ -9,12 +9,11 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -106,7 +105,7 @@ fun TgProxySheet(
     }
 }
 
-/** یک ردیف پروکسی: پرچم (یا آیکن) + عنوان + نوع/سرور + پینگ رنگی + نشان سریع‌ترین. */
+/** یک ردیف پروکسی: پرچم (پیش‌فرض: پرچم طلایی هدیه + 🎁) + عنوان + نوع/سرور + پینگ رنگی + نشان سریع‌ترین. */
 @Composable
 private fun TgProxyRow(
     proxy: TgProxy,
@@ -115,6 +114,8 @@ private fun TgProxyRow(
     onClick: () -> Unit,
 ) {
     val mb = LocalMb.current
+    // لوکیشن پروکسی تلگرام از لینک معلوم نیست — مثل کانفیگ‌ها پرچم طلایی هدیه می‌گیرد
+    val gift = proxy.country.isBlank() || proxy.country == "gift"
     Row(
         Modifier
             .fillMaxWidth()
@@ -124,17 +125,14 @@ private fun TgProxyRow(
             .padding(horizontal = 12.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        if (proxy.country.isNotBlank()) {
-            Flag(proxy.country, 26.dp)
-        } else {
-            Box(
-                Modifier
-                    .size(26.dp)
-                    .clip(CircleShape)
-                    .background(mb.ink.copy(alpha = 0.1f)),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(ic(R.drawable.ic_send), null, tint = mb.dim, modifier = Modifier.size(13.dp))
+        Box {
+            Flag(if (gift) "gift" else proxy.country, 26.dp)
+            if (gift) {
+                Text(
+                    "🎁",
+                    fontSize = 10.sp,
+                    modifier = Modifier.align(Alignment.BottomEnd).offset(x = 6.dp, y = 5.dp),
+                )
             }
         }
         Spacer(Modifier.width(10.dp))
@@ -144,6 +142,10 @@ private fun TgProxyRow(
                     proxy.title, color = mb.ink, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
                     maxLines = 1, modifier = Modifier.weight(1f, fill = false),
                 )
+                if (gift) {
+                    Spacer(Modifier.width(6.dp))
+                    Text("🎁", fontSize = 11.sp)
+                }
                 if (fastest) {
                     Spacer(Modifier.width(8.dp))
                     Text(

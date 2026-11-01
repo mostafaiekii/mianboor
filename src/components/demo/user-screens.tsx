@@ -163,11 +163,26 @@ export function HomeScreen({
     (async () => {
       let list: TgProxy[] = TG_PROXY_FALLBACK;
       try {
-        const res = await fetch("/api/client/telegram/proxies", { headers: { "x-demo-user": "demo-user" } });
+        /* اگر NEXT_PUBLIC_CLIENT_TOKEN تنظیم شده باشد لیست واقعی سرور را می‌گیرد؛
+           وگرنه همان لیست دمو — با هر دو حالت کاملاً کار می‌کند. */
+        const tk = (process.env.NEXT_PUBLIC_CLIENT_TOKEN ?? "").trim();
+        const res = await fetch("/api/client/telegram/proxies" + (tk ? `?token=${encodeURIComponent(tk)}` : ""), {
+          headers: { "x-demo-user": "demo-user" },
+        });
         const j = res.ok ? await res.json().catch(() => null) : null;
         /* ok:false / demo:true / بدنهٔ نامعتبر → همون لیست دمو */
         if (j && j.demo !== true && j.ok === true && Array.isArray(j.proxies) && j.proxies.length > 0) {
-          list = j.proxies as TgProxy[];
+          list = (j.proxies as Array<Partial<TgProxy> & { id: string }>).map((p) => ({
+            id: String(p.id ?? `tp-${Math.random().toString(36).slice(2, 8)}`),
+            title: String(p.title ?? "پروکسی تلگرام"),
+            server: String(p.server ?? ""),
+            port: Number(p.port ?? 0),
+            kind: p.kind === "socks" ? "socks" : "mtproto",
+            secret: (p.secret as string | null) ?? null,
+            country: String(p.country ?? "gift") || "gift",
+            /* سرور پینگ نمی‌فرستد — پینگ نمایشی زندهٔ دمو */
+            ping: typeof p.ping === "number" && p.ping > 0 ? p.ping : 40 + Math.floor(Math.random() * 260),
+          })) as TgProxy[];
         }
       } catch {
         /* شبکه در دسترس نیست → fallback */
@@ -319,8 +334,8 @@ export function HomeScreen({
         </div>
       )}
 
-      {/* ── پروکسی تلگرام: دقیقا زیر دکمهٔ اتصال اصلی، سمت چپ صفحه — افکت شیشه‌ای رفلکس نور هر ۵ ثانیه ── */}
-      <div className="mt-4 flex justify-end">
+      {/* ── پروکسی تلگرام: دقیقا زیر دکمهٔ اتصال اصلی، وسط صفحه — افکت شیشه‌ای رفلکس نور هر ۵ ثانیه ── */}
+      <div className="mt-4 flex justify-center">
         <button
           type="button"
           onClick={() => setTgOpen(true)}
@@ -398,6 +413,7 @@ export function HomeScreen({
                 const fastest = p.ping === Math.min(...tgProxies.map((x) => x.ping));
                 const isDone = tgDoneId === p.id;
                 const isBusy = tgBusyId === p.id;
+                const gift = !p.country || p.country === "gift";
                 return (
                   <button
                     key={p.id}
@@ -411,10 +427,15 @@ export function HomeScreen({
                         : "flex items-center gap-3 rounded-xl border border-panel-edge bg-night px-3 py-3 text-start transition-colors hover:border-glow/40 disabled:opacity-80"
                     }
                   >
-                    <Flag code={p.country} size={28} />
+                    {/* پرچم طلایی هدیه برای پروکسی‌های بی‌لوکیشن — عین کانفیگ‌ها */}
+                    <span className="relative shrink-0">
+                      <Flag code={gift ? "gift" : p.country} size={28} />
+                      {gift && <span className="absolute -bottom-1.5 -end-1.5 text-[11px] leading-none">🎁</span>}
+                    </span>
                     <span className="min-w-0 flex-1">
                       <span className="flex items-center gap-1.5">
                         <span className="block truncate text-sm font-semibold text-ink">{p.title}</span>
+                        {gift && <span className="shrink-0 text-[11px] text-gold">🎁</span>}
                         {fastest && !isDone && (
                           <span className="shrink-0 rounded-full bg-glow/15 px-1.5 py-0.5 text-[10px] font-bold text-glow">{t.tgFastest}</span>
                         )}

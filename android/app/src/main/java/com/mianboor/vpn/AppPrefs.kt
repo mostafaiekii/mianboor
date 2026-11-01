@@ -141,6 +141,21 @@ object AppPrefs {
         ed(c).putString("premium_ov", o.toString()).apply()
     }
 
+    // ── کشورِ بازنویسی‌شده (تغییر پرچم از پنل مدیر — نسخهٔ ۲٫۱٫۱) ──
+    // کلید = "srv:<id>" یا "loc:<id>" — مقدار = کد کشور یا "gift"
+    fun countryOv(c: Context): Map<String, String> {
+        val o = JSONObject(p(c).getString("country_ov", "{}") ?: "{}")
+        val m = mutableMapOf<String, String>()
+        o.keys().forEach { k -> m[k] = o.optString(k) }
+        return m
+    }
+
+    fun setCountryOv(c: Context, m: Map<String, String>) {
+        val o = JSONObject()
+        m.forEach { (k, v) -> o.put(k, v) }
+        ed(c).putString("country_ov", o.toString()).apply()
+    }
+
     fun stringSet(c: Context, key: String): Set<String> {
         val a = JSONArray(p(c).getString(key, "[]") ?: "[]")
         return buildSet { for (i in 0 until a.length()) add(a.optString(i)) }

@@ -286,16 +286,28 @@ object MianboorApi {
     /**
      * POST /api/admin/tgproxies {link} — افزودن با «لینک کامل» tg://proxy یا t.me/proxy
      * (بدون ورود دستی فیلدها). خروجی: رکورد ساخته‌شده یا null.
+     * onErr (اختیاری): پیام خطای سرور — مثلا «لینک پروکسی نامعتبر است» — برای توست دقیق.
      */
-    fun adminAddTgProxy(serverUrl: String, adminKey: String, link: String, title: String): TgProxy? = runCatching {
+    fun adminAddTgProxy(serverUrl: String, adminKey: String, link: String, title: String, onErr: (String) -> Unit = {}): TgProxy? = runCatching {
         val parsed = TgProxyManager.parseLink(link)
             ?: throw IllegalArgumentException("لینک پروکسی نامعتبر است")
         val conn = adminConn(serverUrl, adminKey, "/api/admin/tgproxies", "POST")
         try {
             val payload = JSONObject().put("link", link.trim())
             if (title.isNotBlank()) payload.put("title", title.trim())
+            // پرچم پیش‌فرض هدیه — لوکیشن از لینک معلوم نیست (مدیر بعداً عوض می‌کند)
+            payload.put("country", "gift")
             sendJson(conn, payload)
-            if (conn.responseCode !in 200..299) return@runCatching null
+            if (conn.responseCode !in 200..299) {
+                val errBody = runCatching {
+                    conn.errorStream?.bufferedReader()?.use { it.readText() }
+                }.getOrNull()
+                val errMsg = runCatching {
+                    JSONObject(errBody ?: "").optString("error")
+                }.getOrNull().takeIf { !it.isNullOrBlank() }
+                onErr(errMsg ?: ("HTTP " + conn.responseCode))
+                return@runCatching null
+            }
             val o = JSONObject(conn.inputStream.bufferedReader().use { it.readText() })
             if (!o.optBoolean("ok", false)) return@runCatching null
             val p = o.optJSONObject("proxy") ?: return@runCatching null
@@ -311,7 +323,20 @@ object MianboorApi {
         } finally {
             conn.disconnect()
         }
+    }.onFailure {
+        onErr(it.message ?: "")
     }.getOrNull()
+
+    /** PATCH /api/admin/tgproxies/[id] — تغییر پرچم/کشور پروکسی بعد از ثبت (نسخهٔ ۲٫۱٫۱). */
+    fun adminPatchTgProxy(serverUrl: String, adminKey: String, id: String, country: String): Boolean = runCatching {
+        val conn = adminConn(serverUrl, adminKey, "/api/admin/tgproxies/$id", "PATCH")
+        try {
+            sendJson(conn, JSONObject().put("country", country))
+            conn.responseCode in 200..299
+        } finally {
+            conn.disconnect()
+        }
+    }.getOrDefault(false)
 
     /** DELETE /api/admin/tgproxies?id=… — حذف پروکسی (پنل مدیر). */
     fun adminDeleteTgProxy(serverUrl: String, adminKey: String, id: String): Boolean = runCatching {

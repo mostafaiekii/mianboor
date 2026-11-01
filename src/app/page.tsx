@@ -960,7 +960,6 @@ export default function VpnDemoPage() {
     setSpeedResults({});
     setSpeedOpen(false);
     setSpeed(null);
-    setStatusOpen(false);
     setImportOpen(false);
     setDevicesOpen(false);
     setWallet(freshWallet());

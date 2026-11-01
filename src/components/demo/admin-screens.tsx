@@ -1010,6 +1010,61 @@ function OtaTab({
   );
 }
 
+/* ── انتخاب پرچم — تغییر کشور یک کانفیگ/پروکسی بعد از ثبت (نسخهٔ ۲٫۱٫۱) ──
+ * چون ممکن است کشور را اشتباه انتخاب کرده باشی، در پنل مدیریت پرچم هر ردیف
+ * قابل لمس است و این پاپ‌اور باز می‌شود: «هدیه» (طلایی) + همهٔ کشورها. */
+function FlagPicker({
+  current,
+  onPick,
+  onClose,
+}: {
+  current: string;
+  onPick: (cc: string) => void;
+  onClose: () => void;
+}) {
+  return (
+    <div className="absolute inset-0 z-30 flex flex-col justify-end bg-night/70 backdrop-blur-sm" onClick={onClose} role="presentation">
+      <div
+        className="sheet-in rounded-t-3xl border-t border-panel-edge bg-panel px-5 pt-4 pb-6"
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-label="تغییر پرچم"
+      >
+        <div className="flex items-center justify-between">
+          <h3 className="font-display text-lg font-bold text-ink">تغییر پرچم</h3>
+          <button type="button" onClick={onClose} aria-label="بستن" className="text-dim hover:text-ink">
+            <X className="size-5" />
+          </button>
+        </div>
+        <p className="mt-0.5 text-xs leading-5 text-dim">
+          کشور را اشتباه گذاشتی؟ پرچم درست را انتخاب کن — همان لحظه برای همهٔ کاربران عوض می‌شود.
+        </p>
+        <div className="scroll-hide mt-3 flex max-h-64 flex-wrap gap-3 overflow-y-auto pb-1">
+          {Object.keys(COUNTRIES).map((c) => (
+            <button
+              type="button"
+              key={c}
+              onClick={() => {
+                onPick(c);
+                onClose();
+              }}
+              aria-label={c === "gift" ? "هدیه (نامشخص)" : COUNTRIES[c]}
+              title={c === "gift" ? "هدیه (نامشخص)" : COUNTRIES[c]}
+              className={
+                current === c
+                  ? "rounded-full ring-2 ring-gold ring-offset-2 ring-offset-panel"
+                  : "rounded-full opacity-60 hover:opacity-100"
+              }
+            >
+              <Flag code={c} size={30} />
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ── پروکسی‌های تلگرام — مدیریت از پنل ادمین ──
  * لیست و حذف اینجاست؛ «افزودن» از دکمهٔ Add config ← تب «پروکسی تلگرام»
  * انجام می‌شود (فقط لینک کامل). وضعیت اتصال به API: null=در حال بررسی ·
@@ -1019,11 +1074,14 @@ function TgProxiesCard({
   items,
   demo,
   onDelete,
+  onFlag,
 }: {
   items: TgProxy[];
   demo: boolean | null;
   onDelete: (id: string) => void;
+  onFlag: (id: string, cc: string) => void;
 }) {
+  const [flagFor, setFlagFor] = useState<string | null>(null);
   return (
     <div className="rounded-xl border border-panel-edge bg-panel p-4">
       <div className="flex items-center gap-2 text-sm font-semibold text-ink">
@@ -1034,7 +1092,7 @@ function TgProxiesCard({
       </div>
       <div className="mt-1 text-xs leading-5 text-dim">
         پروکسی‌های MTProto/SOCKS که کاربران با دکمهٔ «پروکسی تلگرام» در صفحهٔ اصلی می‌گیرند. برای افزودن، دکمهٔ
-        «Add config» ← تب «پروکسی تلگرام» — فقط لینک کامل را بچسبان.
+        «Add config» ← تب «پروکسی تلگرام» — فقط لینک کامل را بچسبان. لمس پرچم هر ردیف = تغییر کشور.
       </div>
 
       <div className="scroll-hide mt-3 flex max-h-96 flex-col gap-2 overflow-y-auto">
@@ -1045,9 +1103,22 @@ function TgProxiesCard({
         ) : items.length === 0 ? (
           <div className="rounded-lg bg-night px-3 py-4 text-center text-xs text-dim">هیچ پروکسی‌ای ثبت نشده.</div>
         ) : (
-          items.map((x) => (
+          items.map((x) => {
+            const gift = !x.country || x.country === "gift";
+            return (
             <div key={x.id} className="rounded-lg bg-night px-3 py-2.5">
               <div className="flex items-center gap-2">
+                {/* پرچم (پیش‌فرض طلایی هدیه) — لمس = تغییر کشور */}
+                <button
+                  type="button"
+                  onClick={() => setFlagFor(x.id)}
+                  aria-label={`تغییر پرچم ${x.title}`}
+                  title="تغییر پرچم"
+                  className="relative shrink-0 opacity-90 transition-opacity hover:opacity-100"
+                >
+                  <Flag code={gift ? "gift" : x.country} size={26} />
+                  {gift && <span className="absolute -bottom-1.5 -end-1.5 text-[10px] leading-none">🎁</span>}
+                </button>
                 <span className="min-w-0 flex-1 truncate text-sm font-semibold text-ink">{x.title}</span>
                 <span className="shrink-0 rounded-full bg-glow/15 px-2 py-0.5 text-[10px] font-bold uppercase text-glow">{x.kind}</span>
                 <button type="button" onClick={() => onDelete(x.id)} aria-label={`حذف ${x.title}`} className="shrink-0 text-dim hover:text-danger">
@@ -1061,9 +1132,18 @@ function TgProxiesCard({
                 {x.secret && <span className="shrink-0 text-[10px] opacity-70">secret ✓</span>}
               </div>
             </div>
-          ))
+            );
+          })
         )}
       </div>
+
+      {flagFor && (
+        <FlagPicker
+          current={items.find((x) => x.id === flagFor)?.country ?? "gift"}
+          onPick={(cc) => onFlag(flagFor, cc)}
+          onClose={() => setFlagFor(null)}
+        />
+      )}
     </div>
   );
 }
@@ -1104,6 +1184,8 @@ export function AdminPanel({
   const [tab, setTab] = useState<"configs" | "orders" | "users" | "notifs" | "update">("configs");
   const [adding, setAdding] = useState(false);
   const [toast, setToast] = useState("");
+  /* تغییر پرچم کانفیگ — ردیفی که پاپ‌اور پرچمش باز است (شناسهٔ کانفیگ دموی عددی است) */
+  const [flagForConfig, setFlagForConfig] = useState<number | null>(null);
 
   /* پروکسی‌های تلگرام — state در پنل، بین لیست و Add config مشترک */
   const [tgItems, setTgItems] = useState<TgProxy[]>(TG_PROXY_FALLBACK);
@@ -1144,7 +1226,7 @@ export function AdminPanel({
       const r = await fetch("/api/admin/tgproxies", {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-demo-user": "demo-user" },
-        body: JSON.stringify({ link: rawLink, title: item.title }),
+        body: JSON.stringify({ link: rawLink, title: item.title, country: "gift" }),
       });
       ok = r.ok;
     } catch {
@@ -1167,6 +1249,40 @@ export function AdminPanel({
     }
     setTgItems((xs) => xs.filter((x) => x.id !== id));
     setToast(ok ? "پروکسی حذف شد" : "حالت دمو");
+  };
+
+  /* ── تغییر پرچم (نسخهٔ ۲٫۱٫۱) — کشور اشتباه را بعد از ثبت درست کن ──
+   * هر دو بهترین‌تلاش PATCH به سرور را می‌زنند؛ در حالت دمو فقط محلی عوض می‌شود. */
+  const flagTgProxy = async (id: string, cc: string) => {
+    setTgItems((xs) => xs.map((x) => (x.id === id ? { ...x, country: cc } : x)));
+    let ok = false;
+    try {
+      const r = await fetch(`/api/admin/tgproxies/${encodeURIComponent(id)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", "x-demo-user": "demo-user" },
+        body: JSON.stringify({ country: cc }),
+      });
+      ok = r.ok;
+    } catch {
+      ok = false;
+    }
+    setToast(ok ? "پرچم پروکسی عوض شد" : "حالت دمو");
+  };
+
+  const flagConfig = async (id: number, cc: string) => {
+    setConfigs((cs) => cs.map((x) => (x.id === id ? { ...x, country: cc } : x)));
+    let ok = false;
+    try {
+      const r = await fetch(`/api/admin/configs/${encodeURIComponent(String(id))}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", "x-demo-user": "demo-user" },
+        body: JSON.stringify({ country: cc }),
+      });
+      ok = r.ok;
+    } catch {
+      ok = false;
+    }
+    setToast(ok ? "پرچم کانفیگ عوض شد" : "حالت دمو");
   };
 
   const active = configs.filter((c) => c.enabled).length;
@@ -1238,7 +1354,16 @@ export function AdminPanel({
                   : "flex items-center gap-3 rounded-xl border border-panel-edge bg-panel/50 px-3 py-3 opacity-60"
               }
             >
-              <Flag code={c.country} size={30} />
+              {/* لمس پرچم = تغییر کشور (اگر اشتباه گذاشتی) */}
+              <button
+                type="button"
+                onClick={() => setFlagForConfig(c.id)}
+                aria-label={`تغییر پرچم ${c.name}`}
+                title="تغییر پرچم"
+                className="shrink-0 opacity-90 transition-opacity hover:opacity-100"
+              >
+                <Flag code={c.country} size={30} />
+              </button>
               <span className="min-w-0 flex-1">
                 <span className="flex items-center gap-1 truncate text-sm font-semibold text-ink">
                   {c.name} {c.premium && <Crown className="size-3.5 shrink-0 fill-gold text-gold" />}
@@ -1266,8 +1391,8 @@ export function AdminPanel({
             </div>
           ))}
 
-          {/* ── پروکسی‌های تلگرام: لیست + حذف (افزودن از Add config) ── */}
-          <TgProxiesCard items={tgItems} demo={tgDemo} onDelete={deleteTgProxy} />
+          {/* ── پروکسی‌های تلگرام: لیست + حذف + تغییر پرچم (افزودن از Add config) ── */}
+          <TgProxiesCard items={tgItems} demo={tgDemo} onDelete={deleteTgProxy} onFlag={flagTgProxy} />
         </div>
       )}
 
@@ -1304,6 +1429,15 @@ export function AdminPanel({
             setToast("Published to all users");
           }}
           onAddTg={addTgProxy}
+        />
+      )}
+
+      {/* پاپ‌اور تغییر پرچم کانفیگ (نسخهٔ ۲٫۱٫۱) */}
+      {flagForConfig && (
+        <FlagPicker
+          current={configs.find((c) => c.id === flagForConfig)?.country ?? "gift"}
+          onPick={(cc) => flagConfig(flagForConfig, cc)}
+          onClose={() => setFlagForConfig(null)}
         />
       )}
     </div>

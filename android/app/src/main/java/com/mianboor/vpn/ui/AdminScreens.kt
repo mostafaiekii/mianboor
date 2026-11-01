@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -194,6 +195,78 @@ fun AdminLogin(
                 contentAlignment = Alignment.Center,
             ) {
                 Text("Unlock", color = mb.night, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Flag picker — تغییر کشور بعد از ثبت (نسخهٔ ۲٫۱٫۱): اگه پرچم را اشتباه گذاشتی
+// ---------------------------------------------------------------------------
+
+@Composable
+private fun FlagPickerSheet(
+    current: String,
+    onPick: (String) -> Unit,
+    onClose: () -> Unit,
+) {
+    val mb = LocalMb.current
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(mb.night.copy(alpha = 0.7f))
+            .clickable { onClose() },
+        contentAlignment = Alignment.BottomCenter,
+    ) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
+                .background(mb.panel)
+                .border(1.dp, mb.panelEdge, RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 20.dp, vertical = 16.dp),
+        ) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text("Change flag", color = mb.ink, fontSize = 18.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                Icon(ic(R.drawable.ic_x), "close", tint = mb.dim, modifier = Modifier.size(20.dp).clickable { onClose() })
+            }
+            Text(
+                "Wrong country? Pick the right flag — it changes for every user instantly.",
+                color = mb.dim, fontSize = 12.sp, lineHeight = 16.sp,
+                modifier = Modifier.padding(top = 4.dp),
+            )
+            // «هدیه» (طلایی) اول — بعد همهٔ کشورها؛ ۶تایی در هر ردیف
+            val codes = listOf("gift") + COUNTRIES.keys.toList()
+            codes.chunked(6).forEachIndexed { ri, row ->
+                Row(
+                    Modifier.fillMaxWidth().padding(top = if (ri == 0) 14.dp else 10.dp),
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                ) {
+                    row.forEach { c ->
+                        val selected = current == c
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Box(
+                                Modifier
+                                    .then(if (selected) Modifier.border(2.dp, mb.gold, CircleShape) else Modifier)
+                                    .padding(2.dp),
+                            ) {
+                                Flag(c, 32.dp, Modifier.clickable {
+                                    onPick(c)
+                                    onClose()
+                                })
+                            }
+                            if (c == "gift") {
+                                Text(
+                                    "Gift",
+                                    color = if (selected) mb.gold else mb.dim,
+                                    fontSize = 9.sp,
+                                    modifier = Modifier.padding(top = 2.dp),
+                                )
+                            }
+                        }
+                    }
+                }
             }
         }
     }
@@ -1101,12 +1174,17 @@ fun AdminPanel(
     onTgRefresh: () -> Unit = {},
     onAddTgProxy: (link: String, title: String) -> Unit = { _, _ -> },
     onDeleteTgProxy: (String) -> Unit = {},
+    // ── v2.1.1: تغییر پرچم — کانفیگ و پروکسی تلگرام، بعد از ثبت ──
+    onConfigFlag: (key: String, cc: String) -> Unit = { _, _ -> },
+    onTgFlag: (id: String, cc: String) -> Unit = { _, _ -> },
 ) {
     val mb = LocalMb.current
     // Admin panel is English-only (like the rest of the panel chrome)
     val t: Strings = EnStrings
     var tab by remember { mutableStateOf("configs") }
     var adding by remember { mutableStateOf(false) }
+    // پرچم در حال تغییر: ("config" to key) یا ("tg" to id) — باز کردن FlagPickerSheet
+    var flagEdit by remember { mutableStateOf<Pair<String, String>?>(null) }
 
     val active = configs.count { it.enabled }
     val pending = orders.count { it.status == "pending" }
@@ -1697,7 +1775,8 @@ fun AdminPanel(
                                 .padding(horizontal = 12.dp, vertical = 10.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            Flag(c.country, 30.dp)
+                            // لمس پرچم = تغییر کشور (اگه اشتباه گذاشتی) — نسخهٔ ۲٫۱٫۱
+                            Flag(c.country, 30.dp, Modifier.clickable { flagEdit = "config" to c.key })
                             Spacer(Modifier.width(12.dp))
                             Column(Modifier.weight(1f)) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1745,6 +1824,7 @@ fun AdminPanel(
                     onRefresh = onTgRefresh,
                     onAdd = onAddTgProxy,
                     onDelete = onDeleteTgProxy,
+                    onFlag = { id -> flagEdit = "tg" to id },
                     toast = toast,
                     modifier = Modifier.fillMaxWidth().weight(1f),
                 )
@@ -1816,6 +1896,21 @@ fun AdminPanel(
                 }
             }
         }
+
+        // ── v2.1.1: پاپ‌اور تغییر پرچم (کانفیگ / پروکسی تلگرام) ──
+        flagEdit?.let { (kind, id) ->
+            val current = when (kind) {
+                "tg" -> tgProxies.find { it.id == id }?.country
+                else -> configs.find { it.key == id }?.country
+            }?.ifBlank { "gift" } ?: "gift"
+            Box(Modifier.consumeClicks()) {
+                FlagPickerSheet(
+                    current = current,
+                    onPick = { cc -> if (kind == "tg") onTgFlag(id, cc) else onConfigFlag(id, cc) },
+                    onClose = { flagEdit = null },
+                )
+            }
+        }
     }
 }
 
@@ -1845,6 +1940,7 @@ private fun TgProxiesAdminTab(
     onRefresh: () -> Unit,
     onAdd: (link: String, title: String) -> Unit,
     onDelete: (String) -> Unit,
+    onFlag: (String) -> Unit,
     toast: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -1972,6 +2068,7 @@ private fun TgProxiesAdminTab(
         ) {
             items(proxies.size) { i ->
                 val p = proxies[i]
+                val gift = p.country.isBlank() || p.country == "gift"
                 Row(
                     Modifier
                         .fillMaxWidth()
@@ -1981,8 +2078,17 @@ private fun TgProxiesAdminTab(
                         .padding(horizontal = 12.dp, vertical = 10.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    if (p.country.isNotBlank()) Flag(p.country, 30.dp)
-                    else Flag("gift", 30.dp)
+                    // پرچم (پیش‌فرض: طلایی هدیه + 🎁) — لمس = تغییر کشور (نسخهٔ ۲٫۱٫۱)
+                    Box {
+                        Flag(if (gift) "gift" else p.country, 30.dp, Modifier.clickable { onFlag(p.id) })
+                        if (gift) {
+                            Text(
+                                "🎁",
+                                fontSize = 10.sp,
+                                modifier = Modifier.align(Alignment.BottomEnd).offset(x = 7.dp, y = 6.dp),
+                            )
+                        }
+                    }
                     Spacer(Modifier.width(12.dp))
                     Column(Modifier.weight(1f)) {
                         Text(
