@@ -88,7 +88,7 @@ fun TgTunnelScreen(
         videoUrl =
             AppPrefs.serverUrl(context).trim().trimEnd('/') +
                 "/api/tgtunnel/media?name=" + name +
-                "&token=" + android.net.URLEncoder.encode(AppPrefs.clientToken(context), "UTF-8")
+                "&token=" + java.net.URLEncoder.encode(AppPrefs.clientToken(context), "UTF-8")
     }
 
     fun go(raw: String) {
