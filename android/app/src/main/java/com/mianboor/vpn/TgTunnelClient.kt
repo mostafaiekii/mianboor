@@ -235,7 +235,7 @@ object TgTunnelClient {
     }
 
     private fun friendly(e: Exception): String = when (e) {
-        is java.net.IOException -> "ارتباط با پُل برقرار نشد — اینترنت را چک کن"
+        is java.io.IOException -> "ارتباط با پُل برقرار نشد — اینترنت را چک کن"
         is IllegalStateException -> e.message ?: "خطا در تونل"
         else -> "خطا در تونل: ${e.message ?: "نامشخص"}"
     }
