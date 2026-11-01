@@ -1,6 +1,11 @@
 package com.mianboor.vpn.ui
 
+import android.media.MediaPlayer
+import android.net.Uri
+import android.view.View
 import android.webkit.WebView
+import android.widget.MediaController
+import android.widget.VideoView
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -71,6 +76,20 @@ fun TgTunnelScreen(
     var step by remember { mutableStateOf(0) }          // 0..4 در حال اجرا، ۵ = تمام
     var page by remember { mutableStateOf<TgTunnelPage?>(null) }
     var detail by remember { mutableStateOf<String?>(null) }
+    var videoUrl by remember { mutableStateOf<String?>(null) }
+    var videoBuffering by remember { mutableStateOf(false) }
+    var videoError by remember { mutableStateOf(false) }
+
+    /** پخش ویدیو از تونل — پخش‌کننده مستقیم به نقطهٔ پایانی استریم رمزی وصل می‌شود (سک = Range واقعی) */
+    fun playVideo(name: String) {
+        if (busy) return
+        videoError = false
+        videoBuffering = true
+        videoUrl =
+            AppPrefs.serverUrl(context).trim().trimEnd('/') +
+                "/api/tgtunnel/media?name=" + name +
+                "&token=" + android.net.URLEncoder.encode(AppPrefs.clientToken(context), "UTF-8")
+    }
 
     fun go(raw: String) {
         if (busy || raw.isBlank()) return
@@ -142,6 +161,75 @@ fun TgTunnelScreen(
                     TtChip(t.ttChipExample) { go("https://example.com") }
                     TtChip(t.ttChipWiki) { go("https://fa.wikipedia.org/wiki/ویکی‌پدیا") }
                 }
+
+                // ── ویدیو از داخل تونل ──
+                Text(
+                    t.ttVideoTitle,
+                    color = mb.ink, fontSize = 13.sp, fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(top = 16.dp),
+                )
+                Text(t.ttVideoSub, color = mb.dim, fontSize = 11.sp, lineHeight = 15.sp, modifier = Modifier.padding(top = 2.dp))
+                Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TtChip(t.ttVideo360) { playVideo("clip-360.mp4") }
+                    TtChip(t.ttVideo480) { playVideo("clip-480.mp4") }
+                }
+                if (videoError) {
+                    Text(t.ttVideoFail, color = mb.danger, fontSize = 11.sp, modifier = Modifier.padding(top = 6.dp))
+                }
+                val vu = videoUrl
+                if (vu != null) {
+                    key(vu) {
+                        AndroidView(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 8.dp)
+                                .height(210.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .border(1.dp, mb.panelEdge, RoundedCornerShape(12.dp)),
+                            factory = { ctx ->
+                                VideoView(ctx).apply {
+                                    val mc = MediaController(ctx)
+                                    mc.setAnchorView(this)
+                                    setMediaController(mc)
+                                    setVideoURI(Uri.parse(vu))
+                                    setOnPreparedListener { mp ->
+                                        videoBuffering = false
+                                        mp.isLooping = false
+                                        start()
+                                    }
+                                    setOnInfoListener { _, what, _ ->
+                                        videoBuffering = what == MediaPlayer.MEDIA_INFO_BUFFERING_START
+                                        true
+                                    }
+                                    setOnErrorListener { _, _, _ ->
+                                        videoBuffering = false
+                                        videoError = true
+                                        true
+                                    }
+                                    addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
+                                        override fun onViewAttachedToWindow(v: View) {}
+                                        override fun onViewDetachedFromWindow(v: View) {
+                                            stopPlayback()
+                                        }
+                                    })
+                                }
+                            },
+                            update = { it.visibility = android.view.View.VISIBLE },
+                        )
+                    }
+                    if (videoBuffering) {
+                        Text(
+                            t.ttVideoLoading,
+                            color = mb.dim, fontSize = 11.sp,
+                            modifier = Modifier.padding(top = 6.dp),
+                        )
+                    }
+                }
+                Text(
+                    t.ttVideoNote,
+                    color = mb.dim, fontSize = 10.sp, lineHeight = 14.sp,
+                    modifier = Modifier.padding(top = 10.dp),
+                )
 
                 // ── دکمهٔ برو ──
                 Row(

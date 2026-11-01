@@ -358,6 +358,13 @@ interface Strings {
     val ttNote: String
     val ttChipWiki: String
     val ttChipExample: String
+    val ttVideoTitle: String
+    val ttVideoSub: String
+    val ttVideo360: String
+    val ttVideo480: String
+    val ttVideoLoading: String
+    val ttVideoFail: String
+    val ttVideoNote: String
 }
 
 object EnStrings : Strings {
@@ -733,6 +740,14 @@ object EnStrings : Strings {
         "The page itself comes through the encrypted tunnel; its images and styles load directly from the site. The full Telegram-proxy route lights up when the bridge is deployed on a VPS."
     override val ttChipWiki = "Wikipedia"
     override val ttChipExample = "Example"
+    override val ttVideoTitle = "Video through the tunnel"
+    override val ttVideoSub = "Real streaming — every 16KB frame crosses the bridge encrypted"
+    override val ttVideo360 = "360p light"
+    override val ttVideo480 = "480p normal"
+    override val ttVideoLoading = "Buffering through the tunnel…"
+    override val ttVideoFail = "Video stream did not arrive — try again"
+    override val ttVideoNote =
+        "Mianboor TV clips stream through the bridge right now. Full YouTube playback needs the Level-2 bridge (VPS) — the engine is the same and already in place."
 }
 
 object FaStrings : Strings {
@@ -1107,6 +1122,14 @@ object FaStrings : Strings {
         "خود صفحه از تونل رمزی می‌آید؛ تصاویر و استایل‌هایش مستقیم از سایت لود می‌شوند. مسیر کامل پروکسی تلگرام وقتی روشن می‌شود که پُل روی VPS وصل شود."
     override val ttChipWiki = "ویکی‌پدیا"
     override val ttChipExample = "نمونه"
+    override val ttVideoTitle = "ویدیو از داخل تونل"
+    override val ttVideoSub = "استریم واقعی — هر قاب ۱۶KB از پُل رمز می‌گذرد"
+    override val ttVideo360 = "۳۶۰p سبک"
+    override val ttVideo480 = "۴۸۰p معمولی"
+    override val ttVideoLoading = "در حال بافرگیری از تونل…"
+    override val ttVideoFail = "جریان ویدیو نرسید — دوباره تلاش کن"
+    override val ttVideoNote =
+        "کلیپ‌های میانبر همین حالا از پُل پخش می‌شوند. پخش کامل یوتیوب به پُل سطح ۲ (VPS) نیاز دارد — موتور همان است و از قبل جای‌گذاری شده."
 }
 
 fun stringsOf(lang: Lang): Strings = if (lang == Lang.FA) FaStrings else EnStrings

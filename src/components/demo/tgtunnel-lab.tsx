@@ -620,7 +620,7 @@ export function TgTunnelLab({ open, onClose }: { open: boolean; onClose: () => v
           </span>
           <div className="min-w-0">
             <h2 className="truncate text-base font-black sm:text-lg">آزمایشگاه: وبگردی کامل با پروکسی تلگرام</h2>
-            <p className="truncate text-xs text-muted-foreground">پیش‌نمایش زندهٔ TgTunnel — همان تجربه‌ای که به نسخهٔ ۲٫۱ اپ اندروید می‌آید</p>
+            <p className="truncate text-xs text-muted-foreground">پیش‌نمایش زندهٔ TgTunnel — همان تجربه‌ای که در نسخهٔ ۲٫۲ اپ اندروید منتشر شده</p>
           </div>
         </div>
         <button
@@ -907,8 +907,8 @@ export function TgTunnelLab({ open, onClose }: { open: boolean; onClose: () => v
                 از BotFather لازم است — موتورش همین است و در اپ از قبل جای‌گذاری شده.
               </li>
               <li>
-                <b className="text-foreground">اپ اصلی:</b> دکمهٔ «وبگردی کامل» در نسخهٔ ۲٫۱ کنار دکمهٔ پروکسی تلگرام
-                اضافه شد؛ این آزمایشگاه پیش‌نمایش زندهٔ همان تجربه است.
+                <b className="text-foreground">اپ اصلی:</b> دکمهٔ «وبگردی کامل» در نسخهٔ ۲٫۲ کنار دکمهٔ پروکسی تلگرام
+                منتشر شده؛ این آزمایشگاه پیش‌نمایش زندهٔ همان تجربه است.
               </li>
             </ul>
           </section>
