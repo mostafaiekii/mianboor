@@ -351,12 +351,16 @@ fun HomeScreen(
         ) {
             val shine = rememberInfiniteTransition(label = "tgshine")
             val shineX by shine.animateFloat(
-                animationSpec = keyframes {
-                    durationMillis = 5000
-                    -1.8f at 0
-                    2.8f at 1600
-                    2.8f at 5000
-                },
+                initialValue = -1.8f,
+                targetValue = 2.8f,
+                animationSpec = infiniteRepeatable(
+                    animation = keyframes {
+                        durationMillis = 5000
+                        2.8f at 1600   // سویپ نور در ۱٫۶ ثانیهٔ اول
+                        2.8f at 5000   // بقیهٔ چرخه — خارج از دکمه
+                    },
+                    repeatMode = RepeatMode.Restart,
+                ),
                 label = "tgshinex",
             )
             Row(
