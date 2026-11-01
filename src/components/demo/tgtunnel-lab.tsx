@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   AlertTriangle,
   Bot,
@@ -8,8 +8,9 @@ import {
   FlaskConical,
   Globe,
   Loader2,
+  Lock,
   Play,
-  ShieldCheck,
+  Server,
   Smartphone,
   X,
 } from "lucide-react";
@@ -18,9 +19,14 @@ import type { LabEvent, LabHop } from "@/lib/lab/protocol";
 
 /* ────────────────────────────────────────────────────────────────────────────
  * آزمایشگاه TgTunnel — دموی زندهٔ «وبگردی کامل با پروکسی تلگرام»
- * اپ → پروکسی MTProto → دیتاسنتر تلگرام → بات پُل → اینترنت آزاد → برگشت
- * همه‌چیز واقعی است جز نقش دیتاسنتر/بات که اینجا لوکال شبیه‌سازی شده.
+ * دو حالت:
+ *  ۱) «۴ هاپ لوکال» — اپ → پروکسی MTProto → دیتاسنتر → بات پُل → اینترنت
+ *     (نقش دیتاسنتر/بات لوکال شبیه‌سازی شده؛ همین مسیر با VPS واقعی می‌شود)
+ *  ۲) «پُل میانبر — بدون VPS» — همان موتوری که داخل اپ اندروید می‌آید:
+ *     فریم‌بندی ۱۶KB + رمز AES-256-GCM واقعی در مرورگر، پُل روی سرور میانبر
  * ──────────────────────────────────────────────────────────────────────────── */
+
+type Mode = "local" | "bridge";
 
 const HOP_META: Record<LabHop, { label: string; cls: string }> = {
   app: { label: "اپ", cls: "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" },
@@ -38,17 +44,165 @@ const PRESETS = [
 
 const DEMO_PROXY_LINK = "tg://proxy?server=127.0.0.1&port=3031&secret=dd6f9b2ddc9658ebf92244c869709c9f78";
 
+/** گره‌های نمایش مسیر برای هر حالت */
+const NODES: Record<Mode, { icon: typeof Smartphone; label: string; hint: string }[]> = {
+  local: [
+    { icon: Smartphone, label: "اپ میانبر", hint: "موتور TgTunnel" },
+    { icon: Lock, label: "پروکسی تلگرام", hint: "رلهٔ کور" },
+    { icon: Database, label: "دیتاسنتر تلگرام", hint: "بدون رمز درونی" },
+    { icon: Bot, label: "بات پُل", hint: "خروجی واقعی" },
+    { icon: Globe, label: "اینترنت آزاد", hint: "مقصد" },
+  ],
+  bridge: [
+    { icon: Smartphone, label: "اپ میانبر", hint: "همین کد در اپ" },
+    { icon: Lock, label: "قاب‌بندی + رمز", hint: "فریم ۱۶KB · AES-GCM" },
+    { icon: Server, label: "پُل میانبر", hint: "روی سرور خودمان" },
+    { icon: Globe, label: "خروج واقعی", hint: "واکشی مقصد" },
+    { icon: FlaskConical, label: "برگشت رمزی", hint: "فریم به فریم" },
+  ],
+};
+
 function fmtBytes(n: number): string {
   if (n >= 1024 * 1024) return `${(n / 1024 / 1024).toFixed(2)} MB`;
   if (n >= 1024) return `${(n / 1024).toFixed(1)} KB`;
   return `${n} B`;
 }
 
+/* ── موتور سمت مرورگر برای حالت «پُل میانبر» — همان کاری که اپ اندروید می‌کند ── */
+
+const enc = new TextEncoder();
+const dec = new TextDecoder();
+
+function hexToBytes(h: string): Uint8Array {
+  const a = new Uint8Array(h.length / 2);
+  for (let i = 0; i < a.length; i++) a[i] = parseInt(h.slice(i * 2, i * 2 + 2), 16);
+  return a;
+}
+function bytesToHex(b: Uint8Array): string {
+  return Array.from(b, (x) => x.toString(16).padStart(2, "0")).join("");
+}
+
+interface BridgeView {
+  ok: boolean;
+  error?: string;
+  body?: string;
+  contentType?: string;
+  finalUrl?: string;
+  title?: string | null;
+  truncated?: boolean;
+  trace: LabEvent[];
+  stats: { label: string; value: string }[];
+}
+
+async function bridgeBrowse(
+  url: string,
+  lit: (n: number) => void,
+): Promise<BridgeView> {
+  const trace: LabEvent[] = [];
+  const t0 = Date.now();
+  const log = (hop: LabHop, msg: string) => trace.push({ t: Date.now() - t0, hop, msg });
+
+  /* ۱) هندشیک */
+  lit(1);
+  const hs = await fetch("/api/tgtunnel/session", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ token: (process.env.NEXT_PUBLIC_CLIENT_TOKEN ?? "").trim() }),
+  }).then((r) => r.json());
+  if (!hs.ok) throw new Error(hs.error ?? "هندشیک با پُل شکست خورد");
+  log("app", `هندشیک انجام شد — نشست ${String(hs.sid).slice(0, 8)}… صادر شد${hs.demo ? " (حالت دمو)" : ""}`);
+
+  const cryptoKey = await crypto.subtle.importKey("raw", hexToBytes(hs.key) as BufferSource, "AES-GCM", false, [
+    "encrypt",
+    "decrypt",
+  ]);
+
+  /* ۲) قاب‌بندی و رمز درخواست */
+  lit(2);
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const sealed = new Uint8Array(
+    await crypto.subtle.encrypt({ name: "AES-GCM", iv: iv as BufferSource }, cryptoKey, enc.encode(JSON.stringify({ url }))),
+  );
+  log("app", `درخواست در قاب رمز شد — ${fmtBytes(sealed.length)} (IV ۱۲B + تگ GCM)`);
+
+  /* ۳) عبور از پُل و خروج واقعی */
+  lit(3);
+  const res = await fetch("/api/tgtunnel/fetch", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ sid: hs.sid, frames: [{ seq: 0, iv: bytesToHex(iv), ct: bytesToHex(sealed) }] }),
+  }).then((r) => r.json());
+  if (!res.ok) throw new Error(res.error ?? "پُل درخواست را نپذیرفت");
+  log("bridge", `پُل مقصد را واکشی کرد — ${res.meta.bytes} بایت در ${res.meta.ms}ms (وضعیت ${res.meta.status})`);
+  lit(4);
+
+  /* ۴) رمزگشایی فریم به فریم مسیر برگشت */
+  const parts: Uint8Array[] = [];
+  for (const f of res.frames as Array<{ seq: number; iv: string; ct: string }>) {
+    const pt = await crypto.subtle.decrypt(
+      { name: "AES-GCM", iv: hexToBytes(f.iv) as BufferSource },
+      cryptoKey,
+      hexToBytes(f.ct) as BufferSource,
+    );
+    parts.push(new Uint8Array(pt));
+  }
+  log("app", `${res.frames.length} فریم برگشتی رمزگشایی و چیده شد`);
+  lit(5);
+
+  const payload = JSON.parse(dec.decode(concatBytes(parts))) as {
+    status: number;
+    contentType: string;
+    finalUrl: string;
+    body: string;
+    bytes: number;
+    truncated: boolean;
+  };
+  const totalMs = Date.now() - t0;
+  log("net", `آمادهٔ نمایش — ${fmtBytes(payload.bytes)} از ${payload.finalUrl}`);
+
+  return {
+    ok: true,
+    body: payload.body,
+    contentType: payload.contentType,
+    finalUrl: payload.finalUrl,
+    truncated: payload.truncated,
+    trace,
+    stats: [
+      { label: "زمان کل", value: `${totalMs} ms` },
+      { label: "واکشی پُل", value: `${res.meta.ms} ms` },
+      { label: "حجم پاسخ", value: fmtBytes(payload.bytes) },
+      { label: "فریم‌ها", value: `۱↑ / ${res.frames.length}↓` },
+      { label: "وضعیت", value: `${payload.status}` },
+      {
+        label: "سرعت مؤثر",
+        value: totalMs > 0 && payload.bytes > 0 ? `${Math.max(1, Math.round(payload.bytes / 1024 / (totalMs / 1000)))} KB/s` : "—",
+      },
+    ],
+  };
+}
+
+function concatBytes(list: Uint8Array[]): Uint8Array {
+  const total = list.reduce((s, b) => s + b.length, 0);
+  const out = new Uint8Array(total);
+  let off = 0;
+  for (const b of list) {
+    out.set(b, off);
+    off += b.length;
+  }
+  return out;
+}
+
+/* ── کامپوننت آزمایشگاه ── */
+
 export function TgTunnelLab({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const [mode, setMode] = useState<Mode>("bridge");
   const [url, setUrl] = useState("https://example.com");
   const [running, setRunning] = useState(false);
-  const [result, setResult] = useState<LabBrowseResult | null>(null);
+  const [litHops, setLitHops] = useState(0);
+  const [result, setResult] = useState<LabBrowseResult | BridgeView | null>(null);
+  const [history, setHistory] = useState<string[]>([]);
   const [error, setError] = useState("");
+  const litTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -59,61 +213,83 @@ export function TgTunnelLab({ open, onClose }: { open: boolean; onClose: () => v
     };
   }, [open]);
 
+  useEffect(() => () => {
+    if (litTimer.current) clearInterval(litTimer.current);
+  }, []);
+
   if (!open) return null;
 
+  const isLab = (r: LabBrowseResult | BridgeView): r is LabBrowseResult => "timing" in r;
+  const view = result
+    ? isLab(result)
+      ? {
+          ok: result.ok,
+          error: result.error ?? "",
+          body: result.body ?? undefined,
+          contentType: result.contentType,
+          finalUrl: result.finalUrl,
+          title: result.title,
+          truncated: result.truncated,
+          trace: result.trace,
+          stats: [
+            { label: "زمان کل", value: `${result.timing.totalMs} ms` },
+            { label: "اولین بایت", value: result.timing.firstByteMs ? `${result.timing.firstByteMs} ms` : "—" },
+            { label: "حجم پاسخ", value: fmtBytes(result.bytes) },
+            { label: "چانک‌ها", value: `${result.chunksUp}↑ / ${result.chunksDown}↓` },
+            { label: "واکشی پُل", value: result.timing.bridgeMs ? `${result.timing.bridgeMs} ms` : "—" },
+            {
+              label: "سرعت مؤثر",
+              value:
+                result.timing.totalMs > 0 && result.bytes > 0
+                  ? `${Math.max(1, Math.round(result.bytes / 1024 / (result.timing.totalMs / 1000)))} KB/s`
+                  : "—",
+            },
+          ],
+          modeTag: result.mode === "hops" ? "۴ هاپ واقعی روی شبکه" : "تک‌سروری (fallback)",
+        }
+      : { ...result, modeTag: "پُل میانبر — بدون VPS" }
+    : null;
+
   const run = async (target: string) => {
-    if (running) return;
+    if (running || !target.trim()) return;
     setRunning(true);
     setError("");
     setResult(null);
+    setLitHops(1);
+    if (litTimer.current) clearInterval(litTimer.current);
+    litTimer.current = setInterval(() => setLitHops((n) => Math.min(n + 1, 5)), 420);
+    setHistory((h) => [target, ...h.filter((u) => u !== target)].slice(0, 6));
     try {
-      const res = await fetch("/api/lab/browse", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ url: target }),
-      });
-      const data = (await res.json()) as LabBrowseResult;
-      setResult(data);
-      if (!data.ok && data.error) setError(data.error);
-    } catch {
-      setError("ارتباط با موتور تونل برقرار نشد");
+      const r: LabBrowseResult | BridgeView =
+        mode === "bridge" ? await bridgeBrowse(target, () => {}) : await localBrowse(target);
+      if (litTimer.current) clearInterval(litTimer.current);
+      setLitHops(5);
+      setResult(r);
+      if (!r.ok && r.error) setError(r.error);
+    } catch (e) {
+      if (litTimer.current) clearInterval(litTimer.current);
+      setLitHops(0);
+      setError(e instanceof Error ? e.message : "ارتباط با تونل برقرار نشد");
     } finally {
       setRunning(false);
     }
   };
 
+  const localBrowse = async (target: string): Promise<LabBrowseResult> => {
+    const res = await fetch("/api/lab/browse", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ url: target }),
+    });
+    return (await res.json()) as LabBrowseResult;
+  };
+
   const doc =
-    result?.body && /html/i.test(result.contentType)
-      ? result.body.replace(
-          /<head([^>]*)>/i,
-          `<head$1><base href="${result.finalUrl}" target="_self">`,
-        )
+    view?.body && /html/i.test(view.contentType ?? "")
+      ? (view.body ?? "").replace(/<head([^>]*)>/i, `<head$1><base href="${view.finalUrl}" target="_self">`)
       : null;
 
-  const stats: { label: string; value: string }[] = result
-    ? [
-        { label: "زمان کل", value: `${result.timing.totalMs} ms` },
-        { label: "اولین بایت", value: result.timing.firstByteMs ? `${result.timing.firstByteMs} ms` : "—" },
-        { label: "حجم پاسخ", value: fmtBytes(result.bytes) },
-        { label: "چانک‌ها", value: `${result.chunksUp}↑ / ${result.chunksDown}↓` },
-        { label: "واکشی پُل", value: result.timing.bridgeMs ? `${result.timing.bridgeMs} ms` : "—" },
-        {
-          label: "سرعت مؤثر",
-          value:
-            result.timing.totalMs > 0 && result.bytes > 0
-              ? `${Math.max(1, Math.round(result.bytes / 1024 / (result.timing.totalMs / 1000)))} KB/s`
-              : "—",
-        },
-      ]
-    : [];
-
-  const nodes = [
-    { icon: Smartphone, label: "اپ میانبر", hint: "موتور TgTunnel" },
-    { icon: ShieldCheck, label: "پروکسی تلگرام", hint: "رلهٔ کور" },
-    { icon: Database, label: "دیتاسنتر تلگرام", hint: "بدون رمز درونی" },
-    { icon: Bot, label: "بات پُل", hint: "خروجی واقعی" },
-    { icon: Globe, label: "اینترنت آزاد", hint: "مقصد" },
-  ];
+  const nodes = NODES[mode];
 
   return (
     <div dir="rtl" className="fixed inset-0 z-[80] flex flex-col bg-background">
@@ -140,19 +316,50 @@ export function TgTunnelLab({ open, onClose }: { open: boolean; onClose: () => v
 
       <div className="flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-3xl space-y-4 p-4 sm:p-6">
+          {/* انتخاب حالت */}
+          <section className="grid grid-cols-2 gap-2 rounded-2xl border border-border bg-card p-2">
+            {(
+              [
+                { id: "bridge", title: "پُل میانبر — بدون VPS", sub: "همین که داخل اپ می‌آید" },
+                { id: "local", title: "۴ هاپ کامل (لوکال)", sub: "مسیر تلگرامی با بات پُل" },
+              ] as const
+            ).map((m) => (
+              <button
+                key={m.id}
+                type="button"
+                onClick={() => {
+                  setMode(m.id);
+                  setResult(null);
+                  setError("");
+                  setLitHops(0);
+                }}
+                className={`rounded-xl px-3 py-2.5 text-start transition ${
+                  mode === m.id
+                    ? "bg-emerald-600/15 ring-1 ring-emerald-600/40"
+                    : "hover:bg-muted"
+                }`}
+              >
+                <span className={`block text-[13px] font-bold ${mode === m.id ? "text-emerald-600 dark:text-emerald-400" : "text-foreground"}`}>
+                  {m.title}
+                </span>
+                <span className="mt-0.5 block text-[10px] text-muted-foreground">{m.sub}</span>
+              </button>
+            ))}
+          </section>
+
           {/* توپولوژی */}
           <section className="rounded-2xl border border-border bg-card p-4">
             <div className="mb-3 flex items-center justify-between gap-2">
               <h3 className="text-sm font-bold">مسیر تونل</h3>
-              {result && (
+              {view && (
                 <span
                   className={`rounded-full border px-2.5 py-1 text-[10px] font-semibold ${
-                    result.mode === "hops"
+                    view.ok
                       ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
                       : "border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400"
                   }`}
                 >
-                  {result.mode === "hops" ? "۴ هاپ واقعی روی شبکه" : "حالت تک‌سروری (fallback)"}
+                  {view.modeTag}
                 </span>
               )}
             </div>
@@ -162,12 +369,10 @@ export function TgTunnelLab({ open, onClose }: { open: boolean; onClose: () => v
                   <div className="flex min-w-0 flex-col items-center gap-1">
                     <span
                       className={`grid size-9 place-items-center rounded-full border-2 transition sm:size-11 ${
-                        running
-                          ? "animate-pulse border-emerald-500/60 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
-                          : result?.ok
-                            ? "border-emerald-500/50 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
-                            : "border-border bg-muted text-muted-foreground"
-                      }`}
+                        litHops > i
+                          ? "border-emerald-500/60 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                          : "border-border bg-muted text-muted-foreground"
+                      } ${running && litHops === i + 1 ? "animate-pulse" : ""}`}
                     >
                       <n.icon className="size-4 sm:size-5" />
                     </span>
@@ -177,7 +382,8 @@ export function TgTunnelLab({ open, onClose }: { open: boolean; onClose: () => v
                   </div>
                   {i < nodes.length - 1 && (
                     <span className="relative h-0.5 min-w-2 flex-1 rounded bg-border">
-                      {running && (
+                      {litHops > i + 1 && <i className="absolute inset-x-0 top-1/2 h-0.5 -translate-y-1/2 rounded bg-emerald-500/60" />}
+                      {running && litHops === i + 1 && (
                         <i
                           className="lab-dot absolute top-1/2 size-1.5 -translate-y-1/2 rounded-full bg-emerald-500"
                           style={{ animationDelay: `${i * 0.22}s` }}
@@ -189,7 +395,9 @@ export function TgTunnelLab({ open, onClose }: { open: boolean; onClose: () => v
               ))}
             </div>
             <p className="mt-3 text-[11px] leading-5 text-muted-foreground">
-              پروکسی فقط هندشیک را می‌بیند و بقیه را کورکورانه رله می‌کند؛ محتوا با رمز درونی اپ↔پل حتی از دیتاسنتر پنهان است.
+              {mode === "local"
+                ? "پروکسی فقط هندشیک را می‌بیند و بقیه را کورکورانه رله می‌کند؛ محتوا با رمز درونی اپ↔پل حتی از دیتاسنتر پنهان است."
+                : "درخواست به فریم‌های ۱۶KB شکسته و با AES-256-GCM رمز می‌شود؛ پُل روی سرور خود میانبر مقصد را واکشی و پاسخ را فریم‌به‌فریم رمزی برمی‌گرداند — بدون نیاز به VPS."}
             </p>
           </section>
 
@@ -234,12 +442,34 @@ export function TgTunnelLab({ open, onClose }: { open: boolean; onClose: () => v
                 </button>
               ))}
             </div>
-            <div className="mt-3 rounded-xl bg-muted/60 p-3">
-              <div className="text-[10px] font-semibold text-muted-foreground">لینک پروکسی تستی این آزمایشگاه (مثل فرمت واقعی اپ)</div>
-              <code dir="ltr" className="mt-1 block truncate text-left text-[11px] text-emerald-600 dark:text-emerald-400">
-                {DEMO_PROXY_LINK}
-              </code>
-            </div>
+            {history.length > 0 && (
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <span className="text-[10px] text-muted-foreground">بازدیدهای اخیر:</span>
+                {history.map((h) => (
+                  <button
+                    key={h}
+                    type="button"
+                    onClick={() => {
+                      setUrl(h);
+                      void run(h);
+                    }}
+                    disabled={running}
+                    dir="ltr"
+                    className="max-w-44 truncate rounded-full bg-muted/70 px-2.5 py-1 text-left text-[10px] text-muted-foreground transition hover:text-foreground disabled:opacity-50"
+                  >
+                    {h.replace(/^https?:\/\//, "")}
+                  </button>
+                ))}
+              </div>
+            )}
+            {mode === "local" && (
+              <div className="mt-3 rounded-xl bg-muted/60 p-3">
+                <div className="text-[10px] font-semibold text-muted-foreground">لینک پروکسی تستی این آزمایشگاه (مثل فرمت واقعی اپ)</div>
+                <code dir="ltr" className="mt-1 block truncate text-left text-[11px] text-emerald-600 dark:text-emerald-400">
+                  {DEMO_PROXY_LINK}
+                </code>
+              </div>
+            )}
           </section>
 
           {error && (
@@ -250,9 +480,9 @@ export function TgTunnelLab({ open, onClose }: { open: boolean; onClose: () => v
           )}
 
           {/* آمار */}
-          {result && (
+          {view && view.ok && (
             <section className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-              {stats.map((s) => (
+              {view.stats.map((s) => (
                 <div key={s.label} className="rounded-xl border border-border bg-card p-3">
                   <div className="text-[10px] text-muted-foreground">{s.label}</div>
                   <div className="mt-1 text-sm font-black tabular-nums">{s.value}</div>
@@ -262,11 +492,11 @@ export function TgTunnelLab({ open, onClose }: { open: boolean; onClose: () => v
           )}
 
           {/* گزارش مسیر */}
-          {result && result.trace.length > 0 && (
+          {view && view.trace.length > 0 && (
             <section className="rounded-2xl border border-border bg-card p-4">
               <h3 className="mb-3 text-sm font-bold">گزارش زندهٔ مسیر (هاپ به هاپ)</h3>
-              <div className="max-h-64 space-y-1.5 overflow-y-auto rounded-xl bg-muted/40 p-3 lab-scroll">
-                {result.trace.map((e: LabEvent, i) => (
+              <div className="lab-scroll max-h-64 space-y-1.5 overflow-y-auto rounded-xl bg-muted/40 p-3">
+                {view.trace.map((e: LabEvent, i) => (
                   <div key={i} className="flex items-start gap-2 text-[11px] leading-5">
                     <span className="w-14 shrink-0 text-left font-mono tabular-nums text-muted-foreground" dir="ltr">
                       {e.t}ms
@@ -282,13 +512,13 @@ export function TgTunnelLab({ open, onClose }: { open: boolean; onClose: () => v
           )}
 
           {/* خروجی */}
-          {result && result.ok && result.body && (
+          {view && view.ok && view.body && (
             <section className="rounded-2xl border border-border bg-card p-4">
               <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                 <h3 className="text-sm font-bold">خروجی داخل اپ (صفحهٔ واکشی‌شده از تونل)</h3>
-                {result.title && (
+                {view.title && (
                   <span className="max-w-full truncate rounded-full bg-muted px-3 py-1 text-[10px] text-muted-foreground">
-                    عنوان: {result.title}
+                    عنوان: {view.title}
                   </span>
                 )}
               </div>
@@ -301,12 +531,12 @@ export function TgTunnelLab({ open, onClose }: { open: boolean; onClose: () => v
                 />
               ) : (
                 <pre dir="ltr" className="max-h-64 overflow-auto rounded-xl border border-border bg-muted/40 p-3 text-left text-xs">
-                  {result.body.slice(0, 4000)}
+                  {(view.body ?? "").slice(0, 4000)}
                 </pre>
               )}
               <p className="mt-2 text-[10px] leading-4 text-muted-foreground">
                 HTML از داخل تونل آمده؛ برای سادگیِ نمایش، فایل‌های استایل/تصویر مستقیم از مقصد بارگیری می‌شوند و اسکریپت‌ها بسته‌اند.
-                {result.truncated && " پاسخ از سقف ۳MB دمو برش خورد."}
+                {view.truncated && " پاسخ از سقف ۳MB برش خورد."}
               </p>
             </section>
           )}
@@ -316,19 +546,21 @@ export function TgTunnelLab({ open, onClose }: { open: boolean; onClose: () => v
             <h3 className="mb-2 text-sm font-bold text-foreground">این دمو دقیقاً چی را ثابت می‌کند؟</h3>
             <ul className="list-inside list-disc space-y-1">
               <li>
-                <b className="text-foreground">واقعی:</b> هندشیک و رمز CTR دوطرفه (سبک obfuscated2)، رلهٔ کور پروکسی، رمز درونی
-                AES-GCM روی هر چانک، چانک‌بندی ۱۶KB، ۴ سرویس مستقل روی شبکهٔ واقعی، و واکشی واقعی صفحهٔ مقصد توسط پُل.
+                <b className="text-foreground">حالت «پُل میانبر» (بدون VPS):</b> واقعی و کامل — همان دو API و همان رمز
+                AES-256-GCM و همان قاب‌بندی ۱۶KB که داخل اپ اندروید نسخهٔ ۲٫۲ استفاده می‌شود؛ پُل روی سرور خود میانبر
+                (همین سایت) اجرا می‌شود و مقصد را واقعاً واکشی می‌کند.
               </li>
               <li>
-                <b className="text-foreground">شبیه‌سازی‌شده:</b> نقش دیتاسنتر و بات تلگرام این‌جا لوکال است؛ در نسخهٔ اصلی همان
-                نقش را دیتاسنتر واقعی تلگرام + بات روی VPS شما بازی می‌کند.
+                <b className="text-foreground">حالت «۴ هاپ لوکال»:</b> هندشیک و رمز CTR دوطرفه (سبک obfuscated2)، رلهٔ کور
+                پروکسی و واکشی واقعی توسط پُل — فقط نقش دیتاسنتر/بات لوکال شبیه‌سازی شده؛ با VPS همین مسیر واقعی می‌شود.
               </li>
               <li>
-                <b className="text-foreground">برای نسخهٔ اصلی لازم است:</b> یک VPS خارج از ایران + یک توکن بات از BotFather —
-                بقیه‌اش همین موتور است که به اپ اندروید اضافه می‌شود.
+                <b className="text-foreground">برای فعال شدن مسیر تلگرامی کامل:</b> فقط یک VPS خارج از ایران + یک توکن بات
+                از BotFather لازم است — موتورش همین است و در اپ از قبل جای‌گذاری شده.
               </li>
               <li>
-                <b className="text-foreground">اپ اصلی:</b> هیچ تغییری در اپ اندروید، ورک‌فلوها و ریلیزهای گیت‌هاب داده نشده.
+                <b className="text-foreground">اپ اصلی:</b> دکمهٔ «وبگردی کامل» در نسخهٔ ۲٫۲ کنار دکمهٔ پروکسی تلگرام
+                اضافه شد؛ این آزمایشگاه فقط پیش‌نمایش زندهٔ همان تجربه است.
               </li>
             </ul>
           </section>

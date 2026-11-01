@@ -91,6 +91,8 @@ fun HomeScreen(
     stealthOn: Boolean = false,
     // ── v2.1: پروکسی تلگرام ──
     onOpenTgProxy: () -> Unit = {},
+    // ── v2.2: وبگردی کامل (TgTunnel) ──
+    onOpenTgTunnel: () -> Unit = {},
 ) {
     val t = stringsOf(lang)
     val mb = LocalMb.current
@@ -341,13 +343,13 @@ fun HomeScreen(
             }
         }
 
-        // ── v2.1: دکمهٔ پروکسی تلگرام — دقیقا زیر دکمهٔ اتصال اصلی، وسط صفحه ──
-        // افکت شیشه‌ای: هر ۵ ثانیه یک رفلکس نور مورب از روی دکمه می‌گذرد
+        // ── v2.1+v2.2: زیر دکمهٔ اتصال اصلی — «پروکسی تلگرام» و «وبگردی کامل» کنار هم ──
+        // افکت شیشه‌ای: هر ۵ ثانیه یک رفلکس نور مورب از روی دکمهٔ تلگرام می‌گذرد
         Row(
             Modifier
                 .fillMaxWidth()
                 .padding(top = 10.dp),
-            horizontalArrangement = Arrangement.Center,
+            horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally),
         ) {
             val shine = rememberInfiniteTransition(label = "tgshine")
             val shineX by shine.animateFloat(
@@ -393,6 +395,20 @@ fun HomeScreen(
                 Icon(ic(R.drawable.ic_send), null, tint = mb.gold, modifier = Modifier.size(15.dp))
                 Spacer(Modifier.width(7.dp))
                 Text(t.tgProxy, color = mb.gold, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+            }
+            // v2.2: دکمهٔ وبگردی کامل (TgTunnel) — کنار پروکسی تلگرام
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(50))
+                    .background(mb.glow.copy(alpha = 0.10f))
+                    .border(1.dp, mb.glow.copy(alpha = 0.4f), RoundedCornerShape(50))
+                    .clickable { onOpenTgTunnel() }
+                    .padding(horizontal = 14.dp, vertical = 8.dp),
+            ) {
+                Icon(ic(R.drawable.ic_globe), null, tint = mb.glow, modifier = Modifier.size(15.dp))
+                Spacer(Modifier.width(7.dp))
+                Text(t.tgTunnel, color = mb.glow, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
             }
         }
 

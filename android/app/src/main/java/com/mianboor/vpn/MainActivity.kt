@@ -96,6 +96,7 @@ import com.mianboor.vpn.ui.LocalMb
 import com.mianboor.vpn.ui.ReferralScreen
 import com.mianboor.vpn.ui.SupportChatScreen
 import com.mianboor.vpn.ui.TgProxySheet
+import com.mianboor.vpn.ui.TgTunnelScreen
 import com.mianboor.vpn.ui.MbThemes
 import com.mianboor.vpn.ui.PlansSheet
 import com.mianboor.vpn.ui.ServersScreen
@@ -273,6 +274,8 @@ private fun MbAppInner(
     var importOpen by remember { mutableStateOf(false) }
     // ── v2.1: شیت پروکسی تلگرام ──
     var tgOpen by remember { mutableStateOf(false) }
+    // ── v2.2: وبگردی کامل (TgTunnel) ──
+    var ttOpen by remember { mutableStateOf(false) }
     var importBusy by remember { mutableStateOf(false) }
     var walletInfo by remember { mutableStateOf<WalletInfo?>(null) }
     var walletBusy by remember { mutableStateOf(false) }
@@ -1605,6 +1608,7 @@ private fun MbAppInner(
                         onRenew = { plansReason = "renew" },
                         stealthOn = stealth == "strict",
                         onOpenTgProxy = { tgOpen = true },
+                        onOpenTgTunnel = { ttOpen = true },
                     )
                     Screen.INBOX -> InboxScreen(
                         lang = lang,
@@ -1918,6 +1922,14 @@ private fun MbAppInner(
                 lang = lang,
                 onClose = { tgOpen = false },
                 onConnect = { connectTgProxy(it) },
+            )
+        }
+
+        // ── v2.2: وبگردی کامل (TgTunnel) — پُل میانبر، بدون نیاز به VPS ──
+        if (ttOpen) {
+            TgTunnelScreen(
+                lang = lang,
+                onClose = { ttOpen = false },
             )
         }
 

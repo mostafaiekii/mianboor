@@ -337,6 +337,27 @@ interface Strings {
     val tgAddedToast: String
     val tgSocksToast: String
     val tgNote: String
+
+    // ── v2.2: وبگردی کامل (TgTunnel) ──
+    val tgTunnel: String
+    val ttTitle: String
+    val ttSub: String
+    val ttHint: String
+    val ttGo: String
+    val ttPhaseHs: String
+    val ttPhaseUp: String
+    val ttPhaseEgress: String
+    val ttPhaseDown: String
+    val ttPhaseRender: String
+    val ttFailed: String
+    val ttOffline: String
+    val ttStatTime: String
+    val ttStatSize: String
+    val ttStatFrames: String
+    val ttSecured: String
+    val ttNote: String
+    val ttChipWiki: String
+    val ttChipExample: String
 }
 
 object EnStrings : Strings {
@@ -689,6 +710,29 @@ object EnStrings : Strings {
     override val tgSocksToast = "Connected — only Telegram traffic goes through the proxy"
     override val tgNote =
         "This proxy only works inside Telegram; other apps use your normal internet."
+
+    // ── v2.2: TgTunnel ──
+    override val tgTunnel = "Full browsing"
+    override val ttTitle = "Full browsing · TgTunnel"
+    override val ttSub =
+        "Pages are fetched by Mianboor's bridge as 16KB encrypted frames — no VPS needed. Type a site, or just words to search the web."
+    override val ttHint = "Site address, or search words…"
+    override val ttGo = "Go"
+    override val ttPhaseHs = "Handshake with the bridge…"
+    override val ttPhaseUp = "Sealing the request into encrypted frames…"
+    override val ttPhaseEgress = "Bridge is fetching the page…"
+    override val ttPhaseDown = "Receiving encrypted frames…"
+    override val ttPhaseRender = "Opening the page…"
+    override val ttFailed = "This page didn't load through the tunnel"
+    override val ttOffline = "Couldn't reach the bridge — check your internet"
+    override val ttStatTime = "Time"
+    override val ttStatSize = "Size"
+    override val ttStatFrames = "Frames"
+    override val ttSecured = "Inner encryption on · AES-256-GCM"
+    override val ttNote =
+        "The page itself comes through the encrypted tunnel; its images and styles load directly from the site. The full Telegram-proxy route lights up when the bridge is deployed on a VPS."
+    override val ttChipWiki = "Wikipedia"
+    override val ttChipExample = "Example"
 }
 
 object FaStrings : Strings {
@@ -1040,6 +1084,29 @@ object FaStrings : Strings {
     override val tgAddedToast = "سریع‌ترین پروکسی به تلگرام اضافه شد — تلگرام را باز کنید"
     override val tgSocksToast = "وصل شد — فقط ترافیک تلگرام از پروکسی می‌رود"
     override val tgNote = "این پروکسی فقط داخل تلگرام کار می‌کند؛ بقیه اپ‌ها از اینترنت عادی می‌روند."
+
+    // ── نسخهٔ ۲٫۲: وبگردی کامل (TgTunnel) ──
+    override val tgTunnel = "وبگردی کامل"
+    override val ttTitle = "وبگردی کامل · TgTunnel"
+    override val ttSub =
+        "صفحه‌ها با فریم‌های رمز ۱۶KB از پُل خود میانبر می‌آیند — بدون نیاز به VPS. آدرس سایت رو بنویس یا فقط کلمات جستجو رو، تا وب رو بگردیم."
+    override val ttHint = "آدرس سایت، یا کلمات جستجو…"
+    override val ttGo = "برو"
+    override val ttPhaseHs = "هندشیک با پُل…"
+    override val ttPhaseUp = "رمزکردن درخواست در قاب‌ها…"
+    override val ttPhaseEgress = "پُل در حال واکشی صفحه…"
+    override val ttPhaseDown = "دریافت فریم‌های رمزی…"
+    override val ttPhaseRender = "باز کردن صفحه…"
+    override val ttFailed = "این صفحه از تونل بارگیری نشد"
+    override val ttOffline = "ارتباط با پُل برقرار نشد — اینترنت را چک کن"
+    override val ttStatTime = "زمان"
+    override val ttStatSize = "حجم"
+    override val ttStatFrames = "فریم‌ها"
+    override val ttSecured = "رمز درونی فعال · AES-256-GCM"
+    override val ttNote =
+        "خود صفحه از تونل رمزی می‌آید؛ تصاویر و استایل‌هایش مستقیم از سایت لود می‌شوند. مسیر کامل پروکسی تلگرام وقتی روشن می‌شود که پُل روی VPS وصل شود."
+    override val ttChipWiki = "ویکی‌پدیا"
+    override val ttChipExample = "نمونه"
 }
 
 fun stringsOf(lang: Lang): Strings = if (lang == Lang.FA) FaStrings else EnStrings
