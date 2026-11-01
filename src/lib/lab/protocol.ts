@@ -149,6 +149,8 @@ export interface ReqMeta {
   id: number;
   url: string;
   ua: string;
+  /** ویدیو/مدیا: پل این فایل را از «CDN خودش» (پوشهٔ media) با پشتیبانی Range سرو می‌کند */
+  media?: { name: string; range?: string };
 }
 
 export interface ResMeta {
@@ -160,4 +162,28 @@ export interface ResMeta {
   msBridge: number;
   truncated?: boolean;
   error?: string;
+  /* فقط برای مدیا */
+  totalBytes?: number;
+  rangeStart?: number;
+  rangeEnd?: number;
+}
+
+/* ── مدیا: فقط فایل‌های صداگذاری‌شدهٔ دمو مجازند (SSRF-safe) ── */
+export function validateMediaName(name: string): { ok: true } | { ok: false; error: string } {
+  if (!/^[a-z0-9_-]+\.mp4$/i.test(name)) return { ok: false, error: "نام فایل مدیا مجاز نیست" };
+  return { ok: true };
+}
+
+/** پارس هدر Range سمت مرورگر: bytes=start-[end] (end می‌تواند خالی باشد) */
+export function parseByteRange(range: string | null | undefined): { start: number; end: number | null } | null {
+  if (!range) return null;
+  const m = /^bytes=(\d*)-(\d*)$/.exec(range.trim());
+  if (!m) return null;
+  const [, a, b] = m;
+  if (a === "" && b === "") return null;
+  if (a === "") {
+    /* suffix range: bytes=-N → از N تا آخر؛ برای دمو ساده نگه می‌داریم و کل فایل می‌دهیم */
+    return { start: 0, end: null };
+  }
+  return { start: Number(a), end: b === "" ? null : Number(b) };
 }

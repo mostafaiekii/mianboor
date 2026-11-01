@@ -9,10 +9,13 @@ import {
   Globe,
   Loader2,
   Lock,
+  MonitorPlay,
   Play,
+  RefreshCw,
   Server,
   Smartphone,
   X,
+  Youtube,
 } from "lucide-react";
 import type { LabBrowseResult } from "@/lib/lab/client";
 import type { LabEvent, LabHop } from "@/lib/lab/protocol";
@@ -27,6 +30,7 @@ import type { LabEvent, LabHop } from "@/lib/lab/protocol";
  * ──────────────────────────────────────────────────────────────────────────── */
 
 type Mode = "local" | "bridge";
+type Tab = "web" | "video";
 
 const HOP_META: Record<LabHop, { label: string; cls: string }> = {
   app: { label: "اپ", cls: "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" },
@@ -66,6 +70,320 @@ function fmtBytes(n: number): string {
   if (n >= 1024 * 1024) return `${(n / 1024 / 1024).toFixed(2)} MB`;
   if (n >= 1024) return `${(n / 1024).toFixed(1)} KB`;
   return `${n} B`;
+}
+
+/* ── ویدیو از داخل تونل ── */
+
+const VID_QUALITIES = [
+  { name: "clip-360.mp4", label: "۳۶۰p", sub: "سبک" },
+  { name: "clip-480.mp4", label: "۴۸۰p", sub: "معمولی" },
+] as const;
+
+const VNODES = [
+  { icon: Smartphone, label: "اپ میانبر" },
+  { icon: Lock, label: "پروکسی تلگرام" },
+  { icon: Database, label: "دیتاسنتر" },
+  { icon: Bot, label: "بات پُل" },
+  { icon: MonitorPlay, label: "CDN ویدیو" },
+];
+
+interface VidStats {
+  ok: boolean;
+  name: string;
+  bytes: number;
+  chunks: number;
+  requests: number;
+  seeks: number;
+  bps: number;
+  active: boolean;
+  done: boolean;
+  error: string | null;
+  mode: "hops" | "inline" | null;
+  msBridge: number;
+  elapsedMs: number;
+  log: LabEvent[];
+}
+
+/* ── تب ویدیو: پخش‌کنندهٔ واقعی که همهٔ بایت‌هایش از تونل ۴-هاپ می‌آید ── */
+function VideoLab() {
+  const [quality, setQuality] = useState<string>(VID_QUALITIES[1].name);
+  const [nonce, setNonce] = useState(0);
+  const [st, setSt] = useState<VidStats | null>(null);
+  const [bufferedAhead, setBufferedAhead] = useState(0);
+  const [playState, setPlayState] = useState<"idle" | "loading" | "playing" | "error">("idle");
+  const [errText, setErrText] = useState("");
+  const vidRef = useRef<HTMLVideoElement | null>(null);
+  const sidRef = useRef(`v${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    pollRef.current = setInterval(() => {
+      void (async () => {
+        try {
+          const r = await fetch(`/api/lab/video-stats?sid=${sidRef.current}`, { cache: "no-store" });
+          if (r.ok) setSt((await r.json()) as VidStats);
+        } catch {
+          /* پول بعدی */
+        }
+      })();
+      const v = vidRef.current;
+      if (v && v.buffered.length > 0) {
+        setBufferedAhead(Math.max(0, v.buffered.end(v.buffered.length - 1) - v.currentTime));
+      }
+    }, 500);
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
+  }, []);
+
+  const switchQuality = (name: string) => {
+    if (name === quality) return;
+    setQuality(name);
+    setNonce((n) => n + 1);
+    setPlayState("idle");
+    setErrText("");
+  };
+
+  const retry = () => {
+    setNonce((n) => n + 1);
+    setPlayState("idle");
+    setErrText("");
+  };
+
+  const src = `/api/lab/video?name=${quality}&sid=${sidRef.current}&n=${nonce}`;
+  const bps = st?.bps ?? 0;
+  const flowing = (st?.active ?? false) && !st?.done;
+  const buffering = playState === "loading" || (playState === "idle" && (st?.bytes ?? 0) > 0 && !st?.done);
+  const modeTag =
+    st?.mode === "hops" ? "۴ هاپ واقعی روی شبکه" : st?.mode === "inline" ? "تک‌سروری (fallback)" : "—";
+
+  return (
+    <>
+      {/* توپولوژی ویدیو */}
+      <section className="rounded-2xl border border-border bg-card p-4">
+        <div className="mb-3 flex items-center justify-between gap-2">
+          <h3 className="text-sm font-bold">مسیر ویدیو — از اپ تا CDN، همه رمزی</h3>
+          <span
+            className={`rounded-full border px-2.5 py-1 text-[10px] font-semibold ${
+              flowing
+                ? "border-rose-500/30 bg-rose-500/10 text-rose-600 dark:text-rose-400"
+                : "border-border bg-muted text-muted-foreground"
+            }`}
+          >
+            {flowing ? "در حال عبور از تونل" : buffering ? "پر شدن بافر" : "آماده"}
+          </span>
+        </div>
+        <div className="flex items-center justify-between gap-1">
+          {VNODES.map((n, i) => (
+            <div key={n.label} className="flex min-w-0 flex-1 items-center gap-1">
+              <div className="flex min-w-0 flex-col items-center gap-1">
+                <span
+                  className={`grid size-9 place-items-center rounded-full border-2 transition sm:size-11 ${
+                    flowing || buffering
+                      ? "border-emerald-500/60 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                      : "border-border bg-muted text-muted-foreground"
+                  } ${flowing && bps > 0 ? "animate-pulse" : ""}`}
+                >
+                  <n.icon className="size-4 sm:size-5" />
+                </span>
+                <span className="max-w-full truncate text-center text-[9px] leading-tight text-muted-foreground sm:text-[11px]">
+                  {n.label}
+                </span>
+              </div>
+              {i < VNODES.length - 1 && (
+                <span className="relative h-0.5 min-w-2 flex-1 rounded bg-border">
+                  {(flowing || buffering) && (
+                    <i className="lab-dot absolute top-1/2 size-1.5 -translate-y-1/2 rounded-full bg-emerald-500" style={{ animationDelay: `${i * 0.22}s` }} />
+                  )}
+                </span>
+              )}
+            </div>
+          ))}
+        </div>
+        <p className="mt-3 text-[11px] leading-5 text-muted-foreground">
+          هر ثانیه ویدیو = چند قاب ۱۶KB که با AES-256-GCM (لایهٔ درونی اپ↔پل) داخل جریان رمز CTR (لایهٔ بیرونی سبک
+          obfuscated2) رد می‌شوند — پروکسی و دیتاسنتر فقط قاب می‌بینند، نه محتوا. سک روی تایم‌لاین = سشن Range جدید از
+          همان بایت.
+        </p>
+      </section>
+
+      {/* پخش‌کننده */}
+      <section className="overflow-hidden rounded-2xl border border-border bg-card">
+        <div className="flex items-center justify-between gap-2 border-b border-border px-4 py-3">
+          <div className="flex min-w-0 items-center gap-2.5">
+            <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-rose-500/15 text-rose-600 dark:text-rose-400">
+              <Youtube className="size-5" />
+            </span>
+            <div className="min-w-0">
+              <div className="truncate text-sm font-bold">Mianboor TV — پخش از داخل تونل</div>
+              <div className="truncate text-[10px] text-muted-foreground">
+                ویدیوی واقعی ۶۰ ثانیه‌ای (H.264+AAC) — تمام بایت‌هایش از مسیر پروکسی تلگرام رد شده، نه از CDN معمولی
+              </div>
+            </div>
+          </div>
+          <span className="flex shrink-0 items-center gap-1.5 rounded-full bg-rose-500/10 px-2.5 py-1 text-[10px] font-bold text-rose-600 dark:text-rose-400">
+            <i className="size-1.5 animate-pulse rounded-full bg-rose-500" />
+            TUNNELED
+          </span>
+        </div>
+
+        <div className="relative bg-neutral-950">
+          <video
+            key={src}
+            ref={vidRef}
+            src={src}
+            controls
+            playsInline
+            preload="auto"
+            className="aspect-video w-full"
+            onPlaying={() => setPlayState("playing")}
+            onWaiting={() => setPlayState("loading")}
+            onCanPlay={() => setPlayState((s) => (s === "loading" ? "playing" : s))}
+            onError={() => {
+              setPlayState("error");
+              setErrText(st?.error ?? "جریان ویدیو از تونل نرسید — دوباره تلاش کن");
+            }}
+          />
+          {playState === "idle" && (
+            <button
+              type="button"
+              onClick={() => {
+                setPlayState("loading");
+                void vidRef.current?.play().catch(() => setPlayState("idle"));
+              }}
+              aria-label="پخش ویدیو از داخل تونل"
+              className="group absolute inset-0 grid place-items-center bg-black/45 transition hover:bg-black/30"
+            >
+              <span className="grid size-16 place-items-center rounded-full bg-rose-600 text-white shadow-xl shadow-rose-600/30 transition group-hover:scale-105 sm:size-20">
+                <Play className="size-7 -translate-x-0.5 fill-current sm:size-9" />
+              </span>
+              <span className="absolute bottom-4 rounded-full bg-black/60 px-3 py-1 text-[11px] text-white/90">
+                {buffering ? (
+                  <span className="flex items-center gap-1.5">
+                    <Loader2 className="size-3 animate-spin" /> بافر در حال پر شدن از تونل…
+                  </span>
+                ) : (
+                  "پخش از داخل تونل ۴-هاپ"
+                )}
+              </span>
+            </button>
+          )}
+          {playState === "loading" && (
+            <div className="pointer-events-none absolute inset-0 grid place-items-center">
+              <Loader2 className="size-10 animate-spin text-white/85" />
+            </div>
+          )}
+        </div>
+
+        {/* بافر */}
+        <div className="px-4 pt-3">
+          <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+            <div
+              className="h-full rounded-full bg-rose-500/70 transition-all duration-500"
+              style={{ width: `${Math.min(100, (bufferedAhead / 20) * 100)}%` }}
+            />
+          </div>
+          <div className="mt-1 flex items-center justify-between text-[10px] text-muted-foreground">
+            <span>سلامت بافر: {bufferedAhead.toFixed(1)} ثانیه پیش‌رو</span>
+            <span dir="ltr">{quality === "clip-360.mp4" ? "640×360 · 320kbps" : "854×480 · 470kbps"}</span>
+          </div>
+        </div>
+
+        {/* کیفیت + کنترل */}
+        <div className="flex flex-wrap items-center gap-2 px-4 py-3">
+          <span className="text-xs font-bold">کیفیت (از داخل تونل):</span>
+          {VID_QUALITIES.map((q) => (
+            <button
+              key={q.name}
+              type="button"
+              onClick={() => switchQuality(q.name)}
+              className={`rounded-full border px-3 py-1.5 text-xs transition ${
+                quality === q.name
+                  ? "border-rose-500/50 bg-rose-500/10 font-bold text-rose-600 dark:text-rose-400"
+                  : "border-border bg-muted text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {q.label} <span className="text-[9px] opacity-70">{q.sub}</span>
+            </button>
+          ))}
+          <button
+            type="button"
+            onClick={retry}
+            className="ms-auto flex items-center gap-1.5 rounded-full border border-border bg-muted px-3 py-1.5 text-xs text-muted-foreground transition hover:text-foreground"
+          >
+            <RefreshCw className="size-3.5" /> بارگیری مجدد از تونل
+          </button>
+        </div>
+      </section>
+
+      {(playState === "error" || st?.error) && (
+        <section className="flex items-start gap-2 rounded-2xl border border-rose-500/30 bg-rose-500/10 p-4 text-sm text-rose-600 dark:text-rose-400">
+          <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+          <span>{errText || st?.error} — دکمهٔ «بارگیری مجدد از تونل» را بزن.</span>
+        </section>
+      )}
+
+      {/* آمار زنده */}
+      <section className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+        {[
+          { label: "سرعت لحظه‌ای از تونل", value: bps > 0 ? `${Math.round(bps / 1024)} KB/s` : "—" },
+          { label: "حجم دریافت‌شده", value: fmtBytes(st?.bytes ?? 0) },
+          { label: "پرده‌های رمزی", value: `${st?.chunks ?? 0}` },
+          { label: "درخواست‌های تونل", value: `${st?.requests ?? 0} (سک: ${st?.seeks ?? 0})` },
+          { label: "واکشی پل/CDN", value: st?.msBridge ? `${st.msBridge} ms` : "—" },
+          { label: "مسیر فعال", value: modeTag },
+        ].map((s) => (
+          <div key={s.label} className="rounded-xl border border-border bg-card p-3">
+            <div className="text-[10px] text-muted-foreground">{s.label}</div>
+            <div className="mt-1 text-sm font-black tabular-nums">{s.value}</div>
+          </div>
+        ))}
+      </section>
+
+      {/* گزارش زنده */}
+      {st && st.log.length > 0 && (
+        <section className="rounded-2xl border border-border bg-card p-4">
+          <h3 className="mb-3 text-sm font-bold">گزارش زندهٔ جریان ویدیو</h3>
+          <div className="lab-scroll max-h-56 space-y-1.5 overflow-y-auto rounded-xl bg-muted/40 p-3">
+            {st.log.map((e, i) => (
+              <div key={i} className="flex items-start gap-2 text-[11px] leading-5">
+                <span className="w-14 shrink-0 text-left font-mono tabular-nums text-muted-foreground" dir="ltr">
+                  {e.t}ms
+                </span>
+                <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[9px] font-bold ${HOP_META[e.hop].cls}`}>
+                  {HOP_META[e.hop].label}
+                </span>
+                <span className="min-w-0 flex-1 text-foreground/90">{e.msg}</span>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* یوتیوب واقعی */}
+      <section className="rounded-2xl border border-border bg-card p-4 text-xs leading-6 text-muted-foreground">
+        <h3 className="mb-2 text-sm font-bold text-foreground">پس یوتیوب چی؟</h3>
+        <ul className="list-inside list-disc space-y-1">
+          <li>
+            <b className="text-foreground">همین مسیر، هم‌ین قاب‌ها:</b> یوتیوب هم فقط HTTPS است — ویدیوها تکه‌تکه (DASH)
+            می‌آیند و هر تکه مثل همین فایل، به‌صورت قاب‌های ۱۶KB رمزشده از تونل رد می‌شود.
+          </li>
+          <li>
+            <b className="text-foreground">سطح ۱ (بدون VPS):</b> با فریم‌های موازی و پیش‌بارگیری، عملاً ۲۴۰p تا ۴۸۰p روان
+            پخش می‌شود؛ ۷۲۰p مرزی است (بسته به اپراتور).
+          </li>
+          <li>
+            <b className="text-foreground">سطح ۲ (VPS):</b> پهنای‌باند واقعی و تأخیر کم → ۷۲۰p و ۱۰۸۰p بدون لگ. هر وقت VPS
+            گرفتی، فقط نقطهٔ اتصال عوض می‌شود؛ موتور همین است.
+          </li>
+          <li>
+            <b className="text-foreground">در اپ اندروید:</b> QUIC/UDP-443 بسته می‌شود تا یوتیوب مجبور شود روی TLS-over-TCP
+            بیاید — یعنی دقیقاً همان مسیری که تونل جواب می‌دهد.
+          </li>
+        </ul>
+      </section>
+    </>
+  );
 }
 
 /* ── موتور سمت مرورگر برای حالت «پُل میانبر» — همان کاری که اپ اندروید می‌کند ── */
@@ -195,6 +513,7 @@ function concatBytes(list: Uint8Array[]): Uint8Array {
 /* ── کامپوننت آزمایشگاه ── */
 
 export function TgTunnelLab({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const [tab, setTab] = useState<Tab>("web");
   const [mode, setMode] = useState<Mode>("bridge");
   const [url, setUrl] = useState("https://example.com");
   const [running, setRunning] = useState(false);
@@ -301,7 +620,7 @@ export function TgTunnelLab({ open, onClose }: { open: boolean; onClose: () => v
           </span>
           <div className="min-w-0">
             <h2 className="truncate text-base font-black sm:text-lg">آزمایشگاه: وبگردی کامل با پروکسی تلگرام</h2>
-            <p className="truncate text-xs text-muted-foreground">دموی زندهٔ TgTunnel · اپ اصلی و مخزن گیت‌هاب دست‌نخورده</p>
+            <p className="truncate text-xs text-muted-foreground">پیش‌نمایش زندهٔ TgTunnel — همان تجربه‌ای که به نسخهٔ ۲٫۱ اپ اندروید می‌آید</p>
           </div>
         </div>
         <button
@@ -316,6 +635,35 @@ export function TgTunnelLab({ open, onClose }: { open: boolean; onClose: () => v
 
       <div className="flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-3xl space-y-4 p-4 sm:p-6">
+          {/* تب‌ها: وبگردی / ویدیو */}
+          <section className="grid grid-cols-2 gap-2 rounded-2xl border border-border bg-card p-2">
+            {(
+              [
+                { id: "web", title: "وبگردی کامل", sub: "هر سایتی، از داخل تونل" },
+                { id: "video", title: "ویدیو و یوتیوب", sub: "پخش استریم از داخل تونل" },
+              ] as const
+            ).map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => setTab(t.id)}
+                className={`rounded-xl px-3 py-2.5 text-start transition ${
+                  tab === t.id ? "bg-rose-600/10 ring-1 ring-rose-600/40" : "hover:bg-muted"
+                }`}
+              >
+                <span className="flex items-center gap-1.5">
+                  {t.id === "web" ? <Globe className="size-4" /> : <Youtube className="size-4" />}
+                  <span className={`text-[13px] font-bold ${tab === t.id ? "text-rose-600 dark:text-rose-400" : "text-foreground"}`}>
+                    {t.title}
+                  </span>
+                </span>
+                <span className="mt-0.5 block text-[10px] text-muted-foreground">{t.sub}</span>
+              </button>
+            ))}
+          </section>
+
+          {tab === "web" && (
+            <>
           {/* انتخاب حالت */}
           <section className="grid grid-cols-2 gap-2 rounded-2xl border border-border bg-card p-2">
             {(
@@ -559,11 +907,15 @@ export function TgTunnelLab({ open, onClose }: { open: boolean; onClose: () => v
                 از BotFather لازم است — موتورش همین است و در اپ از قبل جای‌گذاری شده.
               </li>
               <li>
-                <b className="text-foreground">اپ اصلی:</b> دکمهٔ «وبگردی کامل» در نسخهٔ ۲٫۲ کنار دکمهٔ پروکسی تلگرام
-                اضافه شد؛ این آزمایشگاه فقط پیش‌نمایش زندهٔ همان تجربه است.
+                <b className="text-foreground">اپ اصلی:</b> دکمهٔ «وبگردی کامل» در نسخهٔ ۲٫۱ کنار دکمهٔ پروکسی تلگرام
+                اضافه شد؛ این آزمایشگاه پیش‌نمایش زندهٔ همان تجربه است.
               </li>
             </ul>
           </section>
+            </>
+          )}
+
+          {tab === "video" && <VideoLab />}
         </div>
       </div>
 

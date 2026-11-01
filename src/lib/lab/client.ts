@@ -13,7 +13,9 @@ import {
   deriveKeys,
   frameEncode,
   openInner,
+  parseByteRange,
   sealInner,
+  validateMediaName,
   validateTargetUrl,
   type LabEvent,
   type LabLog,
@@ -92,6 +94,8 @@ class TunnelClient {
     private readonly sink: (b: Buffer) => void,
     private readonly log: LabLog,
     private readonly id: number,
+    private readonly onData?: (seq: number, buf: Buffer) => void,
+    private readonly onMeta?: (m: ResMeta) => void,
   ) {
     this.encUp = createCipheriv("aes-256-ctr", keys.kUp, keys.ivUp);
     this.decDown = createDecipheriv("aes-256-ctr", keys.kDown, keys.ivDown);
@@ -99,9 +103,12 @@ class TunnelClient {
       if (type === FT_META_DOWN) {
         this.resMeta = JSON.parse(openInner(data).toString("utf8")) as ResMeta;
         this.log("app", `متای پاسخ از تونل رسید: status=${this.resMeta.status} · ${this.resMeta.totalChunks} چانک در راه`);
+        this.onMeta?.(this.resMeta);
       } else if (type === FT_DATA_DOWN) {
-        this.chunks.set(seq, openInner(data));
+        const plain = openInner(data);
+        this.chunks.set(seq, plain);
         if (!this.firstByteAt) this.firstByteAt = Date.now();
+        this.onData?.(seq, plain);
       }
     });
   }
@@ -404,5 +411,347 @@ export async function labBrowse(rawUrl: string): Promise<LabBrowseResult> {
       error: msg,
       trace: sortTraceRel([...trace, ...svcEvents], t0),
     };
+  }
+}
+
+/* ════════════════════════════════════════════════════════════════════════════
+ * ویدیو از داخل تونل — جریان پیش‌روندهٔ واقعی (Streaming)
+ *
+ * همان پروتکل ۴ هاپ، این‌بار به‌صورت استریم: هر چانک ۱۶KB به‌محض رسیدن و
+ * رمزگشایی، به‌ترتیب داخل ReadableStream تزریق می‌شود تا <video> مرورگر
+ * همان لحظه پخش را شروع کند (بافر می‌سازد). سک‌ها = درخواست Range جدید
+ * از بایت موردنظر؛ پل مثل یک CDN واقعی از همان آفست سرو می‌کند.
+ * ════════════════════════════════════════════════════════════════════════════ */
+
+/** صف بازچینی چانک‌ها: بر اساس seq مرتب و به‌ترتیب به استریم تزریق می‌کند */
+class ChunkFlow {
+  private readonly pending = new Map<number, Buffer>();
+  private nextSeq = 0;
+  private readonly queue: Buffer[] = [];
+  private controller: ReadableStreamDefaultController<Uint8Array> | null = null;
+  private closed = false;
+  bytes = 0;
+  count = 0;
+  error = "";
+
+  push(seq: number, buf: Buffer): void {
+    if (this.closed) return;
+    if (seq < this.nextSeq) return;
+    this.pending.set(seq, buf);
+    while (this.pending.has(this.nextSeq)) {
+      const b = this.pending.get(this.nextSeq)!;
+      this.pending.delete(this.nextSeq);
+      this.nextSeq++;
+      this.queue.push(b);
+      this.bytes += b.length;
+      this.count++;
+    }
+    this.drain();
+  }
+
+  attach(c: ReadableStreamDefaultController<Uint8Array>): void {
+    this.controller = c;
+    this.drain();
+  }
+
+  private drain(): void {
+    if (!this.controller) return;
+    while (this.queue.length > 0) {
+      const b = this.queue.shift()!;
+      try {
+        this.controller.enqueue(new Uint8Array(b));
+      } catch {
+        return;
+      }
+    }
+  }
+
+  close(): void {
+    if (this.closed) return;
+    this.closed = true;
+    try {
+      this.controller?.close();
+    } catch {
+      /* قبلاً بسته شده */
+    }
+  }
+
+  fail(msg: string): void {
+    this.error = msg;
+    this.close();
+  }
+}
+
+interface VideoSession {
+  meta: ResMeta;
+  abort: () => void;
+  done: Promise<void>;
+}
+
+/** مسیر ۴ هاپ واقعی برای ویدیو — همان viaHops ولی جریانی */
+async function videoViaHops(
+  name: string,
+  rangeStr: string | null,
+  id: number,
+  flow: ChunkFlow,
+  local: LabLog,
+): Promise<VideoSession> {
+  const hs = buildHandshake();
+  const keys = deriveKeys(hs);
+  local("app", `هندشیک ۶۴ بایتی ویدیو ساخته شد — کلیدهای CTR مشتق شدند (تونل #${id % 10000})`);
+
+  const socket = await new Promise<net.Socket>((resolve, reject) => {
+    const s = net.connect(LAB_PORTS.proxy, "127.0.0.1");
+    const to = setTimeout(() => {
+      s.destroy();
+      reject(new Error("اتصال به پروکسی MTProto ممکن نشد"));
+    }, 5000);
+    s.once("connect", () => {
+      clearTimeout(to);
+      resolve(s);
+    });
+    s.once("error", (e) => {
+      clearTimeout(to);
+      reject(e instanceof Error ? e : new Error("socket error"));
+    });
+  });
+  socket.write(hs);
+  local("app", "به پروکسی تلگرام وصل شد — سشن ویدیو از مسیر رلهٔ کور می‌گذرد");
+
+  let metaResolve!: (m: ResMeta) => void;
+  let metaReject!: (e: Error) => void;
+  const metaPromise = new Promise<ResMeta>((res, rej) => {
+    metaResolve = res;
+    metaReject = rej;
+  });
+  const metaTimer = setTimeout(() => metaReject(new Error("متای ویدیو از تونل نرسید (۱۲ ثانیه)")), 12_000);
+
+  const client = new TunnelClient(
+    keys,
+    (b) => socket.write(b),
+    local,
+    id,
+    (seq, buf) => flow.push(seq, buf),
+    (m) => metaResolve(m),
+  );
+
+  const done = new Promise<void>((resolve, reject) => {
+    const to = setTimeout(() => reject(new Error("جریان ویدیو قطع شد (تایم‌اوت ۶۰ ثانیه)")), 60_000);
+    const cleanup = () => {
+      clearTimeout(to);
+      clearTimeout(metaTimer);
+      socket.off("data", onData);
+      socket.off("error", onErr);
+      socket.off("close", onClose);
+    };
+    const onData = (d: Buffer) => {
+      client.feedDown(d);
+      if (client.receivedAll) {
+        cleanup();
+        resolve();
+      }
+    };
+    const onErr = (e: Error) => {
+      cleanup();
+      reject(e);
+    };
+    const onClose = () => {
+      cleanup();
+      if (client.receivedAll) resolve();
+      else reject(new Error("تونل ویدیو نیمه‌کاره بسته شد"));
+    };
+    socket.on("data", onData);
+    socket.on("error", onErr);
+    socket.on("close", onClose);
+  });
+
+  /* درخواست: متای رمزشده + قاب پایان — مثل بقیهٔ ترافیک تونل */
+  const reqMeta: ReqMeta = { id, url: `media://${name}`, ua: LAB_UA, media: { name, ...(rangeStr ? { range: rangeStr } : {}) } };
+  client.sendRequest(reqMeta);
+  local("app", `درخواست ویدیو رمز شد و وارد پروکسی شد${rangeStr ? ` — از بایت ${parseByteRange(rangeStr)?.start} ادامه` : ""}`);
+
+  void done
+    .then(() => flow.close())
+    .catch((e: unknown) => {
+      flow.fail(e instanceof Error ? e.message : "خطای جریان ویدیو");
+    });
+
+  const meta = await metaPromise;
+  return { meta, abort: () => socket.destroy(), done };
+}
+
+/** fallback تک‌سروری برای ویدیو — همان پروتکل، تحویلِ دسته‌ای پیش‌رونده */
+async function videoInline(
+  name: string,
+  rangeStr: string | null,
+  id: number,
+  flow: ChunkFlow,
+  local: LabLog,
+): Promise<VideoSession> {
+  const keys = deriveKeys(buildHandshake());
+  const downBuf: Buffer[] = [];
+  const store = new DcStore(local);
+  const conn = new DcConnection(keys, (b) => downBuf.push(b), local, store);
+  local("app", "حالت تک‌سروری ویدیو: همان پروتکل و همان کد هسته، درون یک پروسه");
+
+  let metaResolve!: (m: ResMeta) => void;
+  const client = new TunnelClient(
+    keys,
+    (b) => conn.feed(b),
+    local,
+    id,
+    (seq, buf) => flow.push(seq, buf),
+    (m) => metaResolve(m),
+  );
+  const metaPromise = new Promise<ResMeta>((res) => {
+    metaResolve = res;
+  });
+
+  client.sendRequest({
+    id,
+    url: `media://${name}`,
+    ua: LAB_UA,
+    media: { name, ...(rangeStr ? { range: rangeStr } : {}) },
+  });
+
+  const done = (async () => {
+    const job = store.pick();
+    if (!job) throw new Error("سشن ویدیو در دیتاسنتر ساخته نشد");
+    const meta = parseReqMeta(job.metaSealed);
+    const body = reassembleBody(job.upChunks);
+    const { resMeta, chunksSealed } = await bridgeDoRequest(meta, body, local);
+    if (resMeta.error) throw new Error(resMeta.error);
+    const resMetaSealed = sealInner(Buffer.from(JSON.stringify(resMeta), "utf8"));
+    const BATCH = 6;
+    for (let i = 0; i < chunksSealed.length; i += BATCH) {
+      store.deliver(
+        job.id,
+        i === 0 ? resMetaSealed : null,
+        chunksSealed.slice(i, i + BATCH),
+        i,
+        chunksSealed.length,
+        i + BATCH >= chunksSealed.length,
+      );
+      client.feedDown(Buffer.concat(downBuf));
+      downBuf.length = 0;
+      /* مکث کوتاه بین دسته‌ها → جریان واقعاً پیش‌رونده به مرورگر می‌رسد */
+      if (i + BATCH < chunksSealed.length) await new Promise((r) => setTimeout(r, 4));
+    }
+    flow.close();
+  })();
+  void done.catch((e: unknown) => flow.fail(e instanceof Error ? e.message : "خطای جریان ویدیو"));
+
+  const meta = await Promise.race([
+    metaPromise,
+    new Promise<ResMeta>((_, rej) => setTimeout(() => rej(new Error("متای ویدیو نرسید (۱۰ ثانیه)")), 10_000)),
+  ]);
+  return { meta, abort: () => {}, done };
+}
+
+export interface LabVideoStart {
+  ok: boolean;
+  error: string | null;
+  status: number; /* 200 یا 206 */
+  contentType: string;
+  totalBytes: number;
+  rangeStart: number;
+  rangeEnd: number;
+  bytes: number;
+  totalChunks: number;
+  msBridge: number;
+  mode: "hops" | "inline";
+  stream: ReadableStream<Uint8Array>;
+  trace: LabEvent[];
+}
+
+const failVideo = (error: string): LabVideoStart => ({
+  ok: false,
+  error,
+  status: 0,
+  contentType: "",
+  totalBytes: 0,
+  rangeStart: 0,
+  rangeEnd: 0,
+  bytes: 0,
+  totalChunks: 0,
+  msBridge: 0,
+  mode: "inline",
+  stream: new ReadableStream<Uint8Array>({ start() {} }),
+  trace: [],
+});
+
+/**
+ * شروع یک سشن استریم ویدیو از داخل تونل.
+ * تا رسیدن متا صبر می‌کند (هدرها معلوم شوند) و بقیه به‌صورت جریان برمی‌گردد.
+ */
+export async function labVideoStart(
+  rawName: string,
+  rangeHeader: string | null,
+  onEvent?: (e: LabEvent) => void,
+): Promise<LabVideoStart> {
+  const guard = validateMediaName(rawName);
+  if (!guard.ok) return failVideo(guard.error);
+  const name = rawName;
+  const range = parseByteRange(rangeHeader);
+  const rangeStr = range && range.start > 0 ? `bytes=${range.start}-` : null;
+
+  const t0 = Date.now();
+  const trace: LabEvent[] = [];
+  const local: LabLog = (hop, msg, bytes) => {
+    const e: LabEvent = { t: Date.now() - t0, hop, msg, bytes };
+    trace.push(e);
+    onEvent?.(e);
+  };
+
+  const flow = new ChunkFlow();
+  let hops = false;
+  try {
+    hops = await proxyAlive();
+    local(
+      "app",
+      hops ? "سشن ویدیو: مسیر کامل ۴ هاپ فعال است" : "سشن ویدیو: سرویس‌های لوکال نیستند — حالت تک‌سروری",
+    );
+    const session = hops
+      ? await videoViaHops(name, rangeStr, newTunnelId(), flow, local)
+      : await videoInline(name, rangeStr, newTunnelId(), flow, local);
+    const meta = session.meta;
+    if (meta.error) {
+      session.abort();
+      local("bridge", `خطای پل: ${meta.error}`);
+      return failVideo(meta.error);
+    }
+    local(
+      "app",
+      `هدرها آماده شد: ${meta.status} · ${meta.totalChunks} چانک · بایت ${meta.rangeStart ?? 0} تا ${meta.rangeEnd ?? 0} از ${meta.totalBytes ?? 0}`,
+    );
+    const stream = new ReadableStream<Uint8Array>({
+      start(c) {
+        flow.attach(c);
+      },
+      cancel() {
+        session.abort();
+        flow.close();
+      },
+    });
+    return {
+      ok: true,
+      error: null,
+      status: meta.status,
+      contentType: meta.contentType || "video/mp4",
+      totalBytes: meta.totalBytes ?? 0,
+      rangeStart: meta.rangeStart ?? 0,
+      rangeEnd: meta.rangeEnd ?? 0,
+      bytes: flow.bytes,
+      totalChunks: meta.totalChunks,
+      msBridge: meta.msBridge,
+      mode: hops ? "hops" : "inline",
+      stream,
+      trace: sortTrace(trace),
+    };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "خطای ناشناختهٔ تونل ویدیو";
+    local("app", `خطا: ${msg}`);
+    flow.fail(msg);
+    return { ...failVideo(msg), trace: sortTrace(trace), mode: hops ? "hops" : "inline" };
   }
 }

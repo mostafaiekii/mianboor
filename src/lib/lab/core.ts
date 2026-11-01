@@ -1,4 +1,7 @@
 import { createCipheriv, createDecipheriv } from "node:crypto";
+import { existsSync } from "node:fs";
+import { readFile } from "node:fs/promises";
+import path from "node:path";
 import {
   FT_DATA_DOWN,
   FT_DATA_UP,
@@ -13,7 +16,9 @@ import {
   deriveKeys,
   frameEncode,
   openInner,
+  parseByteRange,
   sealInner,
+  validateMediaName,
   validateTargetUrl,
   type LabLog,
   type ReqMeta,
@@ -167,6 +172,94 @@ export class DcStore {
 const LAB_DEFAULT_UA =
   "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36";
 
+/* ── مدیا: «CDN پل» — فایل‌های دمو از پوشهٔ public/media سرو می‌شوند (با Range واقعی) ── */
+
+const MEDIA_MAX_BYTES = 16 * 1024 * 1024;
+
+function mediaDir(): string {
+  const candidates = [
+    path.join(process.cwd(), "public", "media"), /* پروسهٔ Next.js */
+    path.join(process.cwd(), "..", "..", "public", "media"), /* سرویس پل (mini-services/tunnel-bridge) */
+    path.join(process.cwd(), "..", "public", "media"),
+  ];
+  for (const c of candidates) if (existsSync(c)) return c;
+  return candidates[0];
+}
+
+/** پل مثل یک CDN واقعی رفتار می‌کند: فایل مدیا را با پشتیبانی کامل Range سرو می‌کند */
+export async function bridgeServeMedia(
+  meta: ReqMeta,
+  log: LabLog,
+): Promise<{ resMeta: ResMeta; chunksSealed: Buffer[] }> {
+  const t0 = Date.now();
+  const name = meta.media?.name ?? "";
+  const guard = validateMediaName(name);
+  if (!guard.ok) {
+    log("bridge", `درخواست مدیا رد شد — ${guard.error}`);
+    return mediaError(meta, guard.error, t0);
+  }
+  const file = path.join(mediaDir(), name);
+  let buf: Buffer;
+  try {
+    buf = await readFile(file);
+  } catch {
+    const msg = `فایل مدیا پیدا نشد: ${name}`;
+    log("bridge", msg);
+    return mediaError(meta, msg, t0);
+  }
+  if (buf.length > MEDIA_MAX_BYTES) {
+    const msg = `فایل مدیا بزرگ‌تر از سقف است`; 
+    log("bridge", msg);
+    return mediaError(meta, msg, t0);
+  }
+
+  const range = parseByteRange(meta.media?.range ?? null);
+  let start = 0;
+  let end = buf.length - 1;
+  let status = 200;
+  if (range && range.start > 0) {
+    start = Math.min(range.start, Math.max(0, buf.length - 1));
+    end = range.end != null ? Math.min(range.end, buf.length - 1) : buf.length - 1;
+    if (start > end) start = Math.max(0, buf.length - 1);
+    status = 206;
+  }
+  const slice = buf.subarray(start, end + 1);
+  const chunksSealed = splitChunks(slice).map(sealInner);
+  log(
+    "bridge",
+    `CDN مدیا: ${name} — ${slice.length}B از بایت ${start} (بایت ${buf.length} کل) · ${chunksSealed.length} چانک رمز شد`,
+  );
+  return {
+    resMeta: {
+      id: meta.id,
+      status,
+      contentType: "video/mp4",
+      finalUrl: `media://${name}`,
+      totalChunks: chunksSealed.length,
+      msBridge: Date.now() - t0,
+      totalBytes: buf.length,
+      rangeStart: start,
+      rangeEnd: end,
+    },
+    chunksSealed,
+  };
+}
+
+function mediaError(meta: ReqMeta, error: string, t0: number): { resMeta: ResMeta; chunksSealed: Buffer[] } {
+  return {
+    resMeta: {
+      id: meta.id,
+      status: 0,
+      contentType: "",
+      finalUrl: `media://${meta.media?.name ?? "?"}`,
+      totalChunks: 0,
+      msBridge: Date.now() - t0,
+      error,
+    },
+    chunksSealed: [],
+  };
+}
+
 export function parseReqMeta(metaSealed: Buffer): ReqMeta {
   return JSON.parse(openInner(metaSealed).toString("utf8")) as ReqMeta;
 }
@@ -188,6 +281,8 @@ export async function bridgeDoRequest(
   body: Buffer,
   log: LabLog,
 ): Promise<{ resMeta: ResMeta; chunksSealed: Buffer[] }> {
+  /* درخواست مدیا → CDN داخلی پل (بدون خروج به اینترنت) */
+  if (meta.media) return bridgeServeMedia(meta, log);
   const t0 = Date.now();
   const guard = validateTargetUrl(meta.url);
   if (!guard.ok) {
