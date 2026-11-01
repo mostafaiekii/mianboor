@@ -64,7 +64,7 @@ class MianboorVpnService : VpnService() {
     private var currentCountry: String = "نامشخص"
 
     /** v2.1: آپ‌استریم socks پروکسی تلگرام — اگر ست باشد، outbound عادی با این جایگزین می‌شود. */
-    private var tgSocks: XrayConfigBuilder.SocksUpstream? = null
+    private var tgSocks: SocksUpstream? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -88,7 +88,7 @@ class MianboorVpnService : VpnService() {
         // v2.1: آپ‌استریم socks تلگرام — اختیاری؛ وقتی هست، لینک می‌تواند خالی باشد
         val tgAddr = intent?.getStringExtra(EXTRA_TG_SOCKS_ADDR)
         if (tgAddr != null) {
-            tgSocks = XrayConfigBuilder.SocksUpstream(
+            tgSocks = SocksUpstream(
                 address = tgAddr,
                 port = intent.getIntExtra(EXTRA_TG_SOCKS_PORT, 1080),
             )
@@ -111,7 +111,7 @@ class MianboorVpnService : VpnService() {
                 currentLink = link
                 currentName = name
                 currentCountry = country
-                establishTunnel(link, name, country)
+                establishTunnel(link ?: "", name, country)
                 watchTunnel()
             } catch (t: Throwable) {
                 VpnState.errorMessage.value = friendlyError(t)
