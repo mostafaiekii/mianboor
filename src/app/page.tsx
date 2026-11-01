@@ -1128,6 +1128,7 @@ export default function VpnDemoPage() {
                     stealthOn={stealth === "strict"}
                     restarting={tunnelRestart}
                     onToast={showToast}
+                    onOpenTgTunnel={() => setLabOpen(true)}
                   />
                 )}
                 {screen === "servers" && (

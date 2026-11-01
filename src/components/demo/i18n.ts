@@ -332,6 +332,9 @@ const en = {
   tgFastest: "Fastest",
   tgProxyAdded: "Fastest proxy added to Telegram — open Telegram",
   tgProxyNote: "This proxy works only inside Telegram; all other apps use the regular internet.",
+  // ── TgTunnel: full web browsing through the TG-proxy tunnel ──
+  tgTunnel: "Full browsing",
+  tgTunnelSub: "Browse the whole web through the Telegram-proxy tunnel (TgTunnel)",
   demoMode: "Demo mode",
   // ── gift config ──
   giftCfg: "Gift config — location unknown",
@@ -660,6 +663,9 @@ const fa: typeof en = {
   tgFastest: "سریع‌ترین",
   tgProxyAdded: "سریع‌ترین پروکسی به تلگرام اضافه شد — تلگرام را باز کنید",
   tgProxyNote: "این پروکسی فقط داخل تلگرام کار می‌کند؛ بقیه اپ‌ها از اینترنت عادی می‌روند.",
+  // ── TgTunnel: وبگردی کامل از تونل پروکسی تلگرام ──
+  tgTunnel: "وبگردی کامل",
+  tgTunnelSub: "وبگردی کل اینترنت از تونل پروکسی تلگرام (TgTunnel)",
   demoMode: "حالت دمو",
   // ── کانفیگ هدیه ──
   giftCfg: "کانفیگ هدیه — لوکیشن نامشخص",
