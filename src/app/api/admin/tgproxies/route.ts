@@ -3,11 +3,13 @@ import { db } from "@/lib/db";
 import { ensureDb } from "@/lib/ensure-db";
 import { isAdminReq } from "@/lib/admin-auth";
 import { TG_PROXY_FALLBACK } from "@/lib/tg-proxies";
+import { parseTgProxyLink } from "@/lib/tg-link";
 
 /**
  * پروکسی‌های تلگرام — پنل مدیریت (نسخهٔ ۲):
  *
  * GET    /api/admin/tgproxies                ← همهٔ پروکسی‌ها
+ * POST   /api/admin/tgproxies { link }                       ← لینک کامل tg://proxy یا t.me/proxy|socks
  * POST   /api/admin/tgproxies { title, server, port, kind?, secret?, country? }
  * DELETE /api/admin/tgproxies?id=…
  */
@@ -34,6 +36,7 @@ export async function POST(req: Request) {
   }
   let body: {
     title?: string;
+    link?: string;
     server?: string;
     port?: number | string;
     kind?: string;
@@ -47,15 +50,34 @@ export async function POST(req: Request) {
   }
   await ensureDb();
 
-  const title = String(body.title ?? "").trim();
-  const server = String(body.server ?? "").trim();
-  const port = Math.floor(Number(body.port) || 0);
-  const kind = String(body.kind ?? "mtproto").trim().toLowerCase() === "socks" ? "socks" : "mtproto";
-  const secret = String(body.secret ?? "").trim() || null;
+  /* مسیر ۱ — لینک کامل پروکسی تلگرام (tg://proxy؟… یا t.me/proxy|socks؟…) */
+  let server = "";
+  let port = 0;
+  let kind: "mtproto" | "socks" = "mtproto";
+  let secret: string | null = null;
+
+  if (body.link) {
+    const parsed = parseTgProxyLink(String(body.link));
+    if (!parsed) {
+      return NextResponse.json({ ok: false, error: "لینک پروکسی نامعتبر است" }, { status: 400 });
+    }
+    server = parsed.server;
+    port = parsed.port;
+    kind = parsed.kind;
+    secret = parsed.secret;
+  } else {
+    /* مسیر ۲ — فیلدهای مجزا (سازگاری با نسخه‌های قبل) */
+    server = String(body.server ?? "").trim();
+    port = Math.floor(Number(body.port) || 0);
+    kind = String(body.kind ?? "mtproto").trim().toLowerCase() === "socks" ? "socks" : "mtproto";
+    secret = String(body.secret ?? "").trim() || null;
+  }
+
+  const title = String(body.title ?? "").trim() || "پروکسی تلگرام";
   const country = String(body.country ?? "").trim() || null;
 
-  if (!title || !server) {
-    return NextResponse.json({ ok: false, error: "عنوان و سرور لازم است" }, { status: 400 });
+  if (!server) {
+    return NextResponse.json({ ok: false, error: "سرور لازم است" }, { status: 400 });
   }
   if (port < 1 || port > 65535) {
     return NextResponse.json({ ok: false, error: "پورت نامعتبر" }, { status: 400 });

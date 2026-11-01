@@ -202,7 +202,7 @@ fun ServersScreen(
             ServerTabBtn(t.tabPremium, premEnabled.size, tab == "premium", Modifier.weight(1f)) { tab = "premium" }
         }
 
-        // smart connect
+        // smart connect — متن خلاصه + آیکون درشت‌تر
         Row(
             Modifier
                 .fillMaxWidth()
@@ -214,20 +214,18 @@ fun ServersScreen(
                 .padding(horizontal = 16.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Icon(ic(R.drawable.ic_zap), null, tint = mb.glow, modifier = Modifier.size(20.dp))
+            Icon(ic(R.drawable.ic_zap), null, tint = mb.glow, modifier = Modifier.size(26.dp))
             Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(t.smart, color = mb.ink, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                    if (best != null) {
-                        Spacer(Modifier.width(8.dp))
-                        Text(
-                            "→ ${best.name} · ${best.ping} ms",
-                            color = mb.dim, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                }
-                Text(t.smartSub, color = mb.dim, fontSize = 13.sp)
+            Text(
+                t.smart,
+                color = mb.ink,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.weight(1f),
+            )
+            if (best != null) {
+                Text("${best.ping} ms", color = mb.dim, fontSize = 13.sp)
+                Spacer(Modifier.width(10.dp))
             }
             FwdChevron(rtl, Modifier.size(16.dp))
         }

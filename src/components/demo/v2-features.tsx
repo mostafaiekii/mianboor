@@ -179,8 +179,6 @@ export function SpeedTestSheet({
 
 /* ─────────────────────────── Server status ─────────────────────────── */
 
-/** آپ‌تایم قطعی (دمو) از شناسهٔ سرور — در اپ واقعی از مانیتورینگ می‌آید */
-export const uptimeOf = (id: number): number => 98.4 + ((id * 37) % 16) / 10;
 export const loadOf = (id: number): 0 | 1 | 2 => (id % 3) as 0 | 1 | 2;
 
 export function StatusSheet({
@@ -218,7 +216,6 @@ export function StatusSheet({
         <div className="scroll-hide mt-3 flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto">
           {configs.map((c) => {
             const isDead = dead.includes(c.id);
-            const up = uptimeOf(c.id);
             const load = loadOf(c.id);
             const loadText = load === 0 ? t.loadLow : load === 1 ? t.loadMed : t.loadHigh;
             return (
@@ -231,7 +228,7 @@ export function StatusSheet({
                       {!isDead && <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-glow opacity-60" />}
                       <span className={`relative inline-flex size-1.5 rounded-full ${isDead ? "bg-danger" : "bg-glow"}`} />
                     </span>
-                    {t.statusUptime} {isDead ? "—" : `${up.toFixed(1)}%`} · {t.statusLoad}: {loadText}
+                    {isDead ? t.statusDead : t.statusLive} · {t.statusLoad}: {loadText}
                   </span>
                 </span>
                 <span className={`shrink-0 text-sm tabular-nums ${c.ping <= 110 ? "text-glow" : c.ping <= 200 ? "text-gold" : "text-danger"}`}>

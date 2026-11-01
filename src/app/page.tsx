@@ -69,7 +69,7 @@ const authHash = (s: string) => {
   for (let i = 0; i < s.length; i++) h = ((h * 33) ^ s.charCodeAt(i)) >>> 0;
   return h.toString(36);
 };
-const DEMO_AUTH = "1qt9z6z";
+const DEMO_AUTH = "cbumi3"; /* دمو: admin / mb200 — فقط گیت نمایش دمو؛ احراز واقعی ادمین سمت سرور و env-محور است */
 const PING_MS = 3000;
 const DEVICE_ID = "MB-7F3A-92K1";
 const APP_VERSION = "1.6.0";

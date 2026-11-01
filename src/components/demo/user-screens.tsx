@@ -319,10 +319,22 @@ export function HomeScreen({
         </div>
       )}
 
+      {/* ── پروکسی تلگرام: دقیقا زیر دکمهٔ اتصال اصلی، سمت چپ صفحه ── */}
+      <div className="mt-4 flex justify-end">
+        <button
+          type="button"
+          onClick={() => setTgOpen(true)}
+          className="flex items-center gap-2 rounded-full border border-panel-edge bg-panel px-4 py-2.5 text-sm font-semibold text-ink transition-colors hover:border-glow/40"
+        >
+          <Send className="size-4 text-glow" />
+          {t.tgProxy}
+        </button>
+      </div>
+
       <button
         type="button"
         onClick={onPickServer}
-        className="mt-5 flex items-center gap-4 rounded-2xl border border-panel-edge bg-panel p-4 text-start transition-colors hover:border-glow/40"
+        className="mt-3 flex items-center gap-4 rounded-2xl border border-panel-edge bg-panel p-4 text-start transition-colors hover:border-glow/40"
       >
         {server ? <Flag code={server.country} size={40} /> : <span className="size-10 rounded-full bg-ink/10" />}
         <span className="flex-1">
@@ -336,7 +348,7 @@ export function HomeScreen({
         <Fwd className="size-5 text-dim" />
       </button>
 
-      {/* دانلود و آپلود کنار هم — زیرش دکمهٔ پروکسی تلگرام، هم‌تراز ستون دانلود */}
+      {/* دانلود و آپلود کنار هم */}
       <div className="mt-3 grid grid-cols-2 items-stretch gap-2">
         <div className="rounded-2xl border border-panel-edge bg-panel p-3">
           <div className="flex items-center gap-1.5 text-sm text-dim">
@@ -354,18 +366,6 @@ export function HomeScreen({
             {on ? "312 MB" : "0 B"}
           </div>
         </div>
-      </div>
-
-      {/* ── پروکسی تلگرام: قرص فشرده زیر حلقهٔ اتصال، هم‌تراز ستون دانلود ── */}
-      <div className="mt-2 flex">
-        <button
-          type="button"
-          onClick={() => setTgOpen(true)}
-          className="flex items-center gap-2 rounded-full border border-panel-edge bg-panel px-4 py-2.5 text-sm font-semibold text-ink transition-colors hover:border-glow/40"
-        >
-          <Send className="size-4 text-glow" />
-          {t.tgProxy}
-        </button>
       </div>
 
       {/* ── شیت پروکسی‌های تلگرام ── */}
@@ -591,16 +591,12 @@ export function ServersScreen({
       <button
         type="button"
         onClick={() => best && onSelect(best.id)}
-        className="mt-3 flex items-center gap-3 rounded-xl border border-glow/30 bg-glow/10 px-4 py-3 text-start"
+        aria-label={t.smart}
+        className="mt-3 flex items-center gap-3 rounded-xl border border-glow/30 bg-glow/10 px-4 py-3.5 text-start"
       >
-        <Zap className="size-5 shrink-0 fill-glow text-glow" />
-        <span className="flex-1">
-          <span className="block text-sm font-semibold text-ink">
-            {t.smart}
-            {best && <span className="ms-2 text-dim">→ {best.name} · {best.ping} ms</span>}
-          </span>
-          <span className="block text-sm text-dim">{t.smartSub}</span>
-        </span>
+        <Zap className="size-7 shrink-0 fill-glow text-glow" />
+        <span className="flex-1 text-sm font-semibold text-ink">{t.smart}</span>
+        {best && <span className="shrink-0 text-sm tabular-nums text-dim">{best.ping} ms</span>}
         <Fwd className="size-4 text-dim" />
       </button>
       <div className="mt-4 flex items-center gap-2 text-sm text-dim">

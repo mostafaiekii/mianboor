@@ -30,6 +30,7 @@ import {
   X,
 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
+import { parseTgProxyLink } from "@/lib/tg-link";
 import { COUNTRIES, Flag } from "./flag";
 import {
   PLAN_DAYS,
@@ -176,7 +177,16 @@ export function AdminLogin({
   );
 }
 
-function AddConfigSheet({ onClose, onAdd }: { onClose: () => void; onAdd: (c: Omit<ConfigItem, "id" | "ping" | "enabled">) => void }) {
+function AddConfigSheet({
+  onClose,
+  onAdd,
+  onAddTg,
+}: {
+  onClose: () => void;
+  onAdd: (c: Omit<ConfigItem, "id" | "ping" | "enabled">) => void;
+  onAddTg: (item: TgProxy, rawLink: string) => void;
+}) {
+  const [mode, setMode] = useState<"config" | "tgproxy">("config");
   const [link, setLink] = useState("");
   const [name, setName] = useState("");
   const [country, setCountry] = useState("de");
@@ -184,7 +194,14 @@ function AddConfigSheet({ onClose, onAdd }: { onClose: () => void; onAdd: (c: Om
   const [err, setErr] = useState("");
   const parsed = parseLink(link);
 
+  /* تب پروکسی تلگرام — فقط لینک کامل، بدون ورود دونه‌دونهٔ مقادیر */
+  const [tgLink, setTgLink] = useState("");
+  const [tgTitle, setTgTitle] = useState("");
+  const [tgBusy, setTgBusy] = useState(false);
+  const tgParsed = parseTgProxyLink(tgLink);
+
   const sample = "vless://8f2e1c9a@fr1.mianboor.app:443?security=reality&sni=cdn.example.com#France-Paris";
+  const tgSample = "tg://proxy?server=91.107.213.199&port=443&secret=ee1603010200ee1603010200aabbccdd";
 
   const save = () => {
     if (!parsed) {
@@ -200,6 +217,26 @@ function AddConfigSheet({ onClose, onAdd }: { onClose: () => void; onAdd: (c: Om
     });
   };
 
+  const saveTg = async () => {
+    if (!tgParsed || tgBusy) return;
+    setTgBusy(true);
+    const item: TgProxy = {
+      id: `tp-${Date.now()}`,
+      title: tgTitle.trim() || "پروکسی تلگرام",
+      server: tgParsed.server,
+      port: tgParsed.port,
+      kind: tgParsed.kind,
+      secret: tgParsed.secret,
+      country: "gift",
+      ping: 40 + Math.floor(Math.random() * 120),
+    };
+    onAddTg(item, tgLink.trim());
+    /* یک لحظه برای نمایش حالت ذخیره — پنل خودش توست نتیجه را می‌دهد */
+    await new Promise((r) => setTimeout(r, 350));
+    setTgBusy(false);
+    onClose();
+  };
+
   return (
     <div className="absolute inset-0 z-20 flex flex-col justify-end bg-night/70 backdrop-blur-sm">
       <div className="sheet-in flex flex-col gap-3 rounded-t-3xl border-t border-panel-edge bg-panel px-5 pt-4 pb-6">
@@ -210,78 +247,161 @@ function AddConfigSheet({ onClose, onAdd }: { onClose: () => void; onAdd: (c: Om
             <X className="size-5" />
           </button>
         </div>
-        <textarea
-          aria-label="Config link"
-          value={link}
-          onChange={(e) => {
-            setLink(e.target.value);
-            setErr("");
-            const pr = parseLink(e.target.value);
-            if (pr?.name && !name) setName(pr.name);
-            if (pr?.name) {
-              const hit = Object.entries(COUNTRIES).find(([, v]) => pr.name.toLowerCase().includes(v.toLowerCase().split(" ")[0]));
-              if (hit) setCountry(hit[0]);
-            }
-          }}
-          rows={3}
-          placeholder="vless://… or vmess://…"
-          className="resize-none rounded-xl border border-panel-edge bg-night px-3 py-3 font-mono text-sm break-all text-ink outline-none placeholder:text-dim focus:border-gold/60"
-        />
-        <div className="flex items-center justify-between">
+
+        {/* تب: کانفیگ / پروکسی تلگرام */}
+        <div className="grid grid-cols-2 gap-0.5 rounded-xl bg-night p-1">
           <button
             type="button"
-            onClick={() => {
-              setLink(sample);
-              setName("France - Paris");
-              setCountry("fr");
-              setErr("");
-            }}
-            className="flex items-center gap-2 text-sm font-medium text-gold"
+            onClick={() => setMode("config")}
+            aria-pressed={mode === "config"}
+            className={mode === "config" ? "rounded-lg bg-panel py-2 text-[13px] font-bold text-ink" : "rounded-lg py-2 text-[13px] text-dim hover:text-ink"}
           >
-            <ClipboardPaste className="size-4" /> Paste from clipboard
+            Config
           </button>
-          {parsed && (
-            <span className="rounded-full bg-glow/15 px-2 py-0.5 text-sm font-semibold text-glow">{parsed.protocol}</span>
-          )}
+          <button
+            type="button"
+            onClick={() => setMode("tgproxy")}
+            aria-pressed={mode === "tgproxy"}
+            className={mode === "tgproxy" ? "flex items-center justify-center gap-1.5 rounded-lg bg-panel py-2 text-[13px] font-bold text-ink" : "flex items-center justify-center gap-1.5 rounded-lg py-2 text-[13px] text-dim hover:text-ink"}
+          >
+            <Send className="size-3.5 text-glow" /> پروکسی تلگرام
+          </button>
         </div>
-        <input
-          aria-label="Display name"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="Display name (e.g. Germany - Berlin)"
-          className="rounded-xl border border-panel-edge bg-night px-3 py-3 text-sm text-ink outline-none placeholder:text-dim focus:border-gold/60"
-        />
-        <div className="scroll-hide flex gap-2 overflow-x-auto pb-1">
-          {Object.keys(COUNTRIES).map((c) => (
+
+        {mode === "config" ? (
+          <>
+            <textarea
+              aria-label="Config link"
+              value={link}
+              onChange={(e) => {
+                setLink(e.target.value);
+                setErr("");
+                const pr = parseLink(e.target.value);
+                if (pr?.name && !name) setName(pr.name);
+                if (pr?.name) {
+                  const hit = Object.entries(COUNTRIES).find(([, v]) => pr.name.toLowerCase().includes(v.toLowerCase().split(" ")[0]));
+                  if (hit) setCountry(hit[0]);
+                }
+              }}
+              rows={3}
+              placeholder="vless://… or vmess://…"
+              className="resize-none rounded-xl border border-panel-edge bg-night px-3 py-3 font-mono text-sm break-all text-ink outline-none placeholder:text-dim focus:border-gold/60"
+            />
+            <div className="flex items-center justify-between">
+              <button
+                type="button"
+                onClick={() => {
+                  setLink(sample);
+                  setName("France - Paris");
+                  setCountry("fr");
+                  setErr("");
+                }}
+                className="flex items-center gap-2 text-sm font-medium text-gold"
+              >
+                <ClipboardPaste className="size-4" /> Paste from clipboard
+              </button>
+              {parsed && (
+                <span className="rounded-full bg-glow/15 px-2 py-0.5 text-sm font-semibold text-glow">{parsed.protocol}</span>
+              )}
+            </div>
+            <input
+              aria-label="Display name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Display name (e.g. Germany - Berlin)"
+              className="rounded-xl border border-panel-edge bg-night px-3 py-3 text-sm text-ink outline-none placeholder:text-dim focus:border-gold/60"
+            />
+            <div className="scroll-hide flex gap-2 overflow-x-auto pb-1">
+              {Object.keys(COUNTRIES).map((c) => (
+                <button
+                  type="button"
+                  key={c}
+                  onClick={() => setCountry(c)}
+                  aria-label={c === "gift" ? "هدیه (نامشخص)" : COUNTRIES[c]}
+                  title={c === "gift" ? "هدیه (نامشخص)" : COUNTRIES[c]}
+                  className={
+                    country === c
+                      ? "rounded-full ring-2 ring-gold ring-offset-2 ring-offset-panel"
+                      : "rounded-full opacity-60 hover:opacity-100"
+                  }
+                >
+                  <span className="flex flex-col items-center gap-0.5">
+                    <Flag code={c} size={30} />
+                    {c === "gift" && <span className="text-[9px] leading-3 text-dim">هدیه (نامشخص)</span>}
+                  </span>
+                </button>
+              ))}
+            </div>
+            <div className="flex items-center justify-between rounded-xl bg-night px-3 py-3">
+              <span className="flex items-center gap-2 text-sm text-ink">
+                <Crown className="size-4 fill-gold text-gold" /> Premium only
+              </span>
+              <Switch checked={premium} onCheckedChange={setPremium} aria-label="Premium only" />
+            </div>
+            {err && <div className="text-sm text-danger">{err}</div>}
+            <button type="button" onClick={save} className="rounded-xl bg-gold py-3 font-display text-base font-bold text-night">
+              Save &amp; publish
+            </button>
+          </>
+        ) : (
+          <>
+            <div className="rounded-xl border border-panel-edge bg-night px-3 py-2.5 text-xs leading-5 text-dim">
+              فقط لینک کامل پروکسی را بچسبان — از تلگرام با «Copy Proxy Link» کپی می‌شود.{" "}
+              فرمت‌های <span dir="ltr" className="font-mono">tg://proxy?…</span>، <span dir="ltr" className="font-mono">t.me/proxy?…</span> و <span dir="ltr" className="font-mono">t.me/socks?…</span> — دیگر لازم نیست مقادیر را دونه‌دونه وارد کنی.
+            </div>
+            <textarea
+              aria-label="لینک کامل پروکسی تلگرام"
+              dir="ltr"
+              value={tgLink}
+              onChange={(e) => setTgLink(e.target.value)}
+              rows={3}
+              placeholder="tg://proxy?server=…&port=443&secret=…"
+              className="resize-none rounded-xl border border-panel-edge bg-night px-3 py-3 font-mono text-xs break-all text-ink outline-none placeholder:text-dim focus:border-gold/60"
+            />
+            <div className="flex items-center justify-between">
+              <button
+                type="button"
+                onClick={async () => {
+                  let pasted = "";
+                  try {
+                    pasted = (await navigator.clipboard.readText()).trim();
+                  } catch {
+                    pasted = "";
+                  }
+                  setTgLink(pasted || tgSample);
+                }}
+                className="flex items-center gap-2 text-sm font-medium text-gold"
+              >
+                <ClipboardPaste className="size-4" /> چسباندن لینک
+              </button>
+              {tgParsed && (
+                <span className="rounded-full bg-glow/15 px-2 py-0.5 font-mono text-xs font-semibold text-glow">
+                  {tgParsed.kind} · {tgParsed.server}:{tgParsed.port}
+                  {tgParsed.secret ? " · secret ✓" : ""}
+                </span>
+              )}
+            </div>
+            <input
+              aria-label="عنوان پروکسی (اختیاری)"
+              value={tgTitle}
+              onChange={(e) => setTgTitle(e.target.value)}
+              placeholder="عنوان (اختیاری) — مثلاً پروکسی طلایی"
+              className="rounded-xl border border-panel-edge bg-night px-3 py-3 text-sm text-ink outline-none placeholder:text-dim focus:border-gold/60"
+            />
+            {tgLink.trim() && !tgParsed && (
+              <div className="text-sm text-danger">لینک پروکسی معتبر نیست — لینک کامل را از تلگرام کپی کن.</div>
+            )}
             <button
               type="button"
-              key={c}
-              onClick={() => setCountry(c)}
-              aria-label={c === "gift" ? "هدیه (نامشخص)" : COUNTRIES[c]}
-              title={c === "gift" ? "هدیه (نامشخص)" : COUNTRIES[c]}
-              className={
-                country === c
-                  ? "rounded-full ring-2 ring-gold ring-offset-2 ring-offset-panel"
-                  : "rounded-full opacity-60 hover:opacity-100"
-              }
+              onClick={saveTg}
+              disabled={!tgParsed || tgBusy}
+              className="flex items-center justify-center gap-2 rounded-xl bg-gold py-3 font-display text-base font-bold text-night disabled:opacity-40"
             >
-              <span className="flex flex-col items-center gap-0.5">
-                <Flag code={c} size={30} />
-                {c === "gift" && <span className="text-[9px] leading-3 text-dim">هدیه (نامشخص)</span>}
-              </span>
+              {tgBusy ? <Loader2 className="size-4 animate-spin" /> : <Plus className="size-4" />}
+              افزودن پروکسی برای همهٔ کاربران
             </button>
-          ))}
-        </div>
-        <div className="flex items-center justify-between rounded-xl bg-night px-3 py-3">
-          <span className="flex items-center gap-2 text-sm text-ink">
-            <Crown className="size-4 fill-gold text-gold" /> Premium only
-          </span>
-          <Switch checked={premium} onCheckedChange={setPremium} aria-label="Premium only" />
-        </div>
-        {err && <div className="text-sm text-danger">{err}</div>}
-        <button type="button" onClick={save} className="rounded-xl bg-gold py-3 font-display text-base font-bold text-night">
-          Save &amp; publish
-        </button>
+          </>
+        )}
       </div>
     </div>
   );
@@ -891,101 +1011,19 @@ function OtaTab({
 }
 
 /* ── پروکسی‌های تلگرام — مدیریت از پنل ادمین ──
- * لیست از GET /api/admin/tgproxies می‌آید؛ اگر API در دسترس نباشد
- * (خطا / ok:false / demo:true) لیست دمو نمایش داده می‌شه و هر تغییر
- * به‌شکل محلی اعمال می‌شه با توست «حالت دمو». */
+ * لیست و حذف اینجاست؛ «افزودن» از دکمهٔ Add config ← تب «پروکسی تلگرام»
+ * انجام می‌شود (فقط لینک کامل). وضعیت اتصال به API: null=در حال بررسی ·
+ * true=حالت دمو (API در دسترس نیست) · false=متصل. */
 
-const DEMO_TOAST_MS = 2200;
-
-function TgProxiesCard() {
-  const [items, setItems] = useState<TgProxy[]>(TG_PROXY_FALLBACK);
-  const [loading, setLoading] = useState(true);
-  /* null = در حال بررسی · true = API در دسترس نیست (حالت دمو) · false = متصل به API */
-  const [demo, setDemo] = useState<boolean | null>(null);
-  const [title, setTitle] = useState("");
-  const [server, setServer] = useState("");
-  const [port, setPort] = useState("443");
-  const [kind, setKind] = useState<"mtproto" | "socks">("mtproto");
-  const [secret, setSecret] = useState("");
-  const [toast, setToast] = useState("");
-
-  useEffect(() => {
-    if (!toast) return;
-    const tm = setTimeout(() => setToast(""), DEMO_TOAST_MS);
-    return () => clearTimeout(tm);
-  }, [toast]);
-
-  useEffect(() => {
-    let dead = false;
-    (async () => {
-      try {
-        const r = await fetch("/api/admin/tgproxies", { headers: { "x-demo-user": "demo-user" } });
-        const j = r.ok ? await r.json().catch(() => null) : null;
-        if (dead) return;
-        if (j && j.demo !== true && j.ok === true && Array.isArray(j.proxies) && j.proxies.length > 0) {
-          setItems(j.proxies as TgProxy[]);
-          setDemo(false);
-        } else {
-          setDemo(true);
-        }
-      } catch {
-        if (!dead) setDemo(true);
-      } finally {
-        if (!dead) setLoading(false);
-      }
-    })();
-    return () => {
-      dead = true;
-    };
-  }, []);
-
-  const add = async () => {
-    if (!server.trim()) return;
-    const p = Number(port.trim());
-    const item: TgProxy = {
-      id: `tp-${Date.now()}`,
-      title: title.trim() || "پروکسی تلگرام",
-      server: server.trim(),
-      port: Number.isFinite(p) && p > 0 ? p : 443,
-      kind,
-      secret: secret.trim() || null,
-      country: "gift",
-      ping: 40 + Math.floor(Math.random() * 120),
-    };
-    let ok = false;
-    try {
-      const r = await fetch("/api/admin/tgproxies", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "x-demo-user": "demo-user" },
-        body: JSON.stringify(item),
-      });
-      ok = r.ok;
-    } catch {
-      ok = false;
-    }
-    setItems((xs) => [item, ...xs]);
-    setTitle("");
-    setServer("");
-    setSecret("");
-    setPort("443");
-    setToast(ok ? "پروکسی به همهٔ کاربران اضافه شد" : "حالت دمو");
-  };
-
-  const del = async (id: string) => {
-    let ok = false;
-    try {
-      const r = await fetch(`/api/admin/tgproxies?id=${encodeURIComponent(id)}`, {
-        method: "DELETE",
-        headers: { "x-demo-user": "demo-user" },
-      });
-      ok = r.ok;
-    } catch {
-      ok = false;
-    }
-    setItems((xs) => xs.filter((x) => x.id !== id));
-    setToast(ok ? "پروکسی حذف شد" : "حالت دمو");
-  };
-
+function TgProxiesCard({
+  items,
+  demo,
+  onDelete,
+}: {
+  items: TgProxy[];
+  demo: boolean | null;
+  onDelete: (id: string) => void;
+}) {
   return (
     <div className="rounded-xl border border-panel-edge bg-panel p-4">
       <div className="flex items-center gap-2 text-sm font-semibold text-ink">
@@ -995,21 +1033,24 @@ function TgProxiesCard() {
         )}
       </div>
       <div className="mt-1 text-xs leading-5 text-dim">
-        پروکسی‌های MTProto/SOCKS که کاربران با دکمهٔ «پروکسی تلگرام» در صفحهٔ اصلی می‌گیرند.
+        پروکسی‌های MTProto/SOCKS که کاربران با دکمهٔ «پروکسی تلگرام» در صفحهٔ اصلی می‌گیرند. برای افزودن، دکمهٔ
+        «Add config» ← تب «پروکسی تلگرام» — فقط لینک کامل را بچسبان.
       </div>
 
       <div className="scroll-hide mt-3 flex max-h-96 flex-col gap-2 overflow-y-auto">
-        {loading ? (
+        {demo === null ? (
           <div className="flex items-center justify-center gap-2 rounded-lg bg-night px-3 py-4 text-xs text-dim">
             <Loader2 className="size-3.5 animate-spin" /> در حال دریافت پروکسی‌ها…
           </div>
+        ) : items.length === 0 ? (
+          <div className="rounded-lg bg-night px-3 py-4 text-center text-xs text-dim">هیچ پروکسی‌ای ثبت نشده.</div>
         ) : (
           items.map((x) => (
             <div key={x.id} className="rounded-lg bg-night px-3 py-2.5">
               <div className="flex items-center gap-2">
                 <span className="min-w-0 flex-1 truncate text-sm font-semibold text-ink">{x.title}</span>
                 <span className="shrink-0 rounded-full bg-glow/15 px-2 py-0.5 text-[10px] font-bold uppercase text-glow">{x.kind}</span>
-                <button type="button" onClick={() => del(x.id)} aria-label={`حذف ${x.title}`} className="shrink-0 text-dim hover:text-danger">
+                <button type="button" onClick={() => onDelete(x.id)} aria-label={`حذف ${x.title}`} className="shrink-0 text-dim hover:text-danger">
                   <Trash2 className="size-4" />
                 </button>
               </div>
@@ -1022,79 +1063,7 @@ function TgProxiesCard() {
             </div>
           ))
         )}
-        {!loading && items.length === 0 && (
-          <div className="rounded-lg bg-night px-3 py-4 text-center text-xs text-dim">هیچ پروکسی‌ای ثبت نشده.</div>
-        )}
       </div>
-
-      {/* افزودن پروکسی */}
-      <div className="mt-3 border-t border-panel-edge pt-3">
-        <div className="grid grid-cols-2 gap-2">
-          <input
-            aria-label="عنوان پروکسی"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            placeholder="عنوان — مثلاً پروکسی طلایی"
-            className="col-span-2 rounded-lg border border-panel-edge bg-night px-3 py-2 text-sm text-ink outline-none placeholder:text-dim focus:border-gold/60"
-          />
-          <input
-            aria-label="سرور"
-            dir="ltr"
-            value={server}
-            onChange={(e) => setServer(e.target.value)}
-            placeholder="server / host"
-            className="col-span-2 rounded-lg border border-panel-edge bg-night px-3 py-2 font-mono text-sm text-ink outline-none placeholder:text-dim focus:border-gold/60"
-          />
-          <input
-            aria-label="پورت"
-            dir="ltr"
-            inputMode="numeric"
-            value={port}
-            onChange={(e) => setPort(e.target.value)}
-            placeholder="443"
-            className="rounded-lg border border-panel-edge bg-night px-3 py-2 font-mono text-sm text-ink outline-none placeholder:text-dim focus:border-gold/60"
-          />
-          <div className="grid grid-cols-2 gap-1 rounded-lg bg-night p-1">
-            {(["mtproto", "socks"] as const).map((k) => (
-              <button
-                key={k}
-                type="button"
-                onClick={() => setKind(k)}
-                aria-pressed={kind === k}
-                className={
-                  kind === k
-                    ? "rounded-md bg-panel py-1.5 text-xs font-bold uppercase text-ink"
-                    : "rounded-md py-1.5 text-xs uppercase text-dim"
-                }
-              >
-                {k}
-              </button>
-            ))}
-          </div>
-          <input
-            aria-label="Secret (اختیاری)"
-            dir="ltr"
-            value={secret}
-            onChange={(e) => setSecret(e.target.value)}
-            placeholder="secret (mtproto — optional)"
-            className="col-span-2 rounded-lg border border-panel-edge bg-night px-3 py-2 font-mono text-xs text-ink outline-none placeholder:text-dim focus:border-gold/60"
-          />
-        </div>
-        <button
-          type="button"
-          onClick={add}
-          disabled={!server.trim()}
-          className="mt-2 flex w-full items-center justify-center gap-2 rounded-lg bg-gold py-2 text-sm font-bold text-night disabled:opacity-40"
-        >
-          <Plus className="size-4" /> افزودن پروکسی
-        </button>
-      </div>
-
-      {toast && (
-        <div className="fixed inset-x-0 top-16 z-40 flex justify-center">
-          <span className="screen-in rounded-full bg-ink px-4 py-2 text-sm font-semibold text-night">{toast}</span>
-        </div>
-      )}
     </div>
   );
 }
@@ -1136,11 +1105,69 @@ export function AdminPanel({
   const [adding, setAdding] = useState(false);
   const [toast, setToast] = useState("");
 
+  /* پروکسی‌های تلگرام — state در پنل، بین لیست و Add config مشترک */
+  const [tgItems, setTgItems] = useState<TgProxy[]>(TG_PROXY_FALLBACK);
+  const [tgDemo, setTgDemo] = useState<boolean | null>(null);
+
   useEffect(() => {
     if (!toast) return;
     const t = setTimeout(() => setToast(""), 2200);
     return () => clearTimeout(t);
   }, [toast]);
+
+  useEffect(() => {
+    let dead = false;
+    (async () => {
+      try {
+        const r = await fetch("/api/admin/tgproxies", { headers: { "x-demo-user": "demo-user" } });
+        const j = r.ok ? await r.json().catch(() => null) : null;
+        if (dead) return;
+        if (j && j.demo !== true && j.ok === true && Array.isArray(j.proxies)) {
+          setTgItems(j.proxies as TgProxy[]);
+          setTgDemo(false);
+        } else {
+          setTgDemo(true);
+        }
+      } catch {
+        if (!dead) setTgDemo(true);
+      }
+    })();
+    return () => {
+      dead = true;
+    };
+  }, []);
+
+  /** افزودن از Add config ← تب پروکسی تلگرام (لینک کامل به API می‌رود) */
+  const addTgProxy = async (item: TgProxy, rawLink: string) => {
+    let ok = false;
+    try {
+      const r = await fetch("/api/admin/tgproxies", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-demo-user": "demo-user" },
+        body: JSON.stringify({ link: rawLink, title: item.title }),
+      });
+      ok = r.ok;
+    } catch {
+      ok = false;
+    }
+    setTgItems((xs) => [item, ...xs]);
+    setToast(ok ? "پروکسی به همهٔ کاربران اضافه شد" : "حالت دمو");
+  };
+
+  const deleteTgProxy = async (id: string) => {
+    let ok = false;
+    try {
+      const r = await fetch(`/api/admin/tgproxies?id=${encodeURIComponent(id)}`, {
+        method: "DELETE",
+        headers: { "x-demo-user": "demo-user" },
+      });
+      ok = r.ok;
+    } catch {
+      ok = false;
+    }
+    setTgItems((xs) => xs.filter((x) => x.id !== id));
+    setToast(ok ? "پروکسی حذف شد" : "حالت دمو");
+  };
 
   const active = configs.filter((c) => c.enabled).length;
   const pending = orders.filter((o) => o.status === "pending").length;
@@ -1239,8 +1266,8 @@ export function AdminPanel({
             </div>
           ))}
 
-          {/* ── پروکسی‌های تلگرام: مدیریت (لیست + افزودن + حذف) ── */}
-          <TgProxiesCard />
+          {/* ── پروکسی‌های تلگرام: لیست + حذف (افزودن از Add config) ── */}
+          <TgProxiesCard items={tgItems} demo={tgDemo} onDelete={deleteTgProxy} />
         </div>
       )}
 
@@ -1276,6 +1303,7 @@ export function AdminPanel({
             setAdding(false);
             setToast("Published to all users");
           }}
+          onAddTg={addTgProxy}
         />
       )}
     </div>

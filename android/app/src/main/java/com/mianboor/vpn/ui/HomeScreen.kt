@@ -259,23 +259,6 @@ fun HomeScreen(
             )
         }
 
-        // ── v2.1: دکمهٔ فشردهٔ پروکسی تلگرام — دقیقا زیر حلقهٔ اتصال، هم‌تراز ستون کارت دانلود ──
-        Row(Modifier.fillMaxWidth().padding(top = 10.dp)) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier
-                    .clip(RoundedCornerShape(50))
-                    .background(mb.gold.copy(alpha = 0.10f))
-                    .border(1.dp, mb.gold.copy(alpha = 0.4f), RoundedCornerShape(50))
-                    .clickable { onOpenTgProxy() }
-                    .padding(horizontal = 14.dp, vertical = 8.dp),
-            ) {
-                Icon(ic(R.drawable.ic_send), null, tint = mb.gold, modifier = Modifier.size(15.dp))
-                Spacer(Modifier.width(7.dp))
-                Text(t.tgProxy, color = mb.gold, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-            }
-        }
-
         // ── status ──
         Column(Modifier.fillMaxWidth().padding(top = 14.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             Text(
@@ -353,6 +336,28 @@ fun HomeScreen(
                     Spacer(Modifier.width(6.dp))
                     Text(warn, color = mb.danger, fontSize = 12.sp, fontWeight = FontWeight.Medium)
                 }
+            }
+        }
+
+        // ── v2.1: دکمهٔ پروکسی تلگرام — دقیقا زیر دکمهٔ اتصال اصلی، سمت چپ صفحه ──
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .padding(top = 10.dp),
+            horizontalArrangement = Arrangement.End,
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(50))
+                    .background(mb.gold.copy(alpha = 0.10f))
+                    .border(1.dp, mb.gold.copy(alpha = 0.4f), RoundedCornerShape(50))
+                    .clickable { onOpenTgProxy() }
+                    .padding(horizontal = 14.dp, vertical = 8.dp),
+            ) {
+                Icon(ic(R.drawable.ic_send), null, tint = mb.gold, modifier = Modifier.size(15.dp))
+                Spacer(Modifier.width(7.dp))
+                Text(t.tgProxy, color = mb.gold, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
             }
         }
 
