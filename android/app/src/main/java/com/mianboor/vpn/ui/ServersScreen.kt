@@ -67,7 +67,6 @@ fun ServersScreen(
     onToggleFav: (String) -> Unit = {},
     onSpeedTest: () -> Unit = {},
     onImport: () -> Unit = {},
-    onStatus: () -> Unit = {},
 ) {
     val t = stringsOf(lang)
     val mb = LocalMb.current
@@ -102,7 +101,7 @@ fun ServersScreen(
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.padding(start = 12.dp).weight(1f),
             )
-            // ── دکمه‌های v2: اسپیدتست / ورود کانفیگ / وضعیت سرورها ──
+            // ── دکمه‌های v2: اسپیدتست / ورود کانفیگ ──
             Box(
                 Modifier
                     .size(38.dp)
@@ -125,18 +124,6 @@ fun ServersScreen(
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(ic(R.drawable.ic_plus), t.importTitle, tint = mb.glow, modifier = Modifier.size(17.dp))
-            }
-            Spacer(Modifier.width(6.dp))
-            Box(
-                Modifier
-                    .size(38.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(mb.panel)
-                    .border(1.dp, mb.panelEdge, RoundedCornerShape(12.dp))
-                    .clickable { onStatus() },
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(ic(R.drawable.ic_shield_check), t.statusTitle, tint = mb.glow, modifier = Modifier.size(17.dp))
             }
             Spacer(Modifier.width(6.dp))
             Box(

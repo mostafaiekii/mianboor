@@ -111,7 +111,6 @@ import com.mianboor.vpn.ui.stringsOf
 import com.mianboor.vpn.ui.ImportSheet
 import com.mianboor.vpn.ui.PrivacyScreen
 import com.mianboor.vpn.ui.SpeedTestSheet
-import com.mianboor.vpn.ui.StatusSheet
 import com.mianboor.vpn.ui.WalletScreen
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -269,7 +268,6 @@ private fun MbAppInner(
 
     // ── v2: شیت‌های سرورها + کیف پول ──
     var speedOpen by remember { mutableStateOf(false) }
-    var statusOpen by remember { mutableStateOf(false) }
     var importOpen by remember { mutableStateOf(false) }
     // ── v2.1: شیت پروکسی تلگرام ──
     var tgOpen by remember { mutableStateOf(false) }
@@ -1553,7 +1551,6 @@ private fun MbAppInner(
                             else toast(t.speedNeedConn)
                         },
                         onImport = { importOpen = true },
-                        onStatus = { statusOpen = true },
                         onRefresh = { refreshRemote { ok -> if (!ok && syncOk != false) toast(t.errNetwork) } },
                         onSelect = { key ->
                             selectedKey = key
@@ -1797,12 +1794,9 @@ private fun MbAppInner(
         }
 
         // ── plans sheet ──
-        // ── v2 sheets: اسپیدتست، وضعیت سرورها، ورود کانفیگ ──
+        // ── v2 sheets: اسپیدتست، ورود کانفیگ ──
         if (speedOpen) {
             SpeedTestSheet(lang = lang, server = selectedConfig, onClose = { speedOpen = false })
-        }
-        if (statusOpen) {
-            StatusSheet(lang = lang, configs = liveConfigs, onClose = { statusOpen = false })
         }
         if (importOpen) {
             ImportSheet(

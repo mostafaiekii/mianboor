@@ -258,10 +258,6 @@ interface Strings {
     val speedDone: String
     val speedFail: String
     val speedNeedConn: String
-    val statusTitle: String
-    val statusSub: String
-    val statusDown: String
-    val statusLive: String
     val importTitle: String
     val importLinkTab: String
     val importSubTab: String
@@ -612,10 +608,6 @@ object EnStrings : Strings {
     override val speedDone = "Done"
     override val speedFail = "Test failed — connect first, then try again"
     override val speedNeedConn = "Connect first — the test runs inside the tunnel"
-    override val statusTitle = "Server status"
-    override val statusSub = "Health of every server right now"
-    override val statusDown = "offline"
-    override val statusLive = "live"
     override val importTitle = "Import config"
     override val importLinkTab = "Share link"
     override val importSubTab = "Subscription"
@@ -968,10 +960,6 @@ object FaStrings : Strings {
     override val speedDone = "تموم شد"
     override val speedFail = "تست نشد — اول وصل شو و دوباره امتحان کن"
     override val speedNeedConn = "اول وصل شو — تست از داخل تونل انجام می‌شه"
-    override val statusTitle = "وضعیت سرورها"
-    override val statusSub = "سلامت هر سرور در همین لحظه"
-    override val statusDown = "قطع"
-    override val statusLive = "زنده"
     override val importTitle = "ورود کانفیگ"
     override val importLinkTab = "لینک کانفیگ"
     override val importSubTab = "لینک اشتراک"

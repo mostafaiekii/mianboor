@@ -302,43 +302,6 @@ private fun SpeedCard(label: String, v: Double, modifier: Modifier = Modifier) {
 }
 
 // ─────────────────────────────────────────────────────────────────
-// شیت وضعیت سرورها — وضعیت زندهٔ واقعی از موتور پینگ
-// ─────────────────────────────────────────────────────────────────
-
-@Composable
-fun StatusSheet(lang: Lang, configs: List<ConfigItem>, onClose: () -> Unit) {
-    val t = stringsOf(lang)
-    val mb = LocalMb.current
-    SheetScaffold(title = t.statusTitle, icon = R.drawable.ic_shield_check, onClose = onClose) {
-        Text(t.statusSub, color = mb.dim, fontSize = 12.sp, modifier = Modifier.padding(bottom = 8.dp))
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            configs.sortedBy { it.ping }.forEach { c ->
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(mb.night)
-                        .padding(horizontal = 12.dp, vertical = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Flag(c.country, 26.dp)
-                    Spacer(Modifier.width(10.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text(c.name, color = mb.ink, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
-                        Text(
-                            if (c.ping >= 999) t.statusDown else t.statusLive,
-                            color = if (c.ping >= 999) mb.danger else mb.dim,
-                            fontSize = 11.sp,
-                        )
-                    }
-                    Text("${c.ping} ms", color = pingColor(c.ping, mb), fontSize = 13.sp)
-                }
-            }
-        }
-    }
-}
-
-// ─────────────────────────────────────────────────────────────────
 // شیت ورود کانفیگ — لینک اشتراکی / لینک اشتراک / QR
 // ─────────────────────────────────────────────────────────────────
 

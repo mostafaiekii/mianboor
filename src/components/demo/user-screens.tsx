@@ -463,7 +463,6 @@ export function ServersScreen({
   onToggleFav,
   onSpeedTest,
   onImport,
-  onStatus,
   onPremiumTap,
   onBack,
 }: {
@@ -482,7 +481,6 @@ export function ServersScreen({
   onToggleFav: (id: number) => void;
   onSpeedTest: () => void;
   onImport: () => void;
-  onStatus: () => void;
   onPremiumTap: () => void;
   onBack: () => void;
 }) {
@@ -532,16 +530,6 @@ export function ServersScreen({
           className="grid size-9 shrink-0 place-items-center rounded-xl border border-panel-edge bg-panel text-glow hover:border-glow/40"
         >
           <Plus className="size-4" />
-        </button>
-        {/* وضعیت زندهٔ همهٔ سرورها */}
-        <button
-          type="button"
-          onClick={onStatus}
-          aria-label={t.statusTitle}
-          title={t.statusTitle}
-          className="grid size-9 shrink-0 place-items-center rounded-xl border border-panel-edge bg-panel text-glow hover:border-glow/40"
-        >
-          <ShieldCheck className="size-4" />
         </button>
         {/* دکمه به‌روزرسانی از سرور — مثل اپ واقعی */}
         <button

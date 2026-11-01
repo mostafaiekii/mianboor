@@ -31,7 +31,7 @@ import { ReferralScreen, type RefFriend, REF_CODE, REF_LINK } from "@/components
 import { SupportChatScreen } from "@/components/demo/support-chat";
 import { InboxScreen, KIND_META } from "@/components/demo/inbox-screen";
 import { AdminLogin, AdminPanel } from "@/components/demo/admin-screens";
-import { DevicesSheet, ImportSheet, PrivacyScreen, SpeedTestSheet, StatusSheet, WalletScreen, type SpeedPhase, type SpeedState } from "@/components/demo/v2-features";
+import { DevicesSheet, ImportSheet, PrivacyScreen, SpeedTestSheet, WalletScreen, type SpeedPhase, type SpeedState } from "@/components/demo/v2-features";
 import { tr, tpl, type Lang, type Strings } from "@/components/demo/i18n";
 import { THEMES, type ThemeName } from "@/components/demo/themes";
 import {
@@ -425,7 +425,6 @@ export default function VpnDemoPage() {
   const [speedResults, setSpeedResults] = useState<Record<number, SpeedResult>>({});
   const [speedOpen, setSpeedOpen] = useState(false);
   const [speed, setSpeed] = useState<SpeedState | null>(null);
-  const [statusOpen, setStatusOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [devicesOpen, setDevicesOpen] = useState(false);
   const [wallet, setWallet] = useState<Wallet>(freshWallet);
@@ -1147,7 +1146,6 @@ export default function VpnDemoPage() {
                     onToggleFav={toggleFav}
                     onSpeedTest={() => selectedId && startSpeedTest(selectedId)}
                     onImport={() => setImportOpen(true)}
-                    onStatus={() => setStatusOpen(true)}
                     onPremiumTap={() => setPlans("premium-lock")}
                     onBack={() => setScreen("home")}
                   />
@@ -1310,7 +1308,6 @@ export default function VpnDemoPage() {
                   onClose={() => setSpeedOpen(false)}
                 />
               )}
-              {statusOpen && <StatusSheet lang={lang} configs={liveConfigs} dead={deadServers} onClose={() => setStatusOpen(false)} />}
               {importOpen && <ImportSheet lang={lang} onAddServer={addCustomServer} onImportSub={importSub} onClose={() => setImportOpen(false)} />}
               {devicesOpen && <DevicesSheet lang={lang} devices={myDevices} onUnlink={unlinkDevice} onClose={() => setDevicesOpen(false)} />}
 
