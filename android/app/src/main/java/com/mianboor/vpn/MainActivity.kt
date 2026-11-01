@@ -95,6 +95,7 @@ import com.mianboor.vpn.ui.Lang
 import com.mianboor.vpn.ui.LocalMb
 import com.mianboor.vpn.ui.ReferralScreen
 import com.mianboor.vpn.ui.SupportChatScreen
+import com.mianboor.vpn.ui.TgProxySheet
 import com.mianboor.vpn.ui.MbThemes
 import com.mianboor.vpn.ui.PlansSheet
 import com.mianboor.vpn.ui.ServersScreen
@@ -238,8 +239,7 @@ private fun MbAppInner(
     var reinstalls by remember { mutableIntStateOf(AppPrefs.reinstalls(context)) }
     var deviceId by remember { mutableStateOf(AppPrefs.deviceId(context)) }
 
-    // ── آی‌پی مبدا / فلش اتصال / بنر آپدیت / وضعیت نسخهٔ سرور ──
-    var originIp by remember { mutableStateOf(AppPrefs.ipInfo(context)?.first) }
+    // ── آی‌پی/کشور مبدا (برای فلش اتصال؛ قبل از اتصال گرفته و در AppPrefs کش می‌شود) ──
     var originCc by remember { mutableStateOf(AppPrefs.ipInfo(context)?.second ?: "ir") }
     var showFlash by remember { mutableStateOf(false) }
     var updateTag by remember { mutableStateOf<String?>(null) }
@@ -271,6 +271,8 @@ private fun MbAppInner(
     var speedOpen by remember { mutableStateOf(false) }
     var statusOpen by remember { mutableStateOf(false) }
     var importOpen by remember { mutableStateOf(false) }
+    // ── v2.1: شیت پروکسی تلگرام ──
+    var tgOpen by remember { mutableStateOf(false) }
     var importBusy by remember { mutableStateOf(false) }
     var walletInfo by remember { mutableStateOf<WalletInfo?>(null) }
     var walletBusy by remember { mutableStateOf(false) }
@@ -936,7 +938,7 @@ private fun MbAppInner(
             if (o != null) {
                 AppPrefs.setIpInfo(context, o.first, o.second)
                 withContext(Dispatchers.Main) {
-                    originIp = o.first; originCc = o.second.lowercase()
+                    originCc = o.second.lowercase()
                 }
             }
         }
@@ -1005,8 +1007,22 @@ private fun MbAppInner(
 
     // ── vpn start/stop ──
     var pendingTarget by remember { mutableStateOf<ConfigItem?>(null) }
+    var pendingTgSocks by remember { mutableStateOf<com.mianboor.vpn.TgProxy?>(null) }
+    /** v2.1: تونل فعلی در حالت پروکسی تلگرام (socks فقط-تلگرام) است — failover عادی نباید آن را بشکند. */
+    var tgActive by remember { mutableStateOf(false) }
 
     fun launchVpn(server: ConfigItem) {
+        tgActive = false // اتصال عادی — حالت پروکسی تلگرام پایان می‌یابد (سرویس هم tgSocks را پاک می‌کند)
+        // v2.1: اگر جلسهٔ قبل «فقط-تلگرام» بود، وضعیت واقعی تونل‌گذاری کاربر برگردد
+        val prevMode = AppPrefs.prevSplitMode(context)
+        if (prevMode.isNotBlank()) {
+            val prevApps = AppPrefs.prevSplitApps(context)
+            AppPrefs.setSplitMode(context, prevMode)
+            AppPrefs.setSplitApps(context, prevApps)
+            AppPrefs.clearPrevSplit(context)
+            splitMode = prevMode
+            splitApps = prevApps
+        }
         val intent = Intent(context, MianboorVpnService::class.java)
             .setAction(MianboorVpnService.ACTION_CONNECT)
             .putExtra(MianboorVpnService.EXTRA_LINK, server.link)
@@ -1017,16 +1033,34 @@ private fun MbAppInner(
         ContextCompat.startForegroundService(context, intent)
     }
 
+    /** v2.1: اتصال فقط-تلگرام — آپ‌استریم socks پروکسی تلگرام به‌جای لینک سرور. */
+    fun launchVpnTgSocks(proxy: com.mianboor.vpn.TgProxy) {
+        tgActive = true
+        val intent = Intent(context, MianboorVpnService::class.java)
+            .setAction(MianboorVpnService.ACTION_CONNECT)
+            .putExtra(MianboorVpnService.EXTRA_TG_SOCKS_ADDR, proxy.server)
+            .putExtra(MianboorVpnService.EXTRA_TG_SOCKS_PORT, proxy.port)
+            .putExtra(MianboorVpnService.EXTRA_NAME, proxy.title)
+            .putExtra(MianboorVpnService.EXTRA_COUNTRY, proxy.country)
+        VpnState.reset()
+        VpnState.phase.value = Phase.CONNECTING
+        ContextCompat.startForegroundService(context, intent)
+    }
+
     val vpnPermission = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult(),
     ) { result ->
         val server = pendingTarget
         pendingTarget = null
-        if (result.resultCode == Activity.RESULT_OK && server != null) {
-            launchVpn(server)
-        } else {
-            VpnState.phase.value = Phase.IDLE
-            VpnState.errorMessage.value = t.errPermission
+        val tg = pendingTgSocks
+        pendingTgSocks = null
+        when {
+            result.resultCode != Activity.RESULT_OK -> {
+                VpnState.phase.value = Phase.IDLE
+                VpnState.errorMessage.value = t.errPermission
+            }
+            tg != null -> launchVpnTgSocks(tg)
+            server != null -> launchVpn(server)
         }
     }
 
@@ -1035,6 +1069,8 @@ private fun MbAppInner(
         while (true) {
             kotlinx.coroutines.delay(2000)
             if (phase != Phase.CONNECTED || !AppPrefs.failover(context)) continue
+            // v2.1: در حالت پروکسی تلگرام تعویض سرور عادی معنا ندارد — تونل فقط-تلگرام دست‌نخورده بماند
+            if (tgActive) continue
             val target = selectedConfig ?: continue
             val ping = pings[target.key] ?: 0
             if (ping < 999) continue
@@ -1052,10 +1088,21 @@ private fun MbAppInner(
         }
     }
 
-    /** تونل وصل را با تنظیمات تازه (استلث/DNS/QUIC) دوباره برپا می‌کند. */
-    fun reconnectWithPrefs() {
+    /**
+     * تونل وصل را با تنظیمات تازه (استلث/DNS/QUIC) دوباره برپا می‌کند.
+     *
+     * v2.1 — «اعمال فوری DNS»: سرویس DNS را فقط هنگام CONNECT می‌خواند
+     * (MianboorVpnService.establishTunnel از AppPrefs.dnsMode/dnsCustom می‌خواند و
+     * در buildConfigJson می‌ریزد)، پس مسیر تمیزِ اعمال فوری همین ری‌استارت نرم است:
+     * قطع عادی + وصل‌شدن دوباره به همان سرور از همان مسیر connect موجود
+     * (ACTION_DISCONNECT + delay + ACTION_CONNECT). اگر applyMsg داده شود،
+     * قبل از ری‌استارت توست می‌شود؛ اگر تونل وصل نباشد هیچ‌ اتفاقی نمی‌افتد
+     * (تنظیمات در اتصال بعدی اعمال می‌شود).
+     */
+    fun reconnectWithPrefs(applyMsg: String? = null) {
         if (VpnState.phase.value != Phase.CONNECTED) return
         val target = selectedConfig ?: return
+        if (applyMsg != null) toast(applyMsg)
         VpnState.phase.value = Phase.DISCONNECTING
         context.startService(
             Intent(context, MianboorVpnService::class.java).setAction(MianboorVpnService.ACTION_DISCONNECT)
@@ -1323,6 +1370,46 @@ private fun MbAppInner(
         runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(TG_SUPPORT))) }
     }
 
+    /**
+     * v2.1: اقدام اتصال پروکسی تلگرام از شیت.
+     *  - mtproto: لینک tg://proxy (URL-encoded) به تلگرام داده می‌شود — خود تلگرام وصل می‌شود.
+     *  - socks: تونل VPN با آپ‌استریم socks همان پروکسی برپا می‌شود و برای «فقط تلگرام»
+     *    از همان ساز‌و‌کار allowlist تونل‌گذاری انتخابی استفاده می‌کنیم
+     *    (splitMode="include" + پکیج‌های تلگرام → addAllowedApplication در سرویس).
+     *    بقیه اپ‌ها از تونل خارج‌اند و اینترنت عادی می‌روند.
+     */
+    fun connectTgProxy(p: com.mianboor.vpn.TgProxy) {
+        tgOpen = false
+        if (p.kind == "socks") {
+            val tgPkgs = listOf("org.telegram.messenger", "org.telegram.messenger.web", "org.telegram.plus")
+            // وضعیت فعلی تونل‌گذاری کاربر نگه داشته می‌شود (فقط بار اول جلسهٔ فقط-تلگرام)
+            if (AppPrefs.prevSplitMode(context).isBlank()) {
+                AppPrefs.setPrevSplit(context, splitMode, splitApps)
+            }
+            AppPrefs.setSplitMode(context, "include")
+            AppPrefs.setSplitApps(context, tgPkgs)
+            splitMode = "include"      // UI تونل‌گذاری انتخابی هم همگام بماند
+            splitApps = tgPkgs
+            requestNotificationsIfNeeded()
+            val prepare = VpnService.prepare(context)
+            if (prepare != null) {
+                pendingTgSocks = p
+                vpnPermission.launch(prepare)
+            } else {
+                launchVpnTgSocks(p)
+            }
+            toast(t.tgSocksToast)
+        } else {
+            val uri = Uri.parse("tg://proxy").buildUpon()
+                .appendQueryParameter("server", p.server)
+                .appendQueryParameter("port", p.port.toString())
+                .appendQueryParameter("secret", p.secret)
+                .build()
+            runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, uri)) }
+            toast(t.tgAddedToast)
+        }
+    }
+
     fun copyDeviceId() {
         clipboard.setText(AnnotatedString(deviceId))
         toast(t.copied)
@@ -1405,13 +1492,11 @@ private fun MbAppInner(
                             else -> null
                         },
                         onPickServer = { screen = Screen.SERVERS },
-                        onOpenSettings = { screen = Screen.SETTINGS },
                         onSupport = { openTelegram() },
                         unreadNotices = notices.count { !it.read },
                         onOpenInbox = { screen = Screen.INBOX },
                         downBytes = rxBytes,
                         upBytes = txBytes,
-                        originIp = originIp,
                         originCc = originCc,
                         showFlash = showFlash,
                         updateTag = updateTag,
@@ -1425,6 +1510,7 @@ private fun MbAppInner(
                         } else null,
                         onRenew = { plansReason = "renew" },
                         stealthOn = stealth == "strict",
+                        onOpenTgProxy = { tgOpen = true },
                     )
                     Screen.INBOX -> InboxScreen(
                         lang = lang,
@@ -1581,13 +1667,14 @@ private fun MbAppInner(
                         setDnsMode = { v ->
                             dnsMode = v
                             AppPrefs.setDnsMode(context, v)
-                            reconnectWithPrefs()
+                            // v2.1: اعمال فوری — تونل وصل با DNS جدید ری‌استارت می‌شود
+                            reconnectWithPrefs(t.dnsAppliedToast)
                         },
                         dnsCustom = dnsCustom,
                         setDnsCustom = { v ->
                             dnsCustom = v
                             AppPrefs.setDnsCustom(context, v)
-                            reconnectWithPrefs()
+                            reconnectWithPrefs(t.dnsAppliedToast)
                         },
                         onOpenPrivacy = { screen = Screen.PRIVACY },
                         onSupport = { openTelegram() },
@@ -1698,6 +1785,7 @@ private fun MbAppInner(
                         screen = screen,
                         onHome = { screen = Screen.HOME },
                         onServers = { screen = Screen.SERVERS },
+                        onSettings = { screen = Screen.SETTINGS },
                         onAccountTap = { screen = Screen.ACCOUNT },
                         onAdminHold = {
                             vibrateTick(context)
@@ -1725,6 +1813,15 @@ private fun MbAppInner(
                 onFetchSub = { fetchSubscription(it) },
                 onScanQr = { scanQr() },
                 toast = { toast(it) },
+            )
+        }
+
+        // ── v2.1: شیت پروکسی تلگرام ──
+        if (tgOpen) {
+            TgProxySheet(
+                lang = lang,
+                onClose = { tgOpen = false },
+                onConnect = { connectTgProxy(it) },
             )
         }
 
@@ -1827,6 +1924,7 @@ private fun BottomNav(
     screen: Screen,
     onHome: () -> Unit,
     onServers: () -> Unit,
+    onSettings: () -> Unit,
     onAccountTap: () -> Unit,
     onAdminHold: () -> Unit,
 ) {
@@ -1906,6 +2004,14 @@ private fun BottomNav(
                 }
             }
         }
+        // ── v2.1: تنظیمات — چهارمین آیتم نوار پایین (چرخ‌دنده از هدر حذف شد) ──
+        NavBtn(
+            iconRes = com.mianboor.vpn.R.drawable.ic_settings,
+            label = t.settings,
+            active = screen == Screen.SETTINGS,
+            modifier = Modifier.weight(1f),
+            onClick = onSettings,
+        )
     }
 }
 

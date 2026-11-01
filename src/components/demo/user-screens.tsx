@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   ArrowDown,
   ArrowUp,
@@ -30,7 +30,6 @@ import {
   RotateCcw,
   Search,
   Send,
-  Settings,
   ShieldAlert,
   ShieldCheck,
   Smartphone,
@@ -44,7 +43,7 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { COUNTRIES, Flag } from "./flag";
 import { TG_SUPPORT, tr, type Lang } from "./i18n";
-import { FREE_QUOTA_GB, type ConfigItem, type Entitlement, type SpeedResult, type SplitState, type UsageDay, type VpnState } from "./types";
+import { FREE_QUOTA_GB, TG_PROXY_FALLBACK, type ConfigItem, type Entitlement, type SpeedResult, type SplitState, type TgProxy, type UsageDay, type VpnState } from "./types";
 import { FavStar, SpeedChip, UsageChart } from "./v2-features";
 
 /** یک ردیف مصرف — اپ یا سرور. در اپ واقعی از TrafficStats/VpnService می‌آید. */
@@ -108,16 +107,16 @@ export function HomeScreen({
   server,
   warn,
   onPickServer,
-  onOpenSettings,
   unread,
   onOpenInbox,
-  origin,
-  showFlash,
   flashOrigin,
+  showFlash,
   quotaWarnPct,
   expiryDays,
   onRenew,
   stealthOn,
+  restarting,
+  onToast,
 }: {
   lang: Lang;
   state: VpnState;
@@ -126,12 +125,9 @@ export function HomeScreen({
   server: ConfigItem | null;
   warn?: string | null;
   onPickServer: () => void;
-  onOpenSettings: () => void;
   /** تعداد پیام خوانده‌نشده صندوق — badge روی زنگ */
   unread?: number;
   onOpenInbox?: () => void;
-  /** آی‌پی و پرچم کشور مبدا کاربر (در اپ واقعی قبل از اتصال از ipwho.is) */
-  origin?: { ip: string; country: string } | null;
   /** فلش لحظه اتصال: «از ایران به آلمان وصل شدی» — همیشه آی‌پی واقعی کاربر */
   flashOrigin?: { ip: string; country: string } | null;
   showFlash?: boolean;
@@ -142,6 +138,10 @@ export function HomeScreen({
   onRenew?: () => void;
   /** حالت سخت‌گیر ضد-فیلترینگ روشنه؟ */
   stealthOn?: boolean;
+  /** ری‌استارت لحظه‌ای تونل بعد از تعویض DNS — حین اتصال زنده */
+  restarting?: boolean;
+  /** نمایش توست دمو (برای پروکسی تلگرام) */
+  onToast?: (msg: string) => void;
 }) {
   const t = tr(lang);
   const rtl = lang === "fa";
@@ -150,6 +150,44 @@ export function HomeScreen({
   const blocked = state === "blocked";
   const label = blocked ? t.blockedTitle : on ? t.connected : busy ? t.connecting : t.notConnected;
   const Fwd = rtl ? ChevronLeft : ChevronRight;
+
+  /* ── پروکسی تلگرام: شیت انتخاب پروکسی + اتصال نمایشی ── */
+  const [tgOpen, setTgOpen] = useState(false);
+  const [tgProxies, setTgProxies] = useState<TgProxy[]>(TG_PROXY_FALLBACK);
+  const [tgBusyId, setTgBusyId] = useState<string | null>(null);
+  const [tgDoneId, setTgDoneId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!tgOpen) return;
+    let dead = false;
+    (async () => {
+      let list: TgProxy[] = TG_PROXY_FALLBACK;
+      try {
+        const res = await fetch("/api/client/telegram/proxies", { headers: { "x-demo-user": "demo-user" } });
+        const j = res.ok ? await res.json().catch(() => null) : null;
+        /* ok:false / demo:true / بدنهٔ نامعتبر → همون لیست دمو */
+        if (j && j.demo !== true && j.ok === true && Array.isArray(j.proxies) && j.proxies.length > 0) {
+          list = j.proxies as TgProxy[];
+        }
+      } catch {
+        /* شبکه در دسترس نیست → fallback */
+      }
+      if (!dead) setTgProxies(list);
+    })();
+    return () => {
+      dead = true;
+    };
+  }, [tgOpen]);
+
+  const tgConnect = (p: TgProxy) => {
+    if (tgBusyId || tgDoneId === p.id) return;
+    setTgBusyId(p.id);
+    setTimeout(() => {
+      setTgBusyId(null);
+      setTgDoneId(p.id);
+      onToast?.(t.tgProxyAdded);
+    }, 1200);
+  };
 
   return (
     <div dir={rtl ? "rtl" : "ltr"} className="flex flex-1 flex-col overflow-y-auto scroll-hide px-6 pt-2">
@@ -185,14 +223,6 @@ export function HomeScreen({
           >
             <Send className="size-5" />
           </a>
-          <button
-            type="button"
-            onClick={onOpenSettings}
-            aria-label={t.settings}
-            className="grid size-9 place-items-center rounded-full text-dim hover:text-ink"
-          >
-            <Settings className="size-6" />
-          </button>
         </div>
       </div>
 
@@ -208,7 +238,9 @@ export function HomeScreen({
             blocked
               ? "relative grid size-44 place-items-center rounded-full border-4 border-danger bg-night shadow-[0_0_40px_var(--mb-danger)] transition-all"
               : on
-                ? "relative grid size-44 place-items-center rounded-full border-4 border-glow bg-night shadow-[0_0_40px_var(--mb-glow)] transition-all"
+                ? restarting
+                  ? "spin-ring relative grid size-44 place-items-center rounded-full border-4 border-glow/30 border-t-glow bg-night transition-all"
+                  : "relative grid size-44 place-items-center rounded-full border-4 border-glow bg-night shadow-[0_0_40px_var(--mb-glow)] transition-all"
                 : busy
                   ? "spin-ring relative grid size-44 place-items-center rounded-full border-4 border-glow/30 border-t-glow bg-night transition-all"
                   : "relative grid size-44 place-items-center rounded-full border-4 border-panel-edge bg-night transition-all hover:border-glow/50"
@@ -222,7 +254,15 @@ export function HomeScreen({
 
       <div className="mt-4 text-center">
         <div className={blocked ? "font-display text-2xl font-bold text-danger" : on ? "font-display text-2xl font-bold text-glow" : "font-display text-2xl font-bold text-ink"}>{label}</div>
-        <div className="mt-1 font-display text-base tabular-nums text-dim">{blocked ? t.blockedSub : on ? fmt(seconds) : t.tapProtect}</div>
+        <div className="mt-1 font-display text-base tabular-nums text-dim">
+          {blocked ? t.blockedSub : on ? (restarting ? (
+            <span className="inline-flex items-center gap-1.5">
+              <Loader2 className="size-4 animate-spin" /> {t.tunnelRestarting}
+            </span>
+          ) : (
+            fmt(seconds)
+          )) : t.tapProtect}
+        </div>
         {stealthOn && on && (
           <div className="mx-auto mt-2 flex w-fit items-center gap-1.5 rounded-full border border-glow/40 bg-glow/10 px-3 py-1 text-xs font-semibold text-glow">
             <ShieldAlert className="size-3.5" /> {t.stealthBadge}
@@ -230,10 +270,10 @@ export function HomeScreen({
         )}
         {showFlash && on && server && (
           <div className="flash-in mx-auto mt-2 flex max-w-[300px] items-center justify-center gap-2 rounded-full border border-glow/40 bg-glow/10 px-3 py-1.5">
-            <Flag code={(flashOrigin ?? origin)?.country ?? "ir"} size={18} />
+            <Flag code={flashOrigin?.country ?? "ir"} size={18} />
             <span className="truncate text-xs font-semibold text-ink">
               {t.connectFlash
-                .replace("{from}", COUNTRIES[(flashOrigin ?? origin)?.country ?? "ir"] ?? (flashOrigin ?? origin)?.country ?? "—")
+                .replace("{from}", COUNTRIES[flashOrigin?.country ?? "ir"] ?? flashOrigin?.country ?? "—")
                 .replace("{to}", COUNTRIES[server.country] ?? server.country)}
             </span>
             <span className="text-xs text-dim">→</span>
@@ -296,7 +336,7 @@ export function HomeScreen({
         <Fwd className="size-5 text-dim" />
       </button>
 
-      {/* دانلود و آپلود کنار هم — آی‌پی مبدا زیرشان، دقیقا وسط */}
+      {/* دانلود و آپلود کنار هم — زیرش دکمهٔ پروکسی تلگرام، هم‌تراز ستون دانلود */}
       <div className="mt-3 grid grid-cols-2 items-stretch gap-2">
         <div className="rounded-2xl border border-panel-edge bg-panel p-3">
           <div className="flex items-center gap-1.5 text-sm text-dim">
@@ -315,21 +355,96 @@ export function HomeScreen({
           </div>
         </div>
       </div>
-      <div className="mt-2 flex items-center justify-center gap-2 rounded-2xl border border-panel-edge bg-panel px-3 py-2.5">
-        {origin ? (
-          <>
-            <Flag code={origin.country} size={22} />
-            <span dir="ltr" className="truncate font-mono text-[13px] font-semibold text-ink">{origin.ip}</span>
-            <span className="text-dim">·</span>
-            <span className="text-xs text-dim">{COUNTRIES[origin.country] ?? origin.country}</span>
-          </>
-        ) : (
-          <>
-            <Globe className="size-4 text-dim" />
-            <span className="text-[13px] text-dim">{t.yourIp}…</span>
-          </>
-        )}
+
+      {/* ── پروکسی تلگرام: قرص فشرده زیر حلقهٔ اتصال، هم‌تراز ستون دانلود ── */}
+      <div className="mt-2 flex">
+        <button
+          type="button"
+          onClick={() => setTgOpen(true)}
+          className="flex items-center gap-2 rounded-full border border-panel-edge bg-panel px-4 py-2.5 text-sm font-semibold text-ink transition-colors hover:border-glow/40"
+        >
+          <Send className="size-4 text-glow" />
+          {t.tgProxy}
+        </button>
       </div>
+
+      {/* ── شیت پروکسی‌های تلگرام ── */}
+      {tgOpen && (
+        <div
+          className="absolute inset-0 z-20 flex flex-col justify-end bg-night/70 backdrop-blur-sm"
+          onClick={() => setTgOpen(false)}
+          role="presentation"
+        >
+          <div
+            dir={rtl ? "rtl" : "ltr"}
+            className="sheet-in flex max-h-[85%] flex-col rounded-t-3xl border-t border-glow/30 bg-panel px-5 pt-4 pb-6"
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-label={t.tgProxiesTitle}
+          >
+            <div className="flex items-center justify-between">
+              <h3 className="flex items-center gap-2 font-display text-xl font-bold text-ink">
+                <Send className="size-5 text-glow" /> {t.tgProxiesTitle}
+              </h3>
+              <button type="button" onClick={() => setTgOpen(false)} aria-label="Close" className="grid size-8 place-items-center rounded-full text-dim hover:text-ink">
+                <X className="size-5" />
+              </button>
+            </div>
+            <div className="mt-0.5 text-sm text-dim">{t.tgProxiesSub}</div>
+
+            <div className="scroll-hide mt-3 flex max-h-96 min-h-0 flex-col gap-2 overflow-y-auto">
+              {tgProxies.map((p) => {
+                const fastest = p.ping === Math.min(...tgProxies.map((x) => x.ping));
+                const isDone = tgDoneId === p.id;
+                const isBusy = tgBusyId === p.id;
+                return (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => tgConnect(p)}
+                    disabled={isBusy || isDone}
+                    aria-label={p.title}
+                    className={
+                      isDone
+                        ? "flex items-center gap-3 rounded-xl border border-glow/40 bg-glow/10 px-3 py-3 text-start"
+                        : "flex items-center gap-3 rounded-xl border border-panel-edge bg-night px-3 py-3 text-start transition-colors hover:border-glow/40 disabled:opacity-80"
+                    }
+                  >
+                    <Flag code={p.country} size={28} />
+                    <span className="min-w-0 flex-1">
+                      <span className="flex items-center gap-1.5">
+                        <span className="block truncate text-sm font-semibold text-ink">{p.title}</span>
+                        {fastest && !isDone && (
+                          <span className="shrink-0 rounded-full bg-glow/15 px-1.5 py-0.5 text-[10px] font-bold text-glow">{t.tgFastest}</span>
+                        )}
+                      </span>
+                      <span dir="ltr" className="block truncate font-mono text-xs text-dim">
+                        {p.server}:{p.port}
+                      </span>
+                    </span>
+                    {isBusy ? (
+                      <span className="flex shrink-0 items-center gap-1.5 text-xs font-bold text-glow">
+                        <Loader2 className="size-3.5 animate-spin" /> {t.connecting}
+                      </span>
+                    ) : isDone ? (
+                      <span className="flex shrink-0 items-center gap-1 text-xs font-bold text-glow">
+                        <Check className="size-3.5" strokeWidth={3} /> {t.connected} ✓
+                      </span>
+                    ) : (
+                      <span className={`w-12 shrink-0 text-end text-sm tabular-nums ${pingTone(p.ping)}`}>{p.ping} ms</span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="mt-3 flex items-start gap-2 rounded-xl border border-panel-edge bg-night px-3 py-2.5">
+              <Info className="mt-0.5 size-4 shrink-0 text-dim" />
+              <span className="text-xs leading-5 text-dim">{t.tgProxyNote}</span>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -525,6 +640,7 @@ export function ServersScreen({
                 }
               }}
               aria-label={`${c.name}${locked ? " (premium)" : ""}`}
+              title={c.country === "gift" ? t.giftCfg : undefined}
               className={
                 locked
                   ? "flex cursor-pointer items-center gap-3 rounded-xl border border-panel-edge bg-panel/60 px-3 py-3 text-start opacity-75"
@@ -540,7 +656,7 @@ export function ServersScreen({
                   <span className="block truncate text-sm font-semibold text-ink">{c.name}</span>
                 </span>
                 <span className="block truncate text-sm text-dim">
-                  {locked ? t.premiumLockSub : c.protocol}
+                  {locked ? t.premiumLockSub : c.country === "gift" ? t.giftCfg : c.protocol}
                 </span>
               </span>
               {spd && <SpeedChip lang={lang} r={spd} />}

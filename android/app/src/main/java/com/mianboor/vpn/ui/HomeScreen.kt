@@ -39,7 +39,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -73,11 +72,9 @@ fun HomeScreen(
     server: ConfigItem?,
     warn: String?,
     onPickServer: () -> Unit,
-    onOpenSettings: () -> Unit,
     onSupport: () -> Unit,
     downBytes: Long,
     upBytes: Long,
-    originIp: String? = null,
     originCc: String = "ir",
     showFlash: Boolean = false,
     updateTag: String? = null,
@@ -90,6 +87,8 @@ fun HomeScreen(
     expiryDays: Int? = null,
     onRenew: () -> Unit = {},
     stealthOn: Boolean = false,
+    // ── v2.1: پروکسی تلگرام ──
+    onOpenTgProxy: () -> Unit = {},
 ) {
     val t = stringsOf(lang)
     val mb = LocalMb.current
@@ -172,7 +171,8 @@ fun HomeScreen(
 
         // ── header ──
         Row(
-            Modifier.fillMaxWidth(),
+            // v2.1: عنوان کمی پایین‌تر بنشیند — فقط یک پدینگ کوچک بالای هدر
+            Modifier.fillMaxWidth().padding(top = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Icon(ic(R.drawable.ic_shield_check), null, tint = mb.glow, modifier = Modifier.size(26.dp))
@@ -209,11 +209,7 @@ fun HomeScreen(
                 ic(R.drawable.ic_send), t.support,
                 tint = mb.dim, modifier = Modifier.size(20.dp).clickable { onSupport() },
             )
-            Spacer(Modifier.width(14.dp))
-            Icon(
-                ic(R.drawable.ic_settings), t.settings,
-                tint = mb.dim, modifier = Modifier.size(22.dp).clickable { onOpenSettings() },
-            )
+            // v2.1: آیکون چرخ‌دنده از هدر حذف شد — تنظیمات حالا در نوار پایین است
         }
 
         // ── power ring ──
@@ -261,6 +257,23 @@ fun HomeScreen(
                 on = on, busy = busy, blocked = blocked, onTap = onToggle,
                 modifier = Modifier.size(176.dp),
             )
+        }
+
+        // ── v2.1: دکمهٔ فشردهٔ پروکسی تلگرام — دقیقا زیر حلقهٔ اتصال، هم‌تراز ستون کارت دانلود ──
+        Row(Modifier.fillMaxWidth().padding(top = 10.dp)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(50))
+                    .background(mb.gold.copy(alpha = 0.10f))
+                    .border(1.dp, mb.gold.copy(alpha = 0.4f), RoundedCornerShape(50))
+                    .clickable { onOpenTgProxy() }
+                    .padding(horizontal = 14.dp, vertical = 8.dp),
+            ) {
+                Icon(ic(R.drawable.ic_send), null, tint = mb.gold, modifier = Modifier.size(15.dp))
+                Spacer(Modifier.width(7.dp))
+                Text(t.tgProxy, color = mb.gold, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+            }
         }
 
         // ── status ──
@@ -314,8 +327,8 @@ fun HomeScreen(
                     Spacer(Modifier.width(6.dp))
                     Text(
                         t.connectFlash(
-                            COUNTRIES[originCc] ?: originCc,
-                            COUNTRIES[server.country] ?: server.country,
+                            countryName(originCc, lang),
+                            countryName(server.country, lang),
                         ),
                         color = mb.ink, fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
                         maxLines = 1,
@@ -375,38 +388,8 @@ fun HomeScreen(
             UsageCard(t.upload, R.drawable.ic_arrow_up, if (on) upBytes else 0L, mb.up, Modifier.weight(1f))
         }
 
-        // ── آی‌پی مبدا (قبل از اتصال گرفته می‌شود) — زیر دو کارت، دقیقا وسط ──
-        OriginCard(
-            originIp, originCc, ipLabel = t.yourIp,
-            modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
-        )
-    }
-}
-
-/** نوار آی‌پی مبدا — زیر کارت‌های سرعت، کاملا وسط‌چین: پرچم + IP مونواسپیس + نام کشور. */
-@Composable
-private fun OriginCard(ip: String?, cc: String, ipLabel: String, modifier: Modifier = Modifier) {
-    val mb = LocalMb.current
-    PanelCard(modifier) {
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
-            horizontalArrangement = Arrangement.Center,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            if (ip != null) {
-                Flag(cc, 22.dp)
-                Spacer(Modifier.width(9.dp))
-                Text(ip, color = mb.ink, fontSize = 13.sp, fontFamily = FontFamily.Monospace, maxLines = 1)
-                Spacer(Modifier.width(9.dp))
-                Text("·", color = mb.dim, fontSize = 13.sp)
-                Spacer(Modifier.width(9.dp))
-                Text(COUNTRIES[cc] ?: cc, color = mb.dim, fontSize = 12.sp, maxLines = 1)
-            } else {
-                Text("🌐", color = mb.dim, fontSize = 15.sp)
-                Spacer(Modifier.width(8.dp))
-                Text(ipLabel, color = mb.dim, fontSize = 13.sp, maxLines = 1)
-            }
-        }
+        // v2.1: نوار «آی‌پی مبدا» حذف شد — گرفتن IP و کش آن در MainActivity سر جایش است
+        Spacer(Modifier.height(4.dp))
     }
 }
 

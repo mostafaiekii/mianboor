@@ -15,14 +15,19 @@ export async function GET(req: Request) {
   return NextResponse.json({ ok: true, configs });
 }
 
-/** افزودن کانفیگ‌ها — هر خط یک لینک کانفیگ؛ premium یعنی فقط کاربران پرمیوم می‌گیرند */
+/** افزودن کانفیگ‌ها — هر خط یک لینک کانفیگ؛ premium یعنی فقط کاربران پرمیوم می‌گیرند
+ *
+ * country: اختیاری و عینی (verbatim) — مثلاً "gift" برای کانفیگ‌های هدیه با لوکیشن نامعلوم؛
+ * اگر برای هر خط آرایهٔ countries فرستاده شود، کشور همان خط دقیقاً همان ذخیره می‌شود
+ * و هرگز با تشخیص خودکار بازنویسی نمی‌شود.
+ */
 export async function POST(req: Request) {
   if (!(await isAdminReq(req))) {
     return NextResponse.json({ ok: false, error: "دسترسی غیرمجاز" }, { status: 401 });
   }
   await ensureDb();
   try {
-    const { name, country, links, premium } = await req.json();
+    const { name, country, countries, links, premium } = await req.json();
     const lines = String(links ?? "")
       .split("\n")
       .map((l: string) => l.trim())
@@ -45,10 +50,18 @@ export async function POST(req: Request) {
       );
     }
 
+    // کشور هر کانفیگ: مقدار عینی همان خط (در صورت وجود) → مقدار عینی کل → «نامشخص»
+    const perLine: unknown[] = Array.isArray(countries) ? countries : [];
+    const shared = typeof country === "string" ? country.trim() : "";
+    const countryOf = (i: number) => {
+      const own = typeof perLine[i] === "string" ? (perLine[i] as string).trim() : "";
+      return own || shared || "نامشخص";
+    };
+
     const created = await db.vpnConfig.createMany({
       data: valid.map((link: string, i: number) => ({
         name: valid.length > 1 ? `${name || "سرور"} ${i + 1}` : name || "سرور",
-        country: country || "نامشخص",
+        country: countryOf(i),
         link,
         premium: premium === true,
       })),

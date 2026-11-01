@@ -110,6 +110,19 @@ const POSTGRES_DDL = [
      CONSTRAINT "PromoCode_pkey" PRIMARY KEY ("code")
    )`,
   `CREATE INDEX IF NOT EXISTS "WalletTx_deviceId_idx" ON "WalletTx" ("deviceId")`,
+  // پروکسی‌های تلگرام (نسخهٔ ۲)
+  `CREATE TABLE IF NOT EXISTS "TgProxy" (
+     "id" TEXT NOT NULL,
+     "title" TEXT NOT NULL,
+     "server" TEXT NOT NULL,
+     "port" INTEGER NOT NULL,
+     "kind" TEXT NOT NULL DEFAULT 'mtproto',
+     "secret" TEXT,
+     "country" TEXT,
+     "active" BOOLEAN NOT NULL DEFAULT true,
+     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+     CONSTRAINT "TgProxy_pkey" PRIMARY KEY ("id")
+   )`,
 ];
 
 const SQLITE_DDL = [
@@ -182,6 +195,17 @@ const SQLITE_DDL = [
   `CREATE TABLE IF NOT EXISTS "PromoCode" (
      "code" TEXT NOT NULL PRIMARY KEY,
      "percent" INTEGER NOT NULL,
+     "active" BOOLEAN NOT NULL DEFAULT true,
+     "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+   )`,
+  `CREATE TABLE IF NOT EXISTS "TgProxy" (
+     "id" TEXT NOT NULL PRIMARY KEY,
+     "title" TEXT NOT NULL,
+     "server" TEXT NOT NULL,
+     "port" INTEGER NOT NULL,
+     "kind" TEXT NOT NULL DEFAULT 'mtproto',
+     "secret" TEXT,
+     "country" TEXT,
      "active" BOOLEAN NOT NULL DEFAULT true,
      "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
    )`,

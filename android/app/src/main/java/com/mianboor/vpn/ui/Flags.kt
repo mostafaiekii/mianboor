@@ -11,9 +11,11 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import kotlin.math.cos
@@ -53,6 +55,20 @@ private val F_NAVY = Color(0xFF18337D)
 private val F_GOLD = Color(0xFFE3A008)
 private val F_DARK_GOLD = Color(0xFFB07C08)
 private val GB_RED = Color(0xFFC8102E)
+
+// پرچم طلایی هدیه — تن‌های طلایی روشن/تیره + قاب تیره‌تر
+private val GIFT_GOLD_LIGHT = Color(0xFFFFD54A)
+private val GIFT_GOLD_DARK = Color(0xFFC8A215)
+private val GIFT_GOLD_EDGE = Color(0xFF8A6D00)
+
+/**
+ * نام نمایشی کشور — همان COUNTRIES (زبان‌مستقل/انگلیسی) به‌علاوهٔ کد ویژهٔ «gift»
+ * که دوزبانه است: «هدیه» در فارسی و Gift در انگلیسی. بقیهٔ کدها از COUNTRIES می‌آیند.
+ */
+fun countryName(code: String, lang: Lang): String = when (code) {
+    "gift" -> if (lang == Lang.FA) "هدیه" else "Gift"
+    else -> COUNTRIES[code] ?: code
+}
 
 /**
  * Circular country flag drawn on a Canvas — the Android port of the demo's
@@ -272,6 +288,29 @@ fun Flag(code: String, side: Dp, modifier: Modifier = Modifier) {
                 rect(11.9f, 16.65f, 0.4f, 1f, F_GOLD)      // grip
                 circle(12.1f, 17.75f, 0.42f, F_GOLD)       // pommel
                 circle(12.1f, 16.85f, 0.62f, F_GOLD)       // paw
+            }
+            "gift" -> {
+                // پرچم طلایی هدیه — پس‌زمینهٔ گرادیان طلایی با قاب تیره‌تر + جعبهٔ کادو
+                drawRect(
+                    Brush.verticalGradient(
+                        listOf(GIFT_GOLD_LIGHT, GIFT_GOLD_DARK),
+                        startY = 0f, endY = h,
+                    ),
+                    topLeft = Offset.Zero,
+                    size = Size(w, h),
+                )
+                drawRect(GIFT_GOLD_EDGE.copy(alpha = 0.55f), style = Stroke(1.4f * w / 36f))
+                // پاپیون: دو حلقهٔ سفید با مرکز طلایی
+                circle(14.6f, 9.6f, 2.3f, F_WHITE)
+                circle(21.4f, 9.6f, 2.3f, F_WHITE)
+                circle(14.6f, 9.6f, 0.95f, F_DARK_GOLD)
+                circle(21.4f, 9.6f, 0.95f, F_DARK_GOLD)
+                // درِ جعبه + بدنه — جعبهٔ سفید
+                round(8f, 11.8f, 20f, 5.4f, F_WHITE, 1.4f)
+                round(10f, 17.6f, 16f, 11.8f, F_WHITE, 1.4f)
+                // روبان طلایی: عمود روی در و بدنه + افقی روی در
+                rect(16.5f, 11.8f, 3f, 17.6f, F_GOLD)
+                rect(8f, 13.9f, 20f, 1.8f, F_GOLD)
             }
             else -> {
                 // Unknown country — dim circle with the code initial.

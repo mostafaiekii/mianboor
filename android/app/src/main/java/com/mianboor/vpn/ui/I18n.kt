@@ -331,6 +331,16 @@ interface Strings {
     fun expiryWarn(days: Int): String
     fun failoverToast(server: String): String
     fun promoOk(pct: Int): String
+
+    // ── v2.1: توضیح ضد-فیلترینگ + اعمال فوری DNS + پروکسی تلگرام ──
+    val stealthNote: String
+    val dnsAppliedToast: String
+    val tgProxy: String
+    val tgFastest: String
+    val tgLoading: String
+    val tgAddedToast: String
+    val tgSocksToast: String
+    val tgNote: String
 }
 
 object EnStrings : Strings {
@@ -675,6 +685,18 @@ object EnStrings : Strings {
     override fun expiryWarn(days: Int) = "Your plan ends in $days days — renew to stay protected"
     override fun failoverToast(server: String) = "Server dropped — switched to $server"
     override fun promoOk(pct: Int) = "$pct% off applied 🎉"
+
+    // ── v2.1 ──
+    override val stealthNote =
+        "Splits the TLS handshake so DPI cannot read the SNI — real effect on TLS/Reality servers."
+    override val dnsAppliedToast = "New DNS applied — the tunnel restarts in a moment"
+    override val tgProxy = "Telegram Proxy"
+    override val tgFastest = "Fastest"
+    override val tgLoading = "Finding the fastest proxy…"
+    override val tgAddedToast = "Fastest proxy added to Telegram — open Telegram"
+    override val tgSocksToast = "Connected — only Telegram traffic goes through the proxy"
+    override val tgNote =
+        "This proxy only works inside Telegram; other apps use your normal internet."
 }
 
 object FaStrings : Strings {
@@ -1019,6 +1041,17 @@ object FaStrings : Strings {
     override fun expiryWarn(days: Int) = "پلنت $days روز دیگه تموم می‌شه — برای تمدید بزن"
     override fun failoverToast(server: String) = "سرور قطع شد — منتقل شدی به $server"
     override fun promoOk(pct: Int) = "$pct٪ تخفیف اعمال شد 🎉"
+
+    // ── نسخهٔ ۲٫۱ ──
+    override val stealthNote =
+        "با تکه‌تکه کردن دستور TLS، بازرسی و فیلترینگ SNI را دور می‌زند — روی سرورهای TLS/Reality اثر واقعی دارد."
+    override val dnsAppliedToast = "DNS جدید اعمال شد — تونل یک لحظه ری‌استارت می‌شود"
+    override val tgProxy = "پروکسی تلگرام"
+    override val tgFastest = "سریع‌ترین"
+    override val tgLoading = "در حال یافتن سریع‌ترین پروکسی…"
+    override val tgAddedToast = "سریع‌ترین پروکسی به تلگرام اضافه شد — تلگرام را باز کنید"
+    override val tgSocksToast = "وصل شد — فقط ترافیک تلگرام از پروکسی می‌رود"
+    override val tgNote = "این پروکسی فقط داخل تلگرام کار می‌کند؛ بقیه اپ‌ها از اینترنت عادی می‌روند."
 }
 
 fun stringsOf(lang: Lang): Strings = if (lang == Lang.FA) FaStrings else EnStrings

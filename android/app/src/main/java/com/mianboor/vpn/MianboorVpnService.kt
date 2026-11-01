@@ -44,6 +44,9 @@ class MianboorVpnService : VpnService() {
         const val EXTRA_LINK = "link"
         const val EXTRA_NAME = "name"
         const val EXTRA_COUNTRY = "country"
+        // v2.1: پروکسی تلگرام فقط-تلگرام — به‌جای لینک، یک آپ‌استریم socks خام
+        const val EXTRA_TG_SOCKS_ADDR = "tg_socks_addr"
+        const val EXTRA_TG_SOCKS_PORT = "tg_socks_port"
 
         private const val CHANNEL_ID = "mianboor_vpn"
         private const val NOTIF_ID = 1001
@@ -59,6 +62,9 @@ class MianboorVpnService : VpnService() {
     private var currentLink: String? = null
     private var currentName: String = "سرور میانبر"
     private var currentCountry: String = "نامشخص"
+
+    /** v2.1: آپ‌استریم socks پروکسی تلگرام — اگر ست باشد، outbound عادی با این جایگزین می‌شود. */
+    private var tgSocks: XrayConfigBuilder.SocksUpstream? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -79,8 +85,18 @@ class MianboorVpnService : VpnService() {
         val link = intent?.getStringExtra(EXTRA_LINK) ?: currentLink
         val name = intent?.getStringExtra(EXTRA_NAME) ?: currentName
         val country = intent?.getStringExtra(EXTRA_COUNTRY) ?: currentCountry
+        // v2.1: آپ‌استریم socks تلگرام — اختیاری؛ وقتی هست، لینک می‌تواند خالی باشد
+        val tgAddr = intent?.getStringExtra(EXTRA_TG_SOCKS_ADDR)
+        if (tgAddr != null) {
+            tgSocks = XrayConfigBuilder.SocksUpstream(
+                address = tgAddr,
+                port = intent.getIntExtra(EXTRA_TG_SOCKS_PORT, 1080),
+            )
+        } else if (intent?.hasExtra(EXTRA_LINK) == true) {
+            tgSocks = null // اتصال عادی جدید — حالت پروکسی تلگرام پاک می‌شود
+        }
 
-        if (link.isNullOrBlank()) {
+        if (link.isNullOrBlank() && tgSocks == null) {
             scope.launch {
                 fullShutdown()
                 VpnState.phase.value = Phase.IDLE
@@ -117,7 +133,10 @@ class MianboorVpnService : VpnService() {
         VpnState.coverMsg.value = CONNECT_MSGS.random()
 
         // 1) Parse the link into an xray outbound (never surfaced in UI)
-        val server = XrayConfigBuilder.parseLink(link, name, country)
+        //    v2.1: در حالت پروکسی تلگرام به‌جای لینک، outbound socks خام ساخته می‌شود
+        val server = tgSocks?.let {
+            ParsedServer(name, country, "socks", it.address, it.port, "", XrayConfigBuilder.socksUpstreamOutbound(it))
+        } ?: XrayConfigBuilder.parseLink(link, name, country)
             ?: throw IllegalStateException("این نوع کانفیگ هنوز پشتیبانی نمی‌شود")
 
         // 2) Bring up the TUN interface first (independent of xray boot — saves
@@ -149,6 +168,7 @@ class MianboorVpnService : VpnService() {
                 AppPrefs.stealth(this),
                 AppPrefs.dnsMode(this),
                 AppPrefs.dnsCustom(this),
+                tgSocks,
             )
         )
         val bin = File(applicationInfo.nativeLibraryDir, "libxray.so")
@@ -180,7 +200,8 @@ class MianboorVpnService : VpnService() {
         if (!TProxyService.isRunning()) throw IllegalStateException("تونل امن راه نیفتاد")
 
         // 6) Connected — remember for boot auto-connect, then start the stats loop
-        AppPrefs.setLastServer(this, link, name, country)
+        //    (حالت پروکسی تلگرام لینک ندارد — برای auto-connect بوت ذخیره نمی‌شود)
+        if (!link.isNullOrBlank()) AppPrefs.setLastServer(this, link, name, country)
         VpnState.serverName.value = server.name
         VpnState.serverCountry.value = country
         VpnState.coverMsg.value = ""
@@ -204,13 +225,15 @@ class MianboorVpnService : VpnService() {
                             VpnState.phase.value = Phase.CONNECTING
                             VpnState.coverMsg.value = ""
                             delay(900)
-                            val ok = runCatching { establishTunnel(currentLink!!, currentName, currentCountry) }.isSuccess
+                            // v2.1: در حالت پروکسی تلگرام لینکی نیست — establishTunnel خودش از tgSocks می‌سازد
+                            val ok = runCatching { establishTunnel(currentLink ?: "", currentName, currentCountry) }.isSuccess
                             if (ok) {
                                 retries = 0
                                 continue
                             }
-                        } else if (AppPrefs.failover(this@MianboorVpnService)) {
+                        } else if (AppPrefs.failover(this@MianboorVpnService) && tgSocks == null) {
                             // بهترین سرور جایگزین از کش — تعویض خودکار
+                            // (در حالت پروکسی تلگرام failover معنا ندارد — همان آپ‌استریم socks دوباره برپا می‌شود)
                             val alt = alternateLink(exclude = currentLink)
                             if (alt != null) {
                                 retries = 0
@@ -272,7 +295,7 @@ class MianboorVpnService : VpnService() {
                     if (!AppPrefs.autoReconnect(applicationContext)) return
                     val phase = VpnState.phase.value
                     if (phase != Phase.CONNECTED && phase != Phase.BLOCKED) return
-                    val link = currentLink ?: return
+                    val link = if (tgSocks != null) (currentLink ?: "") else (currentLink ?: return)
                     if (TProxyService.isRunning() && engineAlive()) return
                     scope.launch {
                         delay(700) // چند لحظه صبر تا شبکه واقعا پایدار شود

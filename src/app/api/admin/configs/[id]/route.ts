@@ -3,7 +3,7 @@ import { db } from "@/lib/db";
 import { ensureDb } from "@/lib/ensure-db";
 import { isAdminReq } from "@/lib/admin-auth";
 
-/** فعال/غیرفعال کردن کانفیگ (و تغییر پرچم premium) */
+/** فعال/غیرفعال کردن کانفیگ (و تغییر پرچم premium یا کشور — مثلاً "gift") */
 export async function PATCH(
   req: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -14,10 +14,11 @@ export async function PATCH(
   const { id } = await params;
   await ensureDb();
   try {
-    const { active, premium } = await req.json();
-    const data: { active?: boolean; premium?: boolean } = {};
+    const { active, premium, country } = await req.json();
+    const data: { active?: boolean; premium?: boolean; country?: string } = {};
     if (active !== undefined) data.active = Boolean(active);
     if (premium !== undefined) data.premium = Boolean(premium);
+    if (country !== undefined) data.country = String(country).trim() || "نامشخص";
     if (Object.keys(data).length === 0) {
       return NextResponse.json({ ok: false, error: "چیزی برای تغییر نیست" }, { status: 400 });
     }

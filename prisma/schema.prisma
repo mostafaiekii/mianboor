@@ -101,3 +101,16 @@ model PromoCode {
   active    Boolean  @default(true)
   createdAt DateTime @default(now())
 }
+
+// پروکسی‌های تلگرام — مدیر وارد می‌کند، اپ فعال‌ها را نشان می‌دهد
+model TgProxy {
+  id        String   @id @default(cuid())
+  title     String
+  server    String
+  port      Int
+  kind      String   @default("mtproto") // "mtproto" | "socks"
+  secret    String?
+  country   String?
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+}

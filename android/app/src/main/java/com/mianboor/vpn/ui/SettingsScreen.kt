@@ -78,87 +78,8 @@ fun SettingsScreen(
         Text(t.settings, color = mb.ink, fontSize = 24.sp, fontWeight = FontWeight.Bold,
             modifier = Modifier.padding(top = 12.dp))
 
-        // ── v2: محافظت اتصال — Kill Switch / Failover / Auto-reconnect ──
+        // ── ۱) زبان ── (v2.1: تنظیمات بازچینی شد — زبان و تم اول)
         PanelCard(Modifier.padding(top = 16.dp)) {
-            Column(Modifier.fillMaxWidth().padding(16.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(ic(R.drawable.ic_shield_check), null, tint = mb.glow, modifier = Modifier.size(16.dp))
-                    Spacer(Modifier.width(8.dp))
-                    Text(t.connSection, color = mb.ink, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                }
-                Spacer(Modifier.height(12.dp))
-                SettingSwitchRow(t.killSwitch, t.killSwitchSub, killSwitch) { setKillSwitch(it) }
-                SettingSwitchRow(t.failover, t.failoverSub, failover) { setFailover(it) }
-                SettingSwitchRow(t.autoReconn, t.autoReconnSub, autoReconn) { setAutoReconn(it) }
-            }
-        }
-
-        // ── v2: حالت ضد-فیلترینگ ──
-        PanelCard(Modifier.padding(top = 12.dp)) {
-            Column(Modifier.fillMaxWidth().padding(16.dp)) {
-                Text(t.stealth, color = mb.ink, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                Text(t.stealthSub, color = mb.dim, fontSize = 13.sp, modifier = Modifier.padding(top = 4.dp))
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(top = 12.dp)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(mb.night)
-                        .padding(4.dp),
-                ) {
-                    LangButton(t.stealthNormal, stealth == "normal", Modifier.weight(1f)) { setStealth("normal") }
-                    LangButton(t.stealthStrict, stealth == "strict", Modifier.weight(1f)) { setStealth("strict") }
-                }
-            }
-        }
-
-        // ── v2: DNS رمزنگاری‌شده ──
-        PanelCard(Modifier.padding(top = 12.dp)) {
-            Column(Modifier.fillMaxWidth().padding(16.dp)) {
-                Text(t.dns, color = mb.ink, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                Text(t.dnsSub, color = mb.dim, fontSize = 13.sp, modifier = Modifier.padding(top = 4.dp))
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(top = 12.dp)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(mb.night)
-                        .padding(4.dp),
-                ) {
-                    LangButton(t.dnsAuto, dnsMode == "auto", Modifier.weight(1f)) { setDnsMode("auto") }
-                    LangButton(t.dnsCf, dnsMode == "cf", Modifier.weight(1f)) { setDnsMode("cf") }
-                    LangButton(t.dnsGoogle, dnsMode == "google", Modifier.weight(1f)) { setDnsMode("google") }
-                    LangButton(t.dnsCustom, dnsMode == "custom", Modifier.weight(1f)) { setDnsMode("custom") }
-                }
-                if (dnsMode == "custom") {
-                    Column(
-                        Modifier
-                            .fillMaxWidth()
-                            .padding(top = 8.dp)
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(mb.night)
-                            .padding(horizontal = 12.dp, vertical = 10.dp),
-                    ) {
-                        BasicTextField(
-                            value = dnsCustom,
-                            onValueChange = { v -> setDnsCustom(v.filter { it.isLetterOrDigit() || it == '.' || it == ':' }) },
-                            singleLine = true,
-                            textStyle = TextStyle(color = mb.ink, fontSize = 13.sp),
-                            modifier = Modifier.fillMaxWidth(),
-                            decorationBox = { inner ->
-                                Box {
-                                    if (dnsCustom.isEmpty()) Text(t.dnsCustomHint, color = mb.dim, fontSize = 13.sp)
-                                    inner()
-                                }
-                            },
-                        )
-                    }
-                }
-            }
-        }
-
-        // ── language ──
-        PanelCard(Modifier.padding(top = 12.dp)) {
             Column(Modifier.fillMaxWidth().padding(16.dp)) {
                 Text(t.language, color = mb.ink, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                 Row(
@@ -176,7 +97,7 @@ fun SettingsScreen(
             }
         }
 
-        // ── themes ──
+        // ── ۲) تم‌ها ──
         PanelCard(Modifier.padding(top = 12.dp)) {
             Column(Modifier.fillMaxWidth().padding(16.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -243,7 +164,91 @@ fun SettingsScreen(
             }
         }
 
-        // ── live ping ──
+        // ── ۳) محافظت اتصال — Kill Switch / Failover / Auto-reconnect ──
+        PanelCard(Modifier.padding(top = 12.dp)) {
+            Column(Modifier.fillMaxWidth().padding(16.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(ic(R.drawable.ic_shield_check), null, tint = mb.glow, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text(t.connSection, color = mb.ink, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                }
+                Spacer(Modifier.height(12.dp))
+                SettingSwitchRow(t.killSwitch, t.killSwitchSub, killSwitch) { setKillSwitch(it) }
+                SettingSwitchRow(t.failover, t.failoverSub, failover) { setFailover(it) }
+                SettingSwitchRow(t.autoReconn, t.autoReconnSub, autoReconn) { setAutoReconn(it) }
+            }
+        }
+
+        // ── ۴) حالت ضد-فیلترینگ ──
+        PanelCard(Modifier.padding(top = 12.dp)) {
+            Column(Modifier.fillMaxWidth().padding(16.dp)) {
+                Text(t.stealth, color = mb.ink, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                Text(t.stealthSub, color = mb.dim, fontSize = 13.sp, modifier = Modifier.padding(top = 4.dp))
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(top = 12.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(mb.night)
+                        .padding(4.dp),
+                ) {
+                    LangButton(t.stealthNormal, stealth == "normal", Modifier.weight(1f)) { setStealth("normal") }
+                    LangButton(t.stealthStrict, stealth == "strict", Modifier.weight(1f)) { setStealth("strict") }
+                }
+                // v2.1: یک خط توضیح کوتاه زیر سگمنت — دقیقاً چیزی که حالت سخت‌گیر انجام می‌دهد
+                Text(
+                    t.stealthNote, color = mb.dim, fontSize = 12.sp, lineHeight = 16.sp,
+                    modifier = Modifier.padding(top = 8.dp),
+                )
+            }
+        }
+
+        // ── ۵) DNS رمزنگاری‌شده ──
+        PanelCard(Modifier.padding(top = 12.dp)) {
+            Column(Modifier.fillMaxWidth().padding(16.dp)) {
+                Text(t.dns, color = mb.ink, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                Text(t.dnsSub, color = mb.dim, fontSize = 13.sp, modifier = Modifier.padding(top = 4.dp))
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(top = 12.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(mb.night)
+                        .padding(4.dp),
+                ) {
+                    LangButton(t.dnsAuto, dnsMode == "auto", Modifier.weight(1f)) { setDnsMode("auto") }
+                    LangButton(t.dnsCf, dnsMode == "cf", Modifier.weight(1f)) { setDnsMode("cf") }
+                    LangButton(t.dnsGoogle, dnsMode == "google", Modifier.weight(1f)) { setDnsMode("google") }
+                    LangButton(t.dnsCustom, dnsMode == "custom", Modifier.weight(1f)) { setDnsMode("custom") }
+                }
+                if (dnsMode == "custom") {
+                    Column(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(top = 8.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(mb.night)
+                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                    ) {
+                        BasicTextField(
+                            value = dnsCustom,
+                            onValueChange = { v -> setDnsCustom(v.filter { it.isLetterOrDigit() || it == '.' || it == ':' }) },
+                            singleLine = true,
+                            textStyle = TextStyle(color = mb.ink, fontSize = 13.sp),
+                            modifier = Modifier.fillMaxWidth(),
+                            decorationBox = { inner ->
+                                Box {
+                                    if (dnsCustom.isEmpty()) Text(t.dnsCustomHint, color = mb.dim, fontSize = 13.sp)
+                                    inner()
+                                }
+                            },
+                        )
+                    }
+                }
+            }
+        }
+
+        // ── ۶) پینگ زنده ──
         PanelCard(Modifier.padding(top = 12.dp)) {
             Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                 Icon(ic(R.drawable.ic_activity), null, tint = mb.dim, modifier = Modifier.size(20.dp))
@@ -256,7 +261,7 @@ fun SettingsScreen(
             }
         }
 
-        // ── block QUIC (speed) ──
+        // ── ۷) بستن QUIC (سرعت) ──
         PanelCard(Modifier.padding(top = 12.dp)) {
             Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                 Icon(ic(R.drawable.ic_ban), null, tint = mb.dim, modifier = Modifier.size(20.dp))
@@ -269,7 +274,7 @@ fun SettingsScreen(
             }
         }
 
-        // ── v2: حریم خصوصی و بدون لاگ ──
+        // ── ۸) حریم خصوصی ──
         PanelCard(Modifier.padding(top = 12.dp), onClick = onOpenPrivacy) {
             Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                 Icon(ic(R.drawable.ic_shield_check), null, tint = mb.dim, modifier = Modifier.size(20.dp))
@@ -282,7 +287,7 @@ fun SettingsScreen(
             }
         }
 
-        // ── support ──
+        // ── ۹) پشتیبانی ──
         PanelCard(Modifier.padding(top = 12.dp), onClick = onSupport) {
             Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                 Icon(ic(R.drawable.ic_send), null, tint = mb.dim, modifier = Modifier.size(20.dp))
@@ -295,7 +300,7 @@ fun SettingsScreen(
             }
         }
 
-        // ── about ──
+        // ── ۱۰) درباره اپ ──
         PanelCard(Modifier.padding(top = 12.dp)) {
             Column(Modifier.fillMaxWidth().padding(16.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {

@@ -20,6 +20,7 @@ export const COUNTRIES: Record<string, string> = {
   in: "India",
   au: "Australia",
   ir: "Iran",
+  gift: "هدیه",
 };
 
 /* Shared palette */
@@ -263,6 +264,30 @@ const BODIES: Record<string, React.ReactNode> = {
       <rect y="12" width="36" height="12" fill={WHITE} />
       <rect y="24" width="36" height="12" fill={RED} />
       <LionSun />
+    </>
+  ),
+  /* پرچم طلایی هدیه — لوکیشن نامشخص: گرادیان طلا + جعبهٔ کادو با روبان */
+  gift: (
+    <>
+      <defs>
+        <linearGradient id="mb-gift-g" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stopColor="#FFD54A" />
+          <stop offset="1" stopColor="#C8A215" />
+        </linearGradient>
+      </defs>
+      <rect width="36" height="36" fill="url(#mb-gift-g)" />
+      {/* جعبهٔ کادو — بدنهٔ روشن + روبان عمودی طلایی */}
+      <rect x="10" y="16.2" width="16" height="11" rx="1.6" fill="#FDF6E3" />
+      <rect x="15.9" y="16.2" width="4.2" height="11" fill={GOLD} />
+      {/* درپوش افقی + روبان روی درپوش — ضربدر روبان */}
+      <rect x="8.2" y="12.2" width="19.6" height="4.8" rx="1.4" fill="#FFF3C4" />
+      <rect x="15.9" y="12.2" width="4.2" height="4.8" fill={DARK_GOLD} />
+      {/* پاپیون — دو حلقه + گره */}
+      <ellipse cx="14.4" cy="10.3" rx="2.7" ry="1.8" fill="#FFE28A" stroke="#8A6D08" strokeWidth="0.9" />
+      <ellipse cx="21.6" cy="10.3" rx="2.7" ry="1.8" fill="#FFE28A" stroke="#8A6D08" strokeWidth="0.9" />
+      <circle cx="18" cy="10.9" r="1.3" fill="#8A6D08" />
+      {/* حاشیهٔ تیره‌تر دور پرچم طلایی */}
+      <circle cx="18" cy="18" r="17" fill="none" stroke="#8A6D08" strokeWidth="1.8" />
     </>
   ),
 };

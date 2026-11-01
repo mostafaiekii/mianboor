@@ -16,6 +16,7 @@ import {
   Palette,
   Power,
   RotateCcw,
+  Settings,
   ShieldCheck,
   Star,
   User,
@@ -73,11 +74,8 @@ const PING_MS = 3000;
 const DEVICE_ID = "MB-7F3A-92K1";
 const APP_VERSION = "1.6.0";
 
-/** کشور و آی‌پی مبدا کاربر — در اپ واقعی قبل از اتصال از ipwho.is گرفته می‌شود؛ اینجا ماک دمو */
+/** کشور و آی‌پی مبدا کاربر — فقط برای فلش لحظهٔ اتصال («از ایران به …»): در اپ واقعی از ipwho.is می‌آید */
 const ORIGIN = { ip: "5.160.42.117", country: "ir" };
-
-/** آی‌پی و کشور مقصد — در اپ واقعی بعد از اتصال، ipwho.is از داخل تونل صدا زده می‌شه */
-const DEST = { ip: "49.12.208.71", country: "de" };
 
 /** مصرف به تفکیک اپ (دمو) — در اپ واقعی: TrafficStats به تفکیک UID */
 const DEMO_BY_APP: UsageRow[] = [
@@ -109,6 +107,7 @@ const SEED: ConfigItem[] = [
   { id: 10, name: "Singapore - Singapore", country: "sg", protocol: "VLESS", host: "sg1.mianboor.app", ping: 148, premium: true, enabled: true },
   { id: 11, name: "Canada - Toronto", country: "ca", protocol: "Trojan", host: "ca1.mianboor.app", ping: 132, premium: true, enabled: true },
   { id: 12, name: "Japan - Tokyo", country: "jp", protocol: "Shadowsocks", host: "jp1.mianboor.app", ping: 168, premium: true, enabled: true },
+  { id: 13, name: "کانفیگ هدیه ویژه", country: "gift", protocol: "VLESS", host: "gift.mianboor.app", ping: 52, premium: false, enabled: true },
 ];
 
 const seedPings = (): Record<number, number> =>
@@ -404,8 +403,6 @@ export default function VpnDemoPage() {
   const [syncOk, setSyncOk] = useState<boolean | null>(null);
   const [usageOpen, setUsageOpen] = useState(false);
   const [showFlash, setShowFlash] = useState(false);
-  /* آی‌پی واقعی مقصد — بعد از اتصال، با تاخیر کوتاه «تشخیص» می‌شه (دمو: ipwho.is از داخل تونل) */
-  const [destResolved, setDestResolved] = useState(false);
   /* اعلان‌ها: صندوق پیام + نوتیف گوشی + پاپ‌آپ */
   const [notices, setNotices] = useState<Notice[]>(SEED_NOTICES);
   const [push, setPush] = useState<{ n: Notice; k: number } | null>(null);
@@ -435,12 +432,15 @@ export default function VpnDemoPage() {
   const [myDevices, setMyDevices] = useState<MyDevice[]>(freshMyDevices);
   const [usageDays, setUsageDays] = useState<UsageDay[]>(seedUsageDays);
   const [deadServers, setDeadServers] = useState<number[]>([]);
+  /* ── تعویض DNS حین اتصال زنده: ری‌استارت لحظه‌ای تونل روی حلقهٔ اتصال ── */
+  const [tunnelRestart, setTunnelRestart] = useState(false);
 
   const t = tr(lang);
   const holdStart = useRef(0);
   const raf = useRef(0);
   const fired = useRef(false);
   const speedTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const dnsRestartTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const premium = entitlement.plan !== "free";
   const isAdmin = screen === "login" || screen === "admin";
@@ -498,18 +498,10 @@ export default function VpnDemoPage() {
 
   /* ── فلش لحظه اتصال: «از ایران به آلمان وصل شدی» — چند ثانیه بعد محو می‌شه ── */
   useEffect(() => {
-    if (vpn !== "on") {
-      setDestResolved(false);
-      return;
-    }
+    if (vpn !== "on") return;
     setShowFlash(true);
-    /* شبیه‌سازی تشخیص آی‌پی جدید: بعد از ۲ ثانیه نوار آی‌پی → آی‌پی و کشور مقصد */
-    const destId = setTimeout(() => setDestResolved(true), 2000);
     const flashId = setTimeout(() => setShowFlash(false), 4500);
-    return () => {
-      clearTimeout(destId);
-      clearTimeout(flashId);
-    };
+    return () => clearTimeout(flashId);
   }, [vpn]);
 
   /* ── بنر نسخهٔ جدید حذف شد — آپدیت از سمت مدیریت منتشر می‌شه ── */
@@ -582,8 +574,14 @@ export default function VpnDemoPage() {
     }
   }, [vpn, selectedId, deadServers]);
 
-  /* ── v2: پاک‌سازی تایمر اسپیدتست ── */
-  useEffect(() => () => { if (speedTimer.current) clearInterval(speedTimer.current); }, []);
+  /* ── v2: پاک‌سازی تایمرهای اسپیدتست و ری‌استارت DNS ── */
+  useEffect(
+    () => () => {
+      if (speedTimer.current) clearInterval(speedTimer.current);
+      if (dnsRestartTimer.current) clearTimeout(dnsRestartTimer.current);
+    },
+    [],
+  );
 
   /* ── کانفیگ‌های زنده: پینگ لحظه‌ای جای پایه رو می‌گیره ── */
   const liveConfigs: ConfigItem[] = configs.map((c) => ({ ...c, ping: pings[c.id] ?? c.ping }));
@@ -744,6 +742,15 @@ export default function VpnDemoPage() {
   const unlinkDevice = (id: string) => {
     setMyDevices((ds) => ds.filter((d) => d.id !== id));
     showToast(t.unlinkToast);
+  };
+
+  /* ── تعویض DNS حین اتصال زنده: توست + ۱ ثانیه «در حال ری‌استارت تونل…» روی حلقهٔ خانه ── */
+  const applyDnsLive = () => {
+    if (vpn !== "on") return;
+    showToast(t.dnsAppliedLive);
+    setTunnelRestart(true);
+    if (dnsRestartTimer.current) clearTimeout(dnsRestartTimer.current);
+    dnsRestartTimer.current = setTimeout(() => setTunnelRestart(false), 1000);
   };
 
   /* ── رفرش سرورها — شبیه‌سازی sync با سرور اصلی (در اپ واقعی از API می‌آید) ── */
@@ -961,6 +968,7 @@ export default function VpnDemoPage() {
     setMyDevices(freshMyDevices());
     setUsageDays(seedUsageDays());
     setDeadServers([]);
+    setTunnelRestart(false);
   };
 
   const themeVars = THEMES[theme].vars as CSSProperties;
@@ -978,7 +986,7 @@ export default function VpnDemoPage() {
     },
     {
       i: Palette,
-      t: "چرخ‌دنده بالای خانه → زبان رو فارسی کن و یه تم ملایم (مثلاً جنگل) انتخاب کن",
+      t: "تب «تنظیمات» در نوار پایین → زبان رو فارسی کن و یه تم ملایم (مثلاً جنگل) انتخاب کن",
       done: lang === "fa" || theme !== "midnight",
     },
     {
@@ -1039,7 +1047,7 @@ export default function VpnDemoPage() {
             <span>
               پینگ‌ها هر ۳ ثانیه زنده به‌روز می‌شن و اتصال هوشمند واقعاً کم‌پینگ‌ترین سرور آزاد رو انتخاب می‌کنه.
               تونل‌گذاری انتخابی واقعاً کار می‌کنه (Exclude / Include). دوره رایگان به شناسه دستگاه قفله —
-              «شبیه‌سازی نصب مجدد» توی تنظیمات امتحانش کن. تم‌های ملایم هم توی چرخ‌دنده‌ست.
+              «شبیه‌سازی نصب مجدد» توی تنظیمات امتحانش کن. تم‌های ملایم و تعویض DNS زنده هم توی تب تنظیمات‌ست.
             </span>
           </div>
 
@@ -1091,7 +1099,7 @@ export default function VpnDemoPage() {
               onContextMenu={(e) => e.preventDefault()}
             >
               <div className="pointer-events-none absolute -top-24 left-1/2 size-80 -translate-x-1/2 rounded-full bg-[oklch(0.45_0.12_265/0.35)] blur-3xl" />
-              <div className="relative flex items-center justify-between px-7 pt-4 pb-2 font-display text-sm font-semibold text-ink">
+              <div className="relative flex items-center justify-between px-7 pt-6 pb-2 font-display text-sm font-semibold text-ink">
                 <span>9:41</span>
                 <span className="size-4 rounded-full bg-black ring-1 ring-ink/10" />
                 <span className="flex items-center gap-1">
@@ -1109,16 +1117,16 @@ export default function VpnDemoPage() {
                     server={server}
                     warn={!premium && trialLocked ? t.trialOverUpsell : null}
                     onPickServer={() => setScreen("servers")}
-                    onOpenSettings={() => setScreen("settings")}
                     unread={unread}
                     onOpenInbox={() => setScreen("inbox")}
-                    origin={vpn === "on" && destResolved ? DEST : ORIGIN}
                     flashOrigin={ORIGIN}
                     showFlash={showFlash}
                     quotaWarnPct={quotaWarnPct}
                     expiryDays={expiryDays}
                     onRenew={() => setPlans("renew")}
                     stealthOn={stealth === "strict"}
+                    restarting={tunnelRestart}
+                    onToast={showToast}
                   />
                 )}
                 {screen === "servers" && (
@@ -1218,6 +1226,8 @@ export default function VpnDemoPage() {
                     setDnsMode={setDnsMode}
                     dnsCustom={dnsCustom}
                     setDnsCustom={setDnsCustom}
+                    vpnOn={vpn === "on"}
+                    onDnsLive={applyDnsLive}
                     onChaosKill={chaosKill}
                     onChaosNet={chaosNet}
                     onChaosQuota={chaosQuota}
@@ -1345,6 +1355,7 @@ export default function VpnDemoPage() {
                     onPointerCancel={endHold}
                     data-testid="account-tab"
                   />
+                  <NavBtn icon={Settings} label={t.settings} active={screen === "settings"} onClick={() => setScreen("settings")} />
                 </nav>
               )}
               <div className="relative mx-auto mb-2 h-1 w-28 rounded-full bg-ink/40" />

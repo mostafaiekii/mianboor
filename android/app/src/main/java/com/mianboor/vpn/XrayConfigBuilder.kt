@@ -19,6 +19,18 @@ data class ParsedServer(
 )
 
 /**
+ * خروجی SOCKS خام برای «پروکسی تلگرام فقط-تلگرام» (نسخهٔ ۲٫۱):
+ * وقتی ست است، buildConfigJson به‌جای outbound سرور عادی، یک outbound
+ * protocol="socks" با settings.servers[{address,port,users[user,pass]}] می‌سازد.
+ */
+data class SocksUpstream(
+    val address: String,
+    val port: Int,
+    val user: String = "",
+    val pass: String = "",
+)
+
+/**
  * Parses vmess/vless/trojan/ss share links and turns them into an
  * Xray-core JSON config with a SOCKS5 inbound on 127.0.0.1:10809.
  */
@@ -352,6 +364,7 @@ object XrayConfigBuilder {
         stealth: String = "normal",
         dnsMode: String = "auto",
         dnsCustom: String = "",
+        tgSocks: SocksUpstream? = null,
     ): String {
         val socksIn = JSONObject()
             .put("tag", "socks-in")
@@ -364,28 +377,32 @@ object XrayConfigBuilder {
                 JSONObject().put("enabled", true).put("destOverride", JSONArray(listOf("http", "tls")))
             )
 
-        val proxy = server.outbound.put("tag", "proxy")
-        // بهینه‌سازی سرعت: حذف Nagle (tcpNoDelay) و TCP Fast Open در صورت پشتیبانی سرور —
-        // دست‌دادن (handshake) سریع‌تر و تأخیر کمتر برای وب‌سوکت/CDN
-        val stream = proxy.optJSONObject("streamSettings") ?: JSONObject()
-        stream.put(
-            "sockopt",
-            JSONObject().put("tcpFastOpen", true).put("tcpNoDelay", true)
-        )
-        // حالت سخت‌گیر ضد-فیلترینگ: تیکه‌تیکه‌کردن TLS ClientHello
-        if (stealth == "strict") {
-            val sec = stream.optString("security")
-            if (sec == "tls" || sec == "reality") {
-                stream.put(
-                    "fragment",
-                    JSONObject()
-                        .put("packets", "tlshello")
-                        .put("length", "100-200")
-                        .put("interval", "10-20")
-                )
+        // حالت عادی: outbound سرور؛ حالت پروکسی تلگرام: outbound socks خام
+        val proxy = if (tgSocks != null) socksUpstreamOutbound(tgSocks).put("tag", "proxy")
+                    else server.outbound.put("tag", "proxy")
+        if (tgSocks == null) {
+            // بهینه‌سازی سرعت: حذف Nagle (tcpNoDelay) و TCP Fast Open در صورت پشتیبانی سرور —
+            // دست‌دادن (handshake) سریع‌تر و تأخیر کمتر برای وب‌سوکت/CDN
+            val stream = proxy.optJSONObject("streamSettings") ?: JSONObject()
+            stream.put(
+                "sockopt",
+                JSONObject().put("tcpFastOpen", true).put("tcpNoDelay", true)
+            )
+            // حالت سخت‌گیر ضد-فیلترینگ: تیکه‌تیکه‌کردن TLS ClientHello
+            if (stealth == "strict") {
+                val sec = stream.optString("security")
+                if (sec == "tls" || sec == "reality") {
+                    stream.put(
+                        "fragment",
+                        JSONObject()
+                            .put("packets", "tlshello")
+                            .put("length", "100-200")
+                            .put("interval", "10-20")
+                    )
+                }
             }
+            proxy.put("streamSettings", stream)
         }
-        proxy.put("streamSettings", stream)
 
         val direct = JSONObject().put("tag", "direct").put("protocol", "freedom").put("settings", JSONObject())
         val block = JSONObject().put("tag", "block").put("protocol", "blackhole").put("settings", JSONObject())
@@ -446,6 +463,24 @@ object XrayConfigBuilder {
     // ------------------------------------------------------------------
     // Small helpers
     // ------------------------------------------------------------------
+
+    /**
+     * Outbound آمادهٔ socks برای آپ‌استریم تلگرام (نسخهٔ ۲٫۱) —
+     * { protocol: "socks", settings: { servers: [{ address, port, users: [{user, pass}] }] } }
+     * بدون user/pass یعنی socks بدون احراز هویت.
+     */
+    fun socksUpstreamOutbound(u: SocksUpstream): JSONObject {
+        val srv = JSONObject().put("address", u.address).put("port", u.port)
+        if (u.user.isNotBlank()) {
+            srv.put(
+                "users",
+                JSONArray().put(JSONObject().put("user", u.user).put("pass", u.pass).put("level", 0))
+            )
+        }
+        return JSONObject()
+            .put("protocol", "socks")
+            .put("settings", JSONObject().put("servers", JSONArray().put(srv)))
+    }
 
     private fun splitFragment(rest: String): Pair<String, String?> {
         val i = rest.indexOf('#')

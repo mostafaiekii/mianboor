@@ -110,6 +110,22 @@ object AppPrefs {
         ed(c).putString("split_apps", apps.joinToString(",")).apply()
     }
 
+    // ── v2.1: وضعیت قبلی تونل‌گذاری — پروکسی تلگرام موقتاً allowlist تلگرام می‌گذارد؛
+    //    با اولین اتصال عادی بعد از آن، وضعیت واقعی کاربر از این کلیدها برمی‌گردد ──
+
+    fun prevSplitMode(c: Context): String = p(c).getString("prev_split_mode", "") ?: ""
+
+    fun prevSplitApps(c: Context): List<String> =
+        p(c).getString("prev_split_apps", "")?.split(",").orEmpty().filter { it.isNotBlank() }
+
+    fun setPrevSplit(c: Context, mode: String, apps: List<String>) {
+        ed(c).putString("prev_split_mode", mode).putString("prev_split_apps", apps.joinToString(",")).apply()
+    }
+
+    fun clearPrevSplit(c: Context) {
+        ed(c).remove("prev_split_mode").remove("prev_split_apps").apply()
+    }
+
     // ── config overrides (admin) ───────────────────────────────────
 
     fun premiumOv(c: Context): Map<String, Boolean> {

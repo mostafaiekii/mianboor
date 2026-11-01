@@ -326,6 +326,22 @@ const en = {
   usageChartSub: "Daily tunnel usage (GB)",
   today: "Today",
   planEndsDays: "{d} days left",
+  // ── anti-filtering explainer + DNS live-apply ──
+  stealthSni: "Fragments the TLS handshake to slip past SNI inspection and filtering — really effective on TLS/Reality servers.",
+  dnsActive: "Active: {d}",
+  dnsAppliedLive: "New DNS applied — the tunnel restarts for a moment",
+  tunnelRestarting: "Restarting tunnel…",
+  dnsApplyNext: "Applies on your next connection",
+  // ── telegram proxies ──
+  tgProxy: "Telegram proxy",
+  tgProxiesTitle: "Telegram proxies",
+  tgProxiesSub: "Pick one — it's added to your Telegram instantly",
+  tgFastest: "Fastest",
+  tgProxyAdded: "Fastest proxy added to Telegram — open Telegram",
+  tgProxyNote: "This proxy works only inside Telegram; all other apps use the regular internet.",
+  demoMode: "Demo mode",
+  // ── gift config ──
+  giftCfg: "Gift config — location unknown",
 };
 
 const fa: typeof en = {
@@ -645,6 +661,22 @@ const fa: typeof en = {
   usageChartSub: "مصرف روزانهٔ تونل (گیگابایت)",
   today: "امروز",
   planEndsDays: "{d} روز مونده",
+  // ── توضیح ضد-فیلترینگ + اعمال زندهٔ DNS ──
+  stealthSni: "با تکه‌تکه کردن دستور TLS، بازرسی و فیلترینگ SNI را دور می‌زند — روی سرورهای TLS/Reality اثر واقعی دارد.",
+  dnsActive: "فعال: {d}",
+  dnsAppliedLive: "DNS جدید اعمال شد — تونل یک لحظه ری‌استارت می‌شود",
+  tunnelRestarting: "در حال ری‌استارت تونل…",
+  dnsApplyNext: "در اتصال بعدی اعمال می‌شود",
+  // ── پروکسی‌های تلگرام ──
+  tgProxy: "پروکسی تلگرام",
+  tgProxiesTitle: "پروکسی‌های تلگرام",
+  tgProxiesSub: "یکی رو انتخاب کن — همون لحظه به تلگرامت اضافه می‌شه",
+  tgFastest: "سریع‌ترین",
+  tgProxyAdded: "سریع‌ترین پروکسی به تلگرام اضافه شد — تلگرام را باز کنید",
+  tgProxyNote: "این پروکسی فقط داخل تلگرام کار می‌کند؛ بقیه اپ‌ها از اینترنت عادی می‌روند.",
+  demoMode: "حالت دمو",
+  // ── کانفیگ هدیه ──
+  giftCfg: "کانفیگ هدیه — لوکیشن نامشخص",
 };
 
 export const STR: Record<Lang, typeof en> = { en, fa };

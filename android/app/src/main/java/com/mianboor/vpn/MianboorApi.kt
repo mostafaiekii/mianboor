@@ -23,6 +23,21 @@ data class PayInfo(
 )
 
 /**
+ * یک پروکسی تلگرام (نسخهٔ ۲٫۱) — mtproto (لینک tg://proxy) یا socks (تونل فقط-تلگرام).
+ * latency حاصل TCP-handshake ping است (۹۹۹ = نامرئی) — TgProxyManager مرتبش می‌کند.
+ */
+data class TgProxy(
+    val title: String,
+    val server: String,
+    val port: Int,
+    val kind: String,               // mtproto | socks
+    val id: String = "",
+    val secret: String = "",
+    val country: String = "",
+    val latency: Int = 999,
+)
+
+/**
  * نتیجه‌ی کامل همگام‌سازی با سرور:
  *  - configs: کانفیگ‌های مجاز این دستگاه (free → فقط رایگان‌ها)
  *  - plan / premiumUntil: وضعیت پرمیوم مرجع (سرور تصمیم می‌گیرد) — null یعنی سرور قدیمی
@@ -167,6 +182,70 @@ object MianboorApi {
             f.parse(v.trim())?.time ?: 0L
         }.getOrDefault(0L)
         else -> 0L
+    }
+
+    // ------------------------------------------------------------------
+    // Telegram proxies — v2.1
+    // ------------------------------------------------------------------
+
+    /** لیست دمو/آفلاین — وقتی سرور جواب نداد یا ok=false بود استفاده می‌شود. */
+    private val FALLBACK_TG_PROXIES = listOf(
+        TgProxy(
+            title = "پروکسی طلایی تلگرام", server = "91.107.213.199", port = 443,
+            kind = "mtproto", secret = "ee1603010200ee1603010200aabbccdd", country = "fi",
+        ),
+        TgProxy(
+            title = "پروکسی تلگرام اروپا", server = "5.188.206.14", port = 8443,
+            kind = "mtproto",
+            secret = "dd0000000000000aabbccddeeff00112233445566778899aabbccddeeff0011", country = "nl",
+        ),
+        TgProxy(
+            title = "پروکسی تلگرام ترکیه", server = "soc.mianboor.xyz", port = 1080,
+            kind = "socks", country = "tr",
+        ),
+    )
+
+    /**
+     * GET /api/client/telegram/proxies — با همان احراز هویت getConfigs (توکن در کوئری).
+     * پاسخ: { ok, proxies:[{id,title,server,port,kind,secret,country}] } یا { ok:false, demo:true, proxies:[…] }.
+     * ok=false یا هر خطای شبکه → لیست دموی داخلی — شیت هیچ‌وقت خالی نمی‌ماند.
+     */
+    fun getTgProxies(serverUrl: String, clientToken: String): List<TgProxy> {
+        val base = serverUrl.trim().trimEnd('/')
+        if (!base.startsWith("http") || clientToken.isBlank()) return FALLBACK_TG_PROXIES
+        val url = "$base/api/client/telegram/proxies?token=" + URLEncoder.encode(clientToken, "UTF-8")
+        return runCatching {
+            val conn = URL(url).openConnection() as HttpURLConnection
+            conn.connectTimeout = 8000
+            conn.readTimeout = 12000
+            conn.requestMethod = "GET"
+            conn.setRequestProperty("Accept", "application/json")
+            try {
+                if (conn.responseCode != 200) return@runCatching FALLBACK_TG_PROXIES
+                val body = conn.inputStream.bufferedReader().use { it.readText() }
+                val obj = JSONObject(body)
+                if (!obj.optBoolean("ok", false)) return@runCatching FALLBACK_TG_PROXIES
+                val arr = obj.optJSONArray("proxies") ?: return@runCatching FALLBACK_TG_PROXIES
+                val list = (0 until arr.length()).mapNotNull { i ->
+                    val p = arr.optJSONObject(i) ?: return@mapNotNull null
+                    val host = p.optString("server")
+                    val port = p.optInt("port", 0)
+                    if (host.isBlank() || port <= 0) return@mapNotNull null
+                    TgProxy(
+                        id = p.optString("id"),
+                        title = p.optString("title").ifBlank { "Telegram Proxy" },
+                        server = host,
+                        port = port,
+                        kind = listOf("mtproto", "socks").firstOrNull { it == p.optString("kind") } ?: "mtproto",
+                        secret = p.optString("secret"),
+                        country = p.optString("country").lowercase(),
+                    )
+                }
+                if (list.isEmpty()) FALLBACK_TG_PROXIES else list
+            } finally {
+                conn.disconnect()
+            }
+        }.getOrDefault(FALLBACK_TG_PROXIES)
     }
 
     /** ثبت سفارش خرید روی سرور تا در تب Orders پنل مدیر ظاهر شود. */

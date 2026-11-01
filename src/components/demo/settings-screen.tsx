@@ -1,11 +1,14 @@
 "use client";
 
 /**
- * تنظیمات کامل — نسخهٔ ۲:
- * زبان، تم، پینگ زنده، محافظت اتصال (Kill Switch / Failover / Auto-reconnect)،
- * حالت ضد-فیلترینگ، DNS رمز، قابلیت‌های گوشی، حریم خصوصی، آزمایشگاه دمو و ضدچیت.
+ * تنظیمات — ترتیب نهایی نسخهٔ ۲:
+ * ۱. زبان ۲. تم ۳. محافظت اتصال (Kill Switch / Failover / اتصال مجدد)
+ * ۴. حالت ضد-فیلترینگ (+ توضیح SNI) ۵. DNS (چیپ فعال + اعمال زنده)
+ * ۶. پینگ زنده ۷. قابلیت‌های گوشی ۸. پشتیبانی ۹. حریم خصوصی ۱۰. درباره
+ * ۱۱. آزمایشگاه دمو (+ شبیه‌سازی نصب مجدد به‌عنوان اکسترا دمو در انتها)
  */
 
+import { useEffect, useState } from "react";
 import { Activity, ChevronLeft, ChevronRight, Fingerprint, FlaskConical, Info, Palette, Send, ShieldCheck } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { TG_SUPPORT, tr, type Lang } from "./i18n";
@@ -32,6 +35,8 @@ export function SettingsScreen({
   setDnsMode,
   dnsCustom,
   setDnsCustom,
+  vpnOn,
+  onDnsLive,
   onChaosKill,
   onChaosNet,
   onChaosQuota,
@@ -59,6 +64,10 @@ export function SettingsScreen({
   setDnsMode: (m: DnsMode) => void;
   dnsCustom: string;
   setDnsCustom: (v: string) => void;
+  /** تونل الان وصله؟ — تعیین می‌کنه تعویض DNS زنده اعمال شه یا در اتصال بعدی */
+  vpnOn: boolean;
+  /** اعمال زندهٔ DNS — توست + ری‌استارت لحظه‌ای تونل در page.tsx */
+  onDnsLive: () => void;
   onChaosKill: () => void;
   onChaosNet: () => void;
   onChaosQuota: () => void;
@@ -72,6 +81,24 @@ export function SettingsScreen({
   const t = tr(lang);
   const rtl = lang === "fa";
   const Back = rtl ? ChevronRight : ChevronLeft;
+
+  /* ── DNS: اعمال زنده / اتصال بعدی ── */
+  const [dnsHint, setDnsHint] = useState(false);
+  useEffect(() => {
+    if (!dnsHint) return;
+    const id = setTimeout(() => setDnsHint(false), 6000);
+    return () => clearTimeout(id);
+  }, [dnsHint]);
+
+  const dnsLabel =
+    dnsMode === "cf" ? t.dnsCf : dnsMode === "google" ? t.dnsGoogle : dnsMode === "custom" ? dnsCustom.trim() || t.dnsCustom : t.dnsAuto;
+
+  const pickDns = (k: DnsMode) => {
+    if (k === dnsMode) return;
+    setDnsMode(k);
+    if (vpnOn) onDnsLive();
+    else setDnsHint(true);
+  };
 
   const protRows = [
     { t: t.killSwitch, d: t.killSwitchSub, v: killSwitch, set: setKillSwitch },
@@ -93,89 +120,8 @@ export function SettingsScreen({
       </button>
       <h2 className="mt-3 shrink-0 font-display text-2xl font-bold text-ink">{t.settings}</h2>
 
-      {/* ── محافظت اتصال: Kill Switch / Failover / Auto-reconnect ── */}
+      {/* ── ۱. زبان ── */}
       <div className="mt-4 rounded-2xl border border-panel-edge bg-panel p-4">
-        <div className="flex items-center gap-2">
-          <ShieldCheck className="size-4 text-glow" />
-          <span className="text-sm font-semibold text-ink">{t.connSection}</span>
-        </div>
-        <div className="mt-3 flex flex-col gap-3">
-          {protRows.map(({ t: title, d, v, set }) => (
-            <div key={title} className="flex items-center gap-3">
-              <span className="min-w-0 flex-1">
-                <span className="block text-sm font-medium text-ink">{title}</span>
-                <span className="block text-xs leading-5 text-dim">{d}</span>
-              </span>
-              <Switch checked={v} onCheckedChange={set} aria-label={title} />
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* ── حالت ضد-فیلترینگ ── */}
-      <div className="mt-3 rounded-2xl border border-panel-edge bg-panel p-4">
-        <div className="text-sm font-semibold text-ink">{t.stealth}</div>
-        <div className="mt-0.5 text-sm text-dim">{t.stealthSub}</div>
-        <div className="mt-3 grid grid-cols-2 rounded-xl bg-night p-1">
-          {([
-            ["normal", t.stealthNormal],
-            ["strict", t.stealthStrict],
-          ] as const).map(([k, label]) => (
-            <button
-              key={k}
-              type="button"
-              onClick={() => setStealth(k)}
-              aria-pressed={stealth === k}
-              className={
-                stealth === k
-                  ? "rounded-lg bg-panel py-2 text-sm font-semibold text-ink"
-                  : "rounded-lg py-2 text-sm text-dim"
-              }
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* ── DNS رمزنگاری‌شده ── */}
-      <div className="mt-3 rounded-2xl border border-panel-edge bg-panel p-4">
-        <div className="text-sm font-semibold text-ink">{t.dns}</div>
-        <div className="mt-0.5 text-sm text-dim">{t.dnsSub}</div>
-        <div className="mt-3 grid grid-cols-2 gap-2">
-          {([
-            ["auto", t.dnsAuto],
-            ["cf", t.dnsCf],
-            ["google", t.dnsGoogle],
-            ["custom", t.dnsCustom],
-          ] as const).map(([k, label]) => (
-            <button
-              key={k}
-              type="button"
-              onClick={() => setDnsMode(k)}
-              aria-pressed={dnsMode === k}
-              className={
-                dnsMode === k
-                  ? "rounded-xl border-2 border-glow bg-glow/10 py-2.5 text-sm font-bold text-ink"
-                  : "rounded-xl border-2 border-transparent bg-night py-2.5 text-sm text-dim hover:text-ink"
-              }
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-        {dnsMode === "custom" && (
-          <input
-            dir="ltr"
-            value={dnsCustom}
-            onChange={(e) => setDnsCustom(e.target.value)}
-            placeholder={t.dnsCustomHint}
-            className="mt-2 w-full rounded-xl border border-panel-edge bg-night px-3 py-2.5 font-mono text-sm text-ink outline-none placeholder:text-dim focus:border-glow/40"
-          />
-        )}
-      </div>
-
-      <div className="mt-3 rounded-2xl border border-panel-edge bg-panel p-4">
         <div className="text-sm font-semibold text-ink">{t.language}</div>
         <div className="mt-3 grid grid-cols-2 rounded-xl bg-night p-1" dir="ltr">
           {(["en", "fa"] as const).map((l) => (
@@ -196,6 +142,7 @@ export function SettingsScreen({
         </div>
       </div>
 
+      {/* ── ۲. تم ── */}
       <div className="mt-3 rounded-2xl border border-panel-edge bg-panel p-4">
         <div className="flex items-center gap-2">
           <Palette className="size-4 text-dim" />
@@ -233,6 +180,103 @@ export function SettingsScreen({
         </div>
       </div>
 
+      {/* ── ۳. محافظت اتصال: Kill Switch / Failover / Auto-reconnect ── */}
+      <div className="mt-3 rounded-2xl border border-panel-edge bg-panel p-4">
+        <div className="flex items-center gap-2">
+          <ShieldCheck className="size-4 text-glow" />
+          <span className="text-sm font-semibold text-ink">{t.connSection}</span>
+        </div>
+        <div className="mt-3 flex flex-col gap-3">
+          {protRows.map(({ t: title, d, v, set }) => (
+            <div key={title} className="flex items-center gap-3">
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm font-medium text-ink">{title}</span>
+                <span className="block text-xs leading-5 text-dim">{d}</span>
+              </span>
+              <Switch checked={v} onCheckedChange={set} aria-label={title} />
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* ── ۴. حالت ضد-فیلترینگ + توضیح SNI ── */}
+      <div className="mt-3 rounded-2xl border border-panel-edge bg-panel p-4">
+        <div className="text-sm font-semibold text-ink">{t.stealth}</div>
+        <div className="mt-0.5 text-sm text-dim">{t.stealthSub}</div>
+        <div className="mt-3 grid grid-cols-2 rounded-xl bg-night p-1">
+          {([
+            ["normal", t.stealthNormal],
+            ["strict", t.stealthStrict],
+          ] as const).map(([k, label]) => (
+            <button
+              key={k}
+              type="button"
+              onClick={() => setStealth(k)}
+              aria-pressed={stealth === k}
+              className={
+                stealth === k
+                  ? "rounded-lg bg-panel py-2 text-sm font-semibold text-ink"
+                  : "rounded-lg py-2 text-sm text-dim"
+              }
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        <div className="mt-2.5 flex items-start gap-1.5 rounded-xl bg-night px-3 py-2">
+          <Info className="mt-0.5 size-3.5 shrink-0 text-dim" />
+          <span className="text-xs leading-5 text-dim">{t.stealthSni}</span>
+        </div>
+      </div>
+
+      {/* ── ۵. DNS رمزنگاری‌شده — چیپ فعال + اعمال زنده ── */}
+      <div className="mt-3 rounded-2xl border border-panel-edge bg-panel p-4">
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-sm font-semibold text-ink">{t.dns}</span>
+          <span className="shrink-0 rounded-full bg-glow/15 px-2 py-0.5 text-[11px] font-bold text-glow" title={t.dnsActive.replace("{d}", dnsLabel)}>
+            {t.dnsActive.replace("{d}", dnsLabel)}
+          </span>
+        </div>
+        <div className="mt-0.5 text-sm text-dim">{t.dnsSub}</div>
+        <div className="mt-3 grid grid-cols-2 gap-2">
+          {([
+            ["auto", t.dnsAuto],
+            ["cf", t.dnsCf],
+            ["google", t.dnsGoogle],
+            ["custom", t.dnsCustom],
+          ] as const).map(([k, label]) => (
+            <button
+              key={k}
+              type="button"
+              onClick={() => pickDns(k)}
+              aria-pressed={dnsMode === k}
+              className={
+                dnsMode === k
+                  ? "rounded-xl border-2 border-glow bg-glow/10 py-2.5 text-sm font-bold text-ink"
+                  : "rounded-xl border-2 border-transparent bg-night py-2.5 text-sm text-dim hover:text-ink"
+              }
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        {dnsMode === "custom" && (
+          <input
+            dir="ltr"
+            value={dnsCustom}
+            onChange={(e) => setDnsCustom(e.target.value)}
+            placeholder={t.dnsCustomHint}
+            className="mt-2 w-full rounded-xl border border-panel-edge bg-night px-3 py-2.5 font-mono text-sm text-ink outline-none placeholder:text-dim focus:border-glow/40"
+          />
+        )}
+        {dnsHint && !vpnOn && (
+          <div className="mt-2 flex items-center gap-1.5 rounded-xl bg-night px-3 py-2 text-xs leading-5 text-dim">
+            <Info className="size-3.5 shrink-0" /> {t.dnsApplyNext}
+          </div>
+        )}
+      </div>
+
+      {/* ── ۶. پینگ زنده ── */}
       <div className="mt-3 flex items-center gap-3 rounded-2xl border border-panel-edge bg-panel p-4">
         <Activity className="size-5 text-dim" />
         <span className="flex-1">
@@ -242,9 +286,10 @@ export function SettingsScreen({
         <Switch checked={pingLive} onCheckedChange={setPingLive} aria-label={t.livePingSet} />
       </div>
 
-      {/* ── قابلیت‌های گوشی: ویجت، کاشی QS، ربات تلگرام ── */}
+      {/* ── ۷. قابلیت‌های گوشی: ویجت، کاشی QS، ربات تلگرام ── */}
       <PhoneExtrasCard lang={lang} />
 
+      {/* ── ۸. حمایت / پشتیبانی ── */}
       <a
         href={TG_SUPPORT}
         target="_blank"
@@ -261,7 +306,7 @@ export function SettingsScreen({
         {rtl ? <ChevronLeft className="size-5 text-dim" /> : <ChevronRight className="size-5 text-dim" />}
       </a>
 
-      {/* ── حریم خصوصی و بدون لاگ ── */}
+      {/* ── ۹. حریم خصوصی و بدون لاگ ── */}
       <button
         type="button"
         onClick={onOpenPrivacy}
@@ -275,6 +320,7 @@ export function SettingsScreen({
         {rtl ? <ChevronLeft className="size-5 text-dim" /> : <ChevronRight className="size-5 text-dim" />}
       </button>
 
+      {/* ── ۱۰. درباره ── */}
       <div className="mt-3 rounded-2xl border border-panel-edge bg-panel p-4">
         <div className="flex items-center gap-2">
           <Info className="size-4 text-dim" />
@@ -286,7 +332,7 @@ export function SettingsScreen({
         <div className="mt-1 text-sm leading-6 text-dim">{t.noKey}</div>
       </div>
 
-      {/* ── آزمایشگاه دمو: محافظت‌های واقعی را تحریک کن ── */}
+      {/* ── ۱۱. آزمایشگاه دمو: محافظت‌های واقعی را تحریک کن ── */}
       <div className="mt-3 rounded-2xl border border-glow/30 bg-glow/5 p-4">
         <div className="flex items-center gap-2">
           <FlaskConical className="size-4 text-glow" />
@@ -307,6 +353,7 @@ export function SettingsScreen({
         </div>
       </div>
 
+      {/* اکسترا دمو: شبیه‌سازی نصب مجدد (ضدچیت) — در انتهای لیست */}
       <button
         type="button"
         onClick={onReinstall}

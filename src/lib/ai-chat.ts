@@ -62,8 +62,8 @@ export async function chatCompletion(
   const ZAI = (await import("z-ai-web-dev-sdk")).default;
   const zai = await ZAI.create();
   const completion = await zai.chat.completions.create({
-    messages,
-    thinking: opts.thinking ?? { type: "disabled" },
+    messages: messages as Array<{ role: "system" | "user" | "assistant"; content: string }>,
+    thinking: (opts.thinking ?? { type: "disabled" }) as { type: "disabled" | "enabled" },
   });
   const reply =
     (completion as { choices?: Array<{ message?: { content?: string } }> })
