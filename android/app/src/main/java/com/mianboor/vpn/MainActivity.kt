@@ -265,6 +265,8 @@ private fun MbAppInner(
     var favorites by remember { mutableStateOf(AppPrefs.favorites(context)) }
 
     var adminCodes by remember { mutableStateOf<List<AdminCode>>(emptyList()) }
+    // v2.1: پروکسی‌های تلگرام (پنل مدیر)
+    var adminTgProxies by remember { mutableStateOf<List<TgProxy>>(emptyList()) }
 
     // ── v2: شیت‌های سرورها + کیف پول ──
     var speedOpen by remember { mutableStateOf(false) }
@@ -762,6 +764,44 @@ private fun MbAppInner(
         }
     }
 
+    // ── v2.1: پروکسی‌های تلگرام (پنل مدیر) ──
+    fun loadAdminTgProxies() {
+        val url = AppPrefs.serverUrl(context)
+        val key = AppPrefs.adminServerKey(context)
+        if (!url.startsWith("http") || key.isBlank()) return
+        scope.launch(Dispatchers.IO) {
+            val list = runCatching { MianboorApi.adminListTgProxies(url, key) }.getOrDefault(emptyList())
+            withContext(Dispatchers.Main) { adminTgProxies = list }
+        }
+    }
+
+    fun addAdminTgProxy(link: String, title: String) {
+        val url = AppPrefs.serverUrl(context)
+        val key = AppPrefs.adminServerKey(context)
+        if (!url.startsWith("http") || key.isBlank()) return
+        val fa = AppPrefs.lang(context) == "fa"
+        scope.launch(Dispatchers.IO) {
+            val created = runCatching { MianboorApi.adminAddTgProxy(url, key, link, title) }.getOrNull()
+            withContext(Dispatchers.Main) {
+                toast(
+                    if (created != null) (if (fa) "پروکسی اضافه شد" else "Proxy added")
+                    else (if (fa) "افزودن ناموفق بود — لینک را چک کن" else "Add failed — check the link"),
+                )
+                loadAdminTgProxies()
+            }
+        }
+    }
+
+    fun deleteAdminTgProxy(id: String) {
+        val url = AppPrefs.serverUrl(context)
+        val key = AppPrefs.adminServerKey(context)
+        if (!url.startsWith("http") || key.isBlank()) return
+        scope.launch(Dispatchers.IO) {
+            runCatching { MianboorApi.adminDeleteTgProxy(url, key, id) }
+            withContext(Dispatchers.Main) { loadAdminTgProxies() }
+        }
+    }
+
     /** بارگذاری داده‌های پنل مدیر از سرور (سفارش‌ها + دستگاه‌ها). */
     fun loadAdminData() {
         val url = AppPrefs.serverUrl(context)
@@ -773,6 +813,7 @@ private fun MbAppInner(
             val devices = runCatching { MianboorApi.adminListDevices(url, key) }.getOrDefault(emptyList())
             val noticesList = runCatching { MianboorApi.adminNotices(url, key) }.getOrDefault(emptyList())
             val codesList = runCatching { MianboorApi.adminCodes(url, key) }.getOrDefault(emptyList())
+            val tgList = runCatching { MianboorApi.adminListTgProxies(url, key) }.getOrDefault(emptyList())
             val settings = runCatching { MianboorApi.adminGetSettings(url, key) }.getOrNull()
             withContext(Dispatchers.Main) {
                 serverOrders = orders
@@ -780,6 +821,7 @@ private fun MbAppInner(
                 adminNotices = noticesList
                 adminLatest = settings
                 adminCodes = codesList
+                adminTgProxies = tgList
                 adminBusy = false
                 val pending = orders.count { it.status == "pending" }
                 if (pending > 0) toast(t.pendingOrders(pending))
@@ -1700,6 +1742,10 @@ private fun MbAppInner(
                         onCodes = { loadAdminCodes() },
                         onCreateCode = { type, amount, percent, code -> createCode(type, amount, percent, code) },
                         onDeleteCode = { type, code -> deleteCode(type, code) },
+                        tgProxies = adminTgProxies,
+                        onTgRefresh = { loadAdminTgProxies() },
+                        onAddTgProxy = { link, title -> addAdminTgProxy(link, title) },
+                        onDeleteTgProxy = { id -> deleteAdminTgProxy(id) },
                         configs = configs,
                         orders = serverOrders,
                         devices = serverDevices,

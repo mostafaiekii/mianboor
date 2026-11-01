@@ -4,6 +4,7 @@ import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.keyframes
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
@@ -32,6 +33,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
@@ -340,18 +342,47 @@ fun HomeScreen(
         }
 
         // ── v2.1: دکمهٔ پروکسی تلگرام — دقیقا زیر دکمهٔ اتصال اصلی، سمت چپ صفحه ──
+        // افکت شیشه‌ای: هر ۵ ثانیه یک رفلکس نور مورب از روی دکمه می‌گذرد
         Row(
             Modifier
                 .fillMaxWidth()
                 .padding(top = 10.dp),
             horizontalArrangement = Arrangement.End,
         ) {
+            val shine = rememberInfiniteTransition(label = "tgshine")
+            val shineX by shine.animateFloat(
+                animationSpec = keyframes {
+                    durationMillis = 5000
+                    -1.8f at 0
+                    2.8f at 1600
+                    2.8f at 5000
+                },
+                label = "tgshinex",
+            )
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
                     .clip(RoundedCornerShape(50))
                     .background(mb.gold.copy(alpha = 0.10f))
                     .border(1.dp, mb.gold.copy(alpha = 0.4f), RoundedCornerShape(50))
+                    .drawWithContent {
+                        drawContent()
+                        // باند نور مورب — شیشه‌ای که نور به آن می‌خورد
+                        val w = size.width
+                        val h = size.height
+                        val x = shineX * w
+                        drawRect(
+                            brush = Brush.linearGradient(
+                                colors = listOf(
+                                    Color.Transparent,
+                                    Color.White.copy(alpha = 0.40f),
+                                    Color.Transparent,
+                                ),
+                                start = Offset(x, 0f),
+                                end = Offset(x + w * 0.42f, h * 1.4f),
+                            ),
+                        )
+                    }
                     .clickable { onOpenTgProxy() }
                     .padding(horizontal = 14.dp, vertical = 8.dp),
             ) {

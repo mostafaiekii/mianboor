@@ -248,6 +248,85 @@ object MianboorApi {
         }.getOrDefault(FALLBACK_TG_PROXIES)
     }
 
+    // ------------------------------------------------------------------
+    // پنل مدیر — مدیریت پروکسی‌های تلگرام (نسخهٔ ۲٫۱)
+    // ------------------------------------------------------------------
+
+    /** تجزیهٔ مشترک آرایهٔ proxies از پاسخ سرور. */
+    private fun parseTgProxyArray(arr: org.json.JSONArray): List<TgProxy> =
+        (0 until arr.length()).mapNotNull { i ->
+            val p = arr.optJSONObject(i) ?: return@mapNotNull null
+            val host = p.optString("server")
+            val port = p.optInt("port", 0)
+            if (host.isBlank() || port <= 0) return@mapNotNull null
+            TgProxy(
+                id = p.optString("id"),
+                title = p.optString("title").ifBlank { "Telegram Proxy" },
+                server = host,
+                port = port,
+                kind = listOf("mtproto", "socks").firstOrNull { it == p.optString("kind") } ?: "mtproto",
+                secret = p.optString("secret"),
+                country = p.optString("country").lowercase(),
+            )
+        }
+
+    /** GET /api/admin/tgproxies — همهٔ پروکسی‌های ثبت‌شده (پنل مدیر). */
+    fun adminListTgProxies(serverUrl: String, adminKey: String): List<TgProxy> = runCatching {
+        val conn = adminConn(serverUrl, adminKey, "/api/admin/tgproxies", "GET")
+        try {
+            if (conn.responseCode != 200) return@runCatching emptyList()
+            val o = JSONObject(conn.inputStream.bufferedReader().use { it.readText() })
+            val arr = o.optJSONArray("proxies") ?: return@runCatching emptyList()
+            parseTgProxyArray(arr)
+        } finally {
+            conn.disconnect()
+        }
+    }.getOrDefault(emptyList())
+
+    /**
+     * POST /api/admin/tgproxies {link} — افزودن با «لینک کامل» tg://proxy یا t.me/proxy
+     * (بدون ورود دستی فیلدها). خروجی: رکورد ساخته‌شده یا null.
+     */
+    fun adminAddTgProxy(serverUrl: String, adminKey: String, link: String, title: String): TgProxy? = runCatching {
+        val parsed = TgProxyManager.parseLink(link)
+            ?: throw IllegalArgumentException("لینک پروکسی نامعتبر است")
+        val conn = adminConn(serverUrl, adminKey, "/api/admin/tgproxies", "POST")
+        try {
+            val payload = JSONObject().put("link", link.trim())
+            if (title.isNotBlank()) payload.put("title", title.trim())
+            sendJson(conn, payload)
+            if (conn.responseCode !in 200..299) return@runCatching null
+            val o = JSONObject(conn.inputStream.bufferedReader().use { it.readText() })
+            if (!o.optBoolean("ok", false)) return@runCatching null
+            val p = o.optJSONObject("proxy") ?: return@runCatching null
+            TgProxy(
+                id = p.optString("id"),
+                title = p.optString("title").ifBlank { parsed.title },
+                server = p.optString("server").ifBlank { parsed.server },
+                port = p.optInt("port", parsed.port),
+                kind = listOf("mtproto", "socks").firstOrNull { it == p.optString("kind") } ?: parsed.kind,
+                secret = p.optString("secret").ifBlank { parsed.secret },
+                country = p.optString("country").ifBlank { parsed.country }.lowercase(),
+            )
+        } finally {
+            conn.disconnect()
+        }
+    }.getOrNull()
+
+    /** DELETE /api/admin/tgproxies?id=… — حذف پروکسی (پنل مدیر). */
+    fun adminDeleteTgProxy(serverUrl: String, adminKey: String, id: String): Boolean = runCatching {
+        val conn = adminConn(
+            serverUrl, adminKey,
+            "/api/admin/tgproxies?id=" + URLEncoder.encode(id, "UTF-8"),
+            "DELETE",
+        )
+        try {
+            conn.responseCode in 200..299
+        } finally {
+            conn.disconnect()
+        }
+    }.getOrDefault(false)
+
     /** ثبت سفارش خرید روی سرور تا در تب Orders پنل مدیر ظاهر شود. */
     fun submitOrder(serverUrl: String, clientToken: String, deviceId: String, plan: String, via: String): String? {
         val base = serverUrl.trim().trimEnd('/')

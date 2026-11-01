@@ -319,14 +319,14 @@ export function HomeScreen({
         </div>
       )}
 
-      {/* ── پروکسی تلگرام: دقیقا زیر دکمهٔ اتصال اصلی، سمت چپ صفحه ── */}
+      {/* ── پروکسی تلگرام: دقیقا زیر دکمهٔ اتصال اصلی، سمت چپ صفحه — افکت شیشه‌ای رفلکس نور هر ۵ ثانیه ── */}
       <div className="mt-4 flex justify-end">
         <button
           type="button"
           onClick={() => setTgOpen(true)}
-          className="flex items-center gap-2 rounded-full border border-panel-edge bg-panel px-4 py-2.5 text-sm font-semibold text-ink transition-colors hover:border-glow/40"
+          className="tg-shine relative flex items-center gap-2 overflow-hidden rounded-full border border-gold/40 bg-gold/10 px-4 py-2.5 text-sm font-semibold text-gold transition-colors hover:border-gold/70"
         >
-          <Send className="size-4 text-glow" />
+          <Send className="size-4" />
           {t.tgProxy}
         </button>
       </div>
@@ -392,8 +392,9 @@ export function HomeScreen({
             </div>
             <div className="mt-0.5 text-sm text-dim">{t.tgProxiesSub}</div>
 
+            {/* همیشه مرتب: سریع‌ترین بالای لیست (سورت صعودی بر اساس پینگ، مرده‌ها ته) */}
             <div className="scroll-hide mt-3 flex max-h-96 min-h-0 flex-col gap-2 overflow-y-auto">
-              {tgProxies.map((p) => {
+              {[...tgProxies].sort((a, b) => a.ping - b.ping).map((p) => {
                 const fastest = p.ping === Math.min(...tgProxies.map((x) => x.ping));
                 const isDone = tgDoneId === p.id;
                 const isBusy = tgBusyId === p.id;

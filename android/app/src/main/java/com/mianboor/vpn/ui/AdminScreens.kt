@@ -315,14 +315,35 @@ private fun AddConfigSheet(
             modifier = Modifier.fillMaxWidth(),
         )
 
-        // country chips
+        // country chips — «هدیه» (طلایی) اول: کانفیگ‌هایی که لوکیشن‌شان را نمی‌دانی
         Row(
             Modifier
                 .fillMaxWidth()
                 .padding(top = 12.dp)
                 .horizontalScroll(rememberScrollState()),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
+            // chip ویژهٔ هدیه — پرچم طلایی هدیه برای کانفیگ‌های دستیِ بدون لوکیشن
+            val giftSelected = country == "gift"
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Box(
+                    Modifier
+                        .then(
+                            if (giftSelected) Modifier.border(2.dp, mb.gold, CircleShape)
+                            else Modifier,
+                        )
+                        .padding(2.dp),
+                ) {
+                    Flag("gift", 30.dp, Modifier.clickable { country = "gift" })
+                }
+                Text(
+                    "Gift",
+                    color = if (giftSelected) mb.gold else mb.dim,
+                    fontSize = 9.sp,
+                    modifier = Modifier.padding(top = 2.dp),
+                )
+            }
             COUNTRIES.keys.forEach { c ->
                 val selected = country == c
                 Box(
@@ -1075,6 +1096,11 @@ fun AdminPanel(
     onCodes: () -> Unit = {},
     onCreateCode: (type: String, amount: Long, percent: Int, code: String) -> Unit = { _, _, _, _ -> },
     onDeleteCode: (type: String, code: String) -> Unit = { _, _ -> },
+    // ── v2.1: پروکسی‌های تلگرام — فقط لینک کامل، فقط مدیر ──
+    tgProxies: List<com.mianboor.vpn.TgProxy> = emptyList(),
+    onTgRefresh: () -> Unit = {},
+    onAddTgProxy: (link: String, title: String) -> Unit = { _, _ -> },
+    onDeleteTgProxy: (String) -> Unit = {},
 ) {
     val mb = LocalMb.current
     // Admin panel is English-only (like the rest of the panel chrome)
@@ -1130,6 +1156,7 @@ fun AdminPanel(
             ) {
                 listOf(
                     "configs" to "Configs",
+                    "tgproxies" to "TG Proxies",
                     "orders" to "Orders",
                     "users" to "Users",
                     "codes" to "Codes",
@@ -1712,6 +1739,15 @@ fun AdminPanel(
                     }
                     item { Spacer(Modifier.height(70.dp)) }
                 }
+            } else if (tab == "tgproxies") {
+                TgProxiesAdminTab(
+                    tgProxies, adminBusy,
+                    onRefresh = onTgRefresh,
+                    onAdd = onAddTgProxy,
+                    onDelete = onDeleteTgProxy,
+                    toast = toast,
+                    modifier = Modifier.fillMaxWidth().weight(1f),
+                )
             } else if (tab == "orders") {
                 OrdersTab(
                     orders, adminBusy,
@@ -1795,5 +1831,201 @@ private fun StatCard(value: String, label: String, modifier: Modifier = Modifier
     ) {
         Text(value, color = mb.ink, fontSize = 20.sp, fontWeight = FontWeight.Bold)
         Text(label, color = mb.dim, fontSize = 13.sp)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// TG Proxies — مدیریت پروکسی‌های تلگرام (فقط لینک کامل، فقط مدیر) — v2.1
+// ---------------------------------------------------------------------------
+
+@Composable
+private fun TgProxiesAdminTab(
+    proxies: List<com.mianboor.vpn.TgProxy>,
+    busy: Boolean,
+    onRefresh: () -> Unit,
+    onAdd: (link: String, title: String) -> Unit,
+    onDelete: (String) -> Unit,
+    toast: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val mb = LocalMb.current
+    var link by remember { mutableStateOf("") }
+    var title by remember { mutableStateOf("") }
+    var adding by remember { mutableStateOf(false) }
+
+    Column(modifier) {
+        // header — تعداد + به‌روزرسانی
+        Row(
+            Modifier.fillMaxWidth().padding(top = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                "Telegram proxies — users see them sorted by live ping",
+                color = mb.dim, fontSize = 12.sp, modifier = Modifier.weight(1f),
+            )
+            Icon(
+                ic(R.drawable.ic_rotate_ccw), "refresh", tint = mb.glow,
+                modifier = Modifier.size(18.dp).clickable(enabled = !busy) { onRefresh() },
+            )
+        }
+
+        // ── افزودن با لینک کامل — فقط لینک، بدون ورود دونه‌دونهٔ مقادیر ──
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .padding(top = 10.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(mb.panel)
+                .border(1.dp, mb.gold.copy(alpha = 0.35f), RoundedCornerShape(12.dp))
+                .padding(12.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(ic(R.drawable.ic_send), null, tint = mb.gold, modifier = Modifier.size(15.dp))
+                Spacer(Modifier.width(8.dp))
+                Text("Paste full proxy link", color = mb.ink, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+            }
+            Text(
+                "tg://proxy?server=…&port=…&secret=…  یا  https://t.me/proxy?…",
+                color = mb.dim, fontSize = 10.sp,
+                modifier = Modifier.padding(top = 3.dp),
+            )
+            BasicTextField(
+                value = link,
+                onValueChange = { link = it },
+                singleLine = true,
+                textStyle = TextStyle(color = mb.ink, fontSize = 13.sp),
+                cursorBrush = SolidColor(mb.gold),
+                decorationBox = { inner ->
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(top = 8.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(mb.night)
+                            .border(1.dp, mb.panelEdge, RoundedCornerShape(10.dp))
+                            .padding(horizontal = 12.dp, vertical = 11.dp),
+                    ) {
+                        if (link.isEmpty()) Text("tg://proxy?server=…", color = mb.dim, fontSize = 13.sp)
+                        inner()
+                    }
+                },
+                modifier = Modifier.fillMaxWidth(),
+            )
+            BasicTextField(
+                value = title,
+                onValueChange = { title = it },
+                singleLine = true,
+                textStyle = TextStyle(color = mb.ink, fontSize = 13.sp),
+                cursorBrush = SolidColor(mb.gold),
+                decorationBox = { inner ->
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(top = 8.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(mb.night)
+                            .border(1.dp, mb.panelEdge, RoundedCornerShape(10.dp))
+                            .padding(horizontal = 12.dp, vertical = 11.dp),
+                    ) {
+                        if (title.isEmpty()) Text("Title (optional — e.g. Golden proxy)", color = mb.dim, fontSize = 13.sp)
+                        inner()
+                    }
+                },
+                modifier = Modifier.fillMaxWidth(),
+            )
+            val parsed = remember(link) { com.mianboor.vpn.TgProxyManager.parseLink(link) }
+            if (link.isNotBlank() && parsed == null) {
+                Text(
+                    "Invalid proxy link — copy it from Telegram with «Copy Proxy Link»",
+                    color = mb.danger, fontSize = 11.sp,
+                    modifier = Modifier.padding(top = 6.dp),
+                )
+            }
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(top = 10.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(if (parsed == null || adding) mb.panel else mb.gold)
+                    .clickable(enabled = parsed != null && !adding) {
+                        adding = true
+                        onAdd(link, title)
+                        link = ""
+                        title = ""
+                        adding = false
+                    }
+                    .padding(vertical = 11.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    if (adding) "Adding…" else "Add proxy",
+                    color = if (parsed == null || adding) mb.dim else mb.night,
+                    fontSize = 13.sp, fontWeight = FontWeight.Bold,
+                )
+            }
+        }
+
+        // ── لیست پروکسی‌ها — سریع‌ترین کاربر اول همین را می‌بیند ──
+        LazyColumn(
+            Modifier.fillMaxWidth().weight(1f).padding(top = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            items(proxies.size) { i ->
+                val p = proxies[i]
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(mb.panel)
+                        .border(1.dp, mb.panelEdge, RoundedCornerShape(12.dp))
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    if (p.country.isNotBlank()) Flag(p.country, 30.dp)
+                    else Flag("gift", 30.dp)
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            p.title, color = mb.ink, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
+                            maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        )
+                        Text(
+                            "${p.server}:${p.port}",
+                            color = mb.dim, fontSize = 12.sp,
+                            maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                    Text(
+                        if (p.kind == "socks") "SOCKS" else "MTProto",
+                        color = mb.dim, fontSize = 10.sp, fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(50))
+                            .background(mb.night)
+                            .padding(horizontal = 8.dp, vertical = 3.dp),
+                    )
+                    Spacer(Modifier.width(10.dp))
+                    Icon(
+                        ic(R.drawable.ic_trash_2), "delete", tint = mb.dim,
+                        modifier = Modifier
+                            .size(17.dp)
+                            .clickable {
+                                onDelete(p.id)
+                                toast("Proxy removed")
+                            },
+                    )
+                }
+            }
+            if (proxies.isEmpty()) {
+                item {
+                    Text(
+                        "No proxies yet — paste a full link above",
+                        color = mb.dim, fontSize = 13.sp,
+                        modifier = Modifier.fillMaxWidth().padding(top = 20.dp),
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                    )
+                }
+            }
+            item { Spacer(Modifier.height(70.dp)) }
+        }
     }
 }
