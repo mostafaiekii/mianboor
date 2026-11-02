@@ -420,12 +420,12 @@ async function bridgeBrowse(
   const t0 = Date.now();
   const log = (hop: LabHop, msg: string) => trace.push({ t: Date.now() - t0, hop, msg });
 
-  /* ۱) هندشیک */
+  /* ۱) هندشیک — نشست دموی عمومی؛ توکنِ داخل APK هرگز در باندل سایت نمیآید */
   lit(1);
   const hs = await fetch("/api/tgtunnel/session", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ token: (process.env.NEXT_PUBLIC_CLIENT_TOKEN ?? "").trim() }),
+    body: JSON.stringify({ mode: "public-demo" }),
   }).then((r) => r.json());
   if (!hs.ok) throw new Error(hs.error ?? "هندشیک با پُل شکست خورد");
   log("app", `هندشیک انجام شد — نشست ${String(hs.sid).slice(0, 8)}… صادر شد${hs.demo ? " (حالت دمو)" : ""}`);
