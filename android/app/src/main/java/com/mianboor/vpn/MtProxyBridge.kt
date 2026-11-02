@@ -23,7 +23,7 @@ import javax.crypto.spec.IvParameterSpec
 import javax.crypto.spec.SecretKeySpec
 
 /**
- * پل پروکسی MTProto داخل اپ (نسخهٔ ۲٫۳) — «اتصال مثل کانفیگ، بدون تلگرام».
+ * پل پروکسی MTProto داخل اپ (نسخهٔ ۲٫۴) — مبدل واقعی پروتکل.
  *
  * چرا این کلاس وجود دارد؟
  *   نسخه‌های قبلی برای پروکسی‌های mtproto لینک tg://proxy را به تلگرام می‌فرستادند —
@@ -32,25 +32,32 @@ import javax.crypto.spec.SecretKeySpec
  *
  *       تلگرام ← TUN ← xray(socks) ← این پل (socks روی لوکال‌هاست) ← پروکسی MTProto ← دیتاسنتر
  *
- *   هیچ چیزی به تلگرام کاربر اضافه نمی‌شود؛ مدیر هر لحظه می‌تواند پروکسی را از پنل
- *   حذف کند و دسترسی کامل قطع می‌شود.
+ * ── چرا نسخهٔ ۲٫۳ کار نمی‌کرد (باگ ریشه‌ای) ──
+ *   پروکسی MTProto «تونل TCP خام» نیست! بعد از هندشیکِ ۶۴ بایتی، پروتکل انتظار
+ *   «پاکت‌های قاب‌شدهٔ MTProto» را دارد (intermediate یا padded-intermediate —
+ *   مرجع: mtg فقط 0xDDDDDDDD را قبول می‌کند و بعدش رِلی خام به DC است).
+ *   نسخهٔ ۲٫۳ بایت‌های خام جریان تلگرام↔دیتاسنتر (که خودش یک جریان obfuscated2
+ *   کامل با هندشیک و قاب‌بندی abridged است) را عیناً داخل سشن پروکسی پمپ می‌کرد؛
+ *   پروکسی این بایت‌ها را به‌عنوان قاب MTProto می‌خواند → طول نامعتبر → اتصال بی‌صدا
+ *   بسته می‌شد. نتیجه: «متصل» ولی تلگرام هیچی نمی‌آمد.
  *
- * پروتکل (عین مرجع mtg / obfuscator.c):
- *  ۱) فریم ۶۴ بایتی obfuscated2:
- *       [0..8) نویز | [8..40) کلید | [40..56) IV | [56..60) نوع اتصال | [60..62) DC (LE) | [62..64) نویز
- *     روی سیم: ناحیهٔ [8..56) خام می‌ماند؛ بقیهٔ بایت‌ها با AES-256-CTR رمز می‌شوند
- *     (کلید ارسال = SHA256(frame[8..40) ‖ secret)، IV = frame[40..56)) و جریانِ
- *     بعدی از آفست ۶۴ همان CTR ادامه می‌یابد. کلیدِ دریافت = ناحیهٔ REVERSE شده.
- *  ۲) سکرت دارای دامنه (first byte 0xee/0xdd + کلید ۱۶ بایتی + دامنه؛ hex یا base64url)
- *     → FakeTLS: ClientHello با SNI دامنهٔ سکرت و
- *     random = HMAC-SHA256(key, hello با random صفر) ⊕ (۲۸ بایت صفر + timestamp LE)؛
- *     ServerHello(0x16) + ChangeCipherSpec(0x14) + یک AppData نویز خوانده و رد می‌شوند؛
- *     ادامهٔ ترافیک دوطرفه داخل رکوردهای ApplicationData (0x17، نسخهٔ 03 03) می‌رود.
- *  ۳) سکرت بدون دامنه → حالت خام (نوع اتصال 0xEEEEEEEE، بدون TLS).
- *  ۴) شمارهٔ DC از IP مقصد (دیتاسنترهای شناخته‌شدهٔ تلگرام) درمی‌آید؛ ناشناخته = DC2.
+ * ── معماری نسخهٔ ۲٫۴ (مبدل سه‌لایه) ──
+ *   سمت تلگرام (بدون سکرت — مرجع: tgnet خود تلگرام + tdlib):
+ *     • تلگرام اندروید برای اتصال به DC همیشه obfuscated2 استفاده می‌کند:
+ *       فریم ۶۴ بایتی؛ [56..60)=0xEFEFEFEF (abridged)؛ کلید AES = بایت‌های خام
+ *       [8..40) — بدون SHA256 و بدون سکرت — و IV = [40..56).
+ *     • بعدش پاکت‌های abridged: [len/4][payload] یا [0x7f][len/4 سه‌بایتی][payload].
+ *   سمت پروکسی (با سکرت — مرجع: mtg v2):
+ *     • FakeTLS: ClientHello (طول دقیقاً ۵۱۲) + ردِ ServerHello/CCS/نویز؛
+ *     • فریم ۶۴ بایتی با ct=0xDDDDDDDD و شمارهٔ DC؛ کلید = SHA256([8..40)+سکرت)؛
+ *     • ترافیک دوطرفه داخل رکوردهای TLS-AppData، درونش padded-intermediate:
+ *       [len32LE][payload]؛ توکن quick-ack سرور = بدنه با 0xFFFFFFFF.
+ *   پل: قاب‌بندی تلگرام را باز می‌کند، بدنهٔ پیام MTProto را بی‌دست‌می‌زند، و با
+ *   قاب‌بندی پروکسی دوباره می‌بندد (و برعکس). بدنهٔ پیام هرگز رمزگشایی نمی‌شود —
+ *   رمزنگاری انتها-به-انتها با auth key تلگرام حفظ می‌ماند.
  *
  * این پل یک SOCKS5 سادهٔ TCP-only روی 127.0.0.1:PORT است — UDP/BIND رد می‌شود
- * (DNS از ماژول DNS خودِ xray جواب می‌گیرد و مسیر UDP اصلاً به اینجا نمی‌رسد).
+ * (تماس صوتی از مسیر MTProto-پروکسی اصلاً پشتیبانی نمی‌شود؛ مثل خود تلگرام).
  */
 object MtProxyBridge {
 
@@ -129,7 +136,8 @@ object MtProxyBridge {
         var upstream: Socket? = null
         try {
             client.tcpNoDelay = true
-            val ins = DataInputStream(BufferedInputStream(client.getInputStream(), 32 * 1024))
+            val buffered = BufferedInputStream(client.getInputStream(), 32 * 1024)
+            val ins = DataInputStream(buffered)
             val outs = client.getOutputStream()
 
             // ── greeting: 05 nmethods methods… → 05 00 ──
@@ -161,31 +169,49 @@ object MtProxyBridge {
 
             val dc = dcOf(host)
 
-            // ── اتصال به پروکسی MTProto + هندشیک واقعی ──
+            // ── اتصال به پروکسی MTProto + هندشیک FakeTLS/obfuscated2 ──
             val proxy = Socket()
             proxy.tcpNoDelay = true
             proxy.connect(InetSocketAddress(p.host, p.port), 10_000)
             upstream = proxy
             conns[proxy] = true
             proxy.soTimeout = 30_000
-            val pin = proxy.getInputStream()
-            val pout = proxy.getOutputStream()
-            val session = Session(p, dc, pin, pout)
+            val session = ProxySession(
+                p, dc,
+                proxy.getInputStream(), proxy.getOutputStream(),
+            )
             session.handshake()
             proxy.soTimeout = 0
 
-            // ── جواب موفق SOCKS ──
+            // ── جواب موفق SOCKS — باید قبل از خواندنِ جریان تلگرام باشد، وگرنه
+            //    xray منتظر جواب می‌ماند و جریان هرگز شروع نمی‌شود (بن‌بست!) ──
             outs.write(byteArrayOf(5, 0, 0, 1, 0, 0, 0, 0, 0, 0))
             outs.flush()
 
-            // ── پمپ دوطرفه تا قطع ──
+            // ── سمت تلگرام: تشخیص ترنسپورت (obfuscated2 بدون سکرت) ──
+            // اگر هندشیک تلگرام شناخته نشد، همین‌جا اتصال بسته می‌شود و تلگرام
+            // با ترنسپورت دیگری دوباره تلاش می‌کند.
+            val tg = TgSide(ins, outs)
+            tg.detect()
+
+            // ── پمپ دوطرفه با مبدل قاب‌بندی ──
             val exec = pool ?: return
             val down = exec.submit {
-                runCatching { session.pumpDownstream(outs) }
+                runCatching {
+                    while (true) {
+                        val body = session.recvBody() ?: break
+                        tg.writeBody(body)
+                    }
+                }
                 runCatching { client.close() }
                 runCatching { proxy.close() }
             }
-            runCatching { session.pumpUpstream(ins, pout) }
+            runCatching {
+                while (true) {
+                    val up = tg.readBody() ?: break
+                    session.sendBody(up.first, up.second)
+                }
+            }
             runCatching { proxy.shutdownOutput() }
             runCatching { down.get(3, TimeUnit.SECONDS) }
         } catch (t: Throwable) {
@@ -227,10 +253,9 @@ object MtProxyBridge {
     }.toMap()
 
     /**
-     * نگاشت مقصد → شمارهٔ DC — فقط برای IP لفظی (نسخهٔ ۲٫۳٫۱).
+     * نگاشت مقصد → شمارهٔ DC — فقط برای IP لفظی.
      * برای دامنه‌ها هرگز DNS resolve نمی‌کنیم: در ایران DNS مسدود/مسوم است و
-     * resolve فقط هنگ می‌کند؛ مقصد دامنه (مثل core.telegram.org که با sniffing
-     * از SNI درمی‌آید) = DC2 پیش‌فرض.
+     * resolve فقط هنگ می‌کند؛ مقصد دامنه = DC2 پیش‌فرض.
      */
     private fun dcOf(host: String): Int {
         val ip = host.trim()
@@ -246,10 +271,43 @@ object MtProxyBridge {
     }
 
     // ------------------------------------------------------------------
-    // سشن MTProto — هندشیک + پمپ رمزی
+    // کمکی‌های مشترک
     // ------------------------------------------------------------------
 
-    private class Session(
+    private fun sha256(data: ByteArray): ByteArray =
+        MessageDigest.getInstance("SHA-256").digest(data)
+
+    private fun ctrCipher(key: ByteArray, iv: ByteArray, mode: Int): Cipher =
+        Cipher.getInstance("AES/CTR/NoPadding").apply {
+            init(mode, SecretKeySpec(key, "AES"), IvParameterSpec(iv))
+        }
+
+    private fun le32(b: ByteArray, off: Int): Int =
+        (b[off].toInt() and 0xff) or
+            ((b[off + 1].toInt() and 0xff) shl 8) or
+            ((b[off + 2].toInt() and 0xff) shl 16) or
+            ((b[off + 3].toInt() and 0xff) shl 24)
+
+    private fun putLe32(b: ByteArray, off: Int, v: Int) {
+        b[off] = (v and 0xff).toByte()
+        b[off + 1] = ((v shr 8) and 0xff).toByte()
+        b[off + 2] = ((v shr 16) and 0xff).toByte()
+        b[off + 3] = ((v shr 24) and 0xff).toByte()
+    }
+
+    /** سقف منطقی پاکت MTProto — تلگرام خودش پاکت‌های >2MB را نمی‌پذیرد. */
+    private const val MAX_BODY = 2 * 1024 * 1024 + 16 * 1024
+
+    private fun requireBodySize(n: Int) {
+        if (n <= 0 || n > MAX_BODY) throw IOException("طول پاکت نامعتبر: $n")
+    }
+
+    // ==================================================================
+    // سمت پروکسی — FakeTLS + obfuscated2(سکرت) + padded-intermediate
+    // (عین مرجع mtg v2)
+    // ==================================================================
+
+    private class ProxySession(
         p: Params,
         private val dc: Int,
         private val proxyIn: InputStream,
@@ -262,6 +320,10 @@ object MtProxyBridge {
         private val recvCipher: Cipher
         private val wireFrame: ByteArray
 
+        /** بافر تجمعی قاب‌های padded-intermediate که بین رکوردهای TLS شکسته‌اند. */
+        private var buf = ByteArray(16 * 1024)
+        private var bufLen = 0
+
         init {
             val (key, host) = parseSecret(p.secret)
                 ?: throw IOException("سکرت پروکسی نامعتبر است")
@@ -269,45 +331,41 @@ object MtProxyBridge {
             fakeTlsHost = host
             val rng = SecureRandom()
 
-            // ── فریم ۶۴ بایتی obfuscated2 ──
+            // ── فریم ۶۴ بایتی obfuscated2 (عین mtg generateHandshake) ──
             val frame = ByteArray(64)
             while (true) {
                 rng.nextBytes(frame)
                 if (frame[0] == 0xef.toByte()) continue // هدر abridged
-                val le32 = (frame[0].toInt() and 0xff) or
-                    ((frame[1].toInt() and 0xff) shl 8) or
-                    ((frame[2].toInt() and 0xff) shl 16) or
-                    ((frame[3].toInt() and 0xff) shl 24)
-                if (le32 == 0x44414548 || // HEAD
-                    le32 == 0x54534f50 || // POST
-                    le32 == 0x20544547 || // GET␣
-                    le32 == 0x4954504f || // OPTI
-                    le32 == 0x02010316 || // ؟؟
-                    le32 == 0xdddddddd.toInt() || // padded intermediate
-                    le32 == 0xeeeeeeee.toInt()    // intermediate
+                val le0 = le32(frame, 0)
+                if (le0 == 0x44414548 || // HEAD
+                    le0 == 0x54534f50 || // POST
+                    le0 == 0x20544547 || // GET␣
+                    le0 == 0x4954504f || // OPTI
+                    le0 == 0x02010316 || // ؟؟
+                    le0 == 0xdddddddd.toInt() || // padded intermediate
+                    le0 == 0xeeeeeeee.toInt()    // intermediate
                 ) continue
                 if (frame[4].toInt() == 0 && frame[5].toInt() == 0 &&
                     frame[6].toInt() == 0 && frame[7].toInt() == 0
                 ) continue
                 break
             }
-            val ct = if (fakeTlsHost != null) 0xdd else 0xee
-            frame[56] = ct.toByte(); frame[57] = ct.toByte()
-            frame[58] = ct.toByte(); frame[59] = ct.toByte()
+            // mtg فقط 0xDDDDDDDD را قبول می‌کند («We support only fake tls»)
+            frame[56] = 0xdd.toByte(); frame[57] = 0xdd.toByte()
+            frame[58] = 0xdd.toByte(); frame[59] = 0xdd.toByte()
             frame[60] = (dc and 0xff).toByte()
             frame[61] = ((dc shr 8) and 0xff).toByte()
 
-            // کلید/IV ارسال و دریافت (دریافت = معکوس‌شدهٔ ناحیهٔ [8..56))
+            // کلید/IV ارسال و دریافت — عین mtg: SHA256([8..40)+سکرت)، IV=[40..56)؛
+            // دریافت از ناحیهٔ REVERSE شدهٔ [8..56).
             val sendKey = sha256(frame.copyOfRange(8, 40) + secretKey)
             val sendIv = frame.copyOfRange(40, 56)
             val rev = frame.copyOfRange(8, 56).reversedArray()
             val recvKey = sha256(rev.copyOfRange(0, 32) + secretKey)
             val recvIv = rev.copyOfRange(32, 48)
 
-            sendCipher = Cipher.getInstance("AES/CTR/NoPadding")
-            sendCipher.init(Cipher.ENCRYPT_MODE, SecretKeySpec(sendKey, "AES"), IvParameterSpec(sendIv))
-            recvCipher = Cipher.getInstance("AES/CTR/NoPadding")
-            recvCipher.init(Cipher.DECRYPT_MODE, SecretKeySpec(recvKey, "AES"), IvParameterSpec(recvIv))
+            sendCipher = ctrCipher(sendKey, sendIv, Cipher.ENCRYPT_MODE)
+            recvCipher = ctrCipher(recvKey, recvIv, Cipher.DECRYPT_MODE)
 
             // روی سیم: کل فریم با CTR رمز می‌شود؛ بعد ناحیهٔ کلید/IV خام برمی‌گردد.
             // نکتهٔ حیاتی: update — نه doFinal! doFinal کایفر را reset می‌کند و
@@ -329,55 +387,86 @@ object MtProxyBridge {
                     if (type == 0x17) seenAppData = true
                 }
             }
-            // فریم obfuscated2 — در حالت FakeTLS داخل اولین رکورد AppData می‌رود
+            // فریم obfuscated2 — در حالت FakeTLS داخل اولین رکورد AppData می‌رود؛
+            // عین tdlib: قبل از اولین رکورد، یک رکورد ChangeCipherSpec می‌آید.
             if (fakeTlsHost != null) {
-                writeTlsRecord(proxyOut, wireFrame)
+                proxyOut.write(byteArrayOf(0x14, 0x03, 0x03, 0x00, 0x01, 0x01))
+                writeTlsRecord(proxyOut, wireFrame, 0, wireFrame.size)
             } else {
                 proxyOut.write(wireFrame)
             }
             proxyOut.flush()
         }
 
-        fun pumpUpstream(localIn: InputStream, proxyOut: OutputStream) {
-            // سقف payload رکورد TLS = 16379 بایت (16384 منهای هدر)
-            val buf = ByteArray(16379)
+        /**
+         * بدنهٔ پیام MTProto را در قاب padded-intermediate می‌فرستد.
+         * قاب: [len32LE][payload] — بدون پدینگِ ترنسپورت (پدینگ MTProto v2 داخل
+         * خود پیام است؛ DC بایت اضافهٔ انتهایی را نادیده می‌گیرد — مرجع: tgnet).
+         * quickAck: بیت بالای len (درخواست quick-ack کلاینت→سرور، عین تلگرام).
+         */
+        fun sendBody(body: ByteArray, quickAck: Boolean) {
+            requireBodySize(body.size)
+            val env = ByteArray(4 + body.size)
+            putLe32(env, 0, if (quickAck) (body.size or (1 shl 31)) else body.size)
+            body.copyInto(env, 4)
+            val enc = sendCipher.update(env)
+            // رکورد TLS سقف 16379 بایت دارد — تیکه‌تیکه می‌فرستیم (CTR جریانی است)
+            var off = 0
+            while (off < enc.size) {
+                val n = minOf(16379, enc.size - off)
+                writeTlsRecord(proxyOut, enc, off, n)
+                off += n
+            }
+            proxyOut.flush()
+        }
+
+        /** یک بدنهٔ پیام از سمت پروکسی برمی‌دارد؛ null = اتصال تمام. */
+        fun recvBody(): ByteArray? {
             while (true) {
-                val n = localIn.read(buf)
-                if (n < 0) break
-                if (n == 0) continue
-                val data = sendCipher.update(buf, 0, n)
-                if (fakeTlsHost != null) writeTlsRecord(proxyOut, data) else proxyOut.write(data)
-                proxyOut.flush()
-            }
-        }
-
-        fun pumpDownstream(localOut: OutputStream) {
-            if (fakeTlsHost != null) {
-                while (true) {
-                    val (type, payload) = readTlsRecord(proxyIn)
-                    if (type != 0x17) continue // رکورد غیر-AppData رد می‌شود
+                // تلاش برای پارس قاب کامل از بافر تجمعی
+                if (bufLen >= 4) {
+                    val total = le32(buf, 0)
+                    if ((total and (1 shl 31)) != 0) {
+                        // توکن quick-ack با بیتِ len — رد (فقط ۴ بایت هدر)
+                        consume(4)
+                        continue
+                    }
+                    requireBodySize(total)
+                    if (bufLen >= 4 + total) {
+                        val body = buf.copyOfRange(4, 4 + total)
+                        consume(4 + total)
+                        if (body.size >= 4 && le32(body, 0) == -1) {
+                            continue // توکن quick-ack سرور (0xFFFFFFFF) — رد
+                        }
+                        return body
+                    }
+                }
+                // دادهٔ بیشتر لازم است — رکورد TLS بعدی
+                val (type, payload) = readTlsRecord(proxyIn)
+                if (type != 0x17) continue // رکورد غیر-AppData رد می‌شود
+                if (payload.isNotEmpty()) {
                     val dec = recvCipher.update(payload)
-                    if (dec.isNotEmpty()) {
-                        localOut.write(dec)
-                        localOut.flush()
-                    }
-                }
-            } else {
-                val buf = ByteArray(16 * 1024)
-                while (true) {
-                    val n = proxyIn.read(buf)
-                    if (n < 0) break
-                    if (n == 0) continue
-                    val dec = recvCipher.update(buf, 0, n)
-                    if (dec.isNotEmpty()) {
-                        localOut.write(dec)
-                        localOut.flush()
-                    }
+                    if (dec.isNotEmpty()) append(dec)
                 }
             }
         }
 
-        // ── FakeTLS ClientHello ──
+        private fun append(dec: ByteArray) {
+            if (bufLen + dec.size > buf.size) {
+                var cap = maxOf(buf.size * 2, bufLen + dec.size)
+                if (cap < 16 * 1024) cap = 16 * 1024
+                buf = buf.copyOf(cap)
+            }
+            dec.copyInto(buf, bufLen)
+            bufLen += dec.size
+        }
+
+        private fun consume(n: Int) {
+            buf.copyInto(buf, 0, n, bufLen)
+            bufLen -= n
+        }
+
+        // ── FakeTLS ClientHello (عین mtg ReadClientHello) ──
 
         private fun clientHello(host: String): ByteArray {
             val rng = SecureRandom()
@@ -417,15 +506,13 @@ object MtProxyBridge {
             ext.write(0x04) // ۴ بایت لیست
             ext.write(0x03); ext.write(0x04)
             ext.write(0x03); ext.write(0x03)
-            // ── FakeTLS پدینگ (نسخهٔ ۲٫۳٫۱ — حیاتی) ──
-            // سرورهای MTProto-پروکسی (mtprotoproxy و امثالش) برای تشخیص TLS واقعی،
-            // طول رکورد ClientHello را چک می‌کنند: < ۵۱۲ یعنی «TLS نیست» → هندشیک
-            // بی‌صدا رد می‌شود و تلگرام هیچ‌وقت وصل نمی‌شود. اکستنشن padding
-            // (0x0015) همیشه آخرین اکستنشن است؛ طول hs دقیقاً ۵۱۲ بایت می‌شود.
-            // (تأییدشده با تست واقعی روی سرور مرجع alexbers/mtprotoproxy)
+            // ── FakeTLS پدینگ — حیاتی ──
+            // سرورهای MTProto-پروکسی برای تشخیص TLS واقعی، طول رکورد ClientHello را
+            // چک می‌کنند: < ۵۱۲ یعنی «TLS نیست» → هندشیک بی‌صدا رد می‌شود.
+            // اکستنشن padding (0x0015) همیشه آخرین اکستنشن است؛ طول hs دقیقاً ۵۱۲.
             val extBytes = run {
                 val base = ext.toByteArray()
-                val bodyNoPad = 2 + 32 + 1 + 32 + 2 + suites.size + 3 + 2 + base.size
+                val bodyNoPad = 2 + 32 + 1 + 32 + 2 + suites.size + 2 + 2 + base.size
                 val padLen = 512 - 4 - bodyNoPad - 4
                 if (padLen > 0) {
                     val pad = ByteArray(padLen).also { rng.nextBytes(it) }
@@ -441,16 +528,20 @@ object MtProxyBridge {
             }
 
             // body: version + random(صفر) + sid + suites + comp + extensions
+            // ساختار دقیق TLS ClientHello: version(2) random(32) sidLen(1) sid(32)
+            // suitesLen(2) suites compLen(1=0x01) comp(1=0x00) extLen(2) ext
+            // (نسخهٔ قبلی یک 0x00 اضافه قبل از compLen داشت — پارس سخت‌گیرانهٔ سرور
+            // مثل mtg از آن به بعد به‌هم می‌ریخت و هندشیک بی‌صدا رد می‌شد!)
             val body = ByteArrayOutputStream()
             body.write(0x03); body.write(0x03) // client version TLS1.2
             body.write(ByteArray(32)) // random — فعلاً صفر
             body.write(0x20) // session id len = 32
             val sid = ByteArray(32); rng.nextBytes(sid)
             body.write(sid)
-            body.write(0x00); body.write(suites.size)
+            body.write(0x00); body.write(suites.size) // suites len = 16-bit BE
             body.write(suites)
-            body.write(0x00); body.write(0x01)
-            body.write(0x00)
+            body.write(0x01) // compression methods len = 1
+            body.write(0x00) // method: null
             body.write((extBytes.size shr 8) and 0xff); body.write(extBytes.size and 0xff)
             body.write(extBytes)
             val bodyBytes = body.toByteArray()
@@ -488,15 +579,15 @@ object MtProxyBridge {
 
         // ── TLS record framing (قاب فقط — رمز واقعی همان CTR بالا است) ──
 
-        private fun writeTlsRecord(out: OutputStream, payload: ByteArray) {
+        private fun writeTlsRecord(out: OutputStream, payload: ByteArray, off: Int, len: Int) {
             out.write(
                 byteArrayOf(
                     0x17, 0x03, 0x03,
-                    ((payload.size shr 8) and 0xff).toByte(),
-                    (payload.size and 0xff).toByte(),
+                    ((len shr 8) and 0xff).toByte(),
+                    (len and 0xff).toByte(),
                 )
             )
-            out.write(payload)
+            out.write(payload, off, len)
         }
 
         private fun readTlsRecord(ins: InputStream): Pair<Int, ByteArray> {
@@ -518,6 +609,219 @@ object MtProxyBridge {
                 o += n
             }
             return type to payload
+        }
+    }
+
+    // ==================================================================
+    // سمت تلگرام — obfuscated2 بدون سکرت + ترنسپورت ef/ee/dd
+    // (عین tgnet خود تلگرام برای اتصال به DC)
+    // ==================================================================
+
+    private class TgSide(
+        private val ins: DataInputStream,
+        private val outs: OutputStream,
+    ) {
+        private var transport = 0 // 1=abridged 2=intermediate 3=padded
+        private var obfuscated = false
+
+        /** دریافت (تلگرام→پل): کلید خام از فریم — عین tgnet بدون سکرت. */
+        private var recvCipher: Cipher? = null
+
+        /** ارسال (پل→تلگرام): کلید خام از ناحیهٔ معکوس. */
+        private var sendCipher: Cipher? = null
+
+        /** بایت‌های خوانده‌شدهٔ اضافه در تشخیص (حالت‌های بدون obfuscation). */
+        private var pending: ByteArray = ByteArray(0)
+        private var pendingOff = 0
+
+        /** بافر رمزگشایی جریانی — برای خواندن‌های کوچکِ قاب. */
+        private var decBuf = ByteArray(0)
+        private var decLen = 0
+        private var decOff = 0
+
+        /**
+         * هندشیک سمت تلگرام: ۶۴ بایت اول را می‌خواند و ترنسپورت را تشخیص می‌دهد.
+         *  - بایت اول 0xEF → abridged خام
+         *  - int اول 0xEEEEEEEE / 0xDDDDDDDD → intermediate / padded خام
+         *  - وگرنه obfuscated2: کلید AES = بایت‌های خام [8..40) (بدون SHA256/سکرت)،
+         *    IV = [40..56)؛ ترنسپورت واقعی از [56..60) رمزگشایی‌شده درمی‌آید.
+         */
+        fun detect() {
+            val head = ins.readFully(64)
+            val le0 = le32(head, 0)
+            when {
+                head[0] == 0xef.toByte() -> {
+                    transport = 1
+                    pending = head
+                    pendingOff = 1
+                }
+                le0 == 0xeeeeeeee.toInt() -> {
+                    transport = 2
+                    pending = head
+                    pendingOff = 4
+                }
+                le0 == 0xdddddddd.toInt() -> {
+                    transport = 3
+                    pending = head
+                    pendingOff = 4
+                }
+                else -> {
+                    obfuscated = true
+                    // دریافت: کلید/IV از بایت‌های خام فریم (تلگرام این‌طوری رمز کرده)
+                    recvCipher = ctrCipher(
+                        head.copyOfRange(8, 40), head.copyOfRange(40, 56), Cipher.DECRYPT_MODE,
+                    )
+                    // ارسال: کلید/IV از ناحیهٔ معکوس‌شدهٔ [8..56) — کلیدِ رمزگشاییِ تلگرام
+                    val rev = head.copyOfRange(8, 56).reversedArray()
+                    sendCipher = ctrCipher(
+                        rev.copyOfRange(0, 32), rev.copyOfRange(32, 48), Cipher.ENCRYPT_MODE,
+                    )
+                    val plain = recvCipher!!.update(head)
+                    val b56 = plain[56]
+                    if (plain[57] != b56 || plain[58] != b56 || plain[59] != b56) {
+                        throw IOException("فریم تلگرام نامعتبر است")
+                    }
+                    transport = when (b56.toInt() and 0xff) {
+                        0xef -> 1
+                        0xee -> 2
+                        0xdd -> 3
+                        else -> throw IOException("ترنسپورت تلگرام پشتیبانی نمی‌شود")
+                    }
+                }
+            }
+        }
+
+        /**
+         * بدنهٔ پیام بعدی از تلگرام؛ null = اتصال بسته.
+         * خروجی: (بدنه، درخواست quick-ack) — بیت در قاب مقصد حفظ می‌شود.
+         */
+        fun readBody(): Pair<ByteArray, Boolean>? {
+            var quickAck = false
+            when (transport) {
+                1 -> { // abridged
+                    val b = nextByte() ?: return null
+                    val len4: Int
+                    if ((b and 0x80) != 0) {
+                        quickAck = true
+                        len4 = b and 0x7f
+                    } else if (b == 0x7f) {
+                        val b0 = nextByte() ?: return null
+                        val b1 = nextByte() ?: return null
+                        val b2 = nextByte() ?: return null
+                        len4 = b0 or (b1 shl 8) or (b2 shl 16)
+                    } else {
+                        len4 = b
+                    }
+                    if (len4 <= 0) return null
+                    val size = len4 * 4
+                    requireBodySize(size)
+                    return Pair(readN(size) ?: return null, quickAck)
+                }
+                else -> { // intermediate / padded — [len32LE][payload(+padding)]
+                    val h = readN(4) ?: return null
+                    val len = le32(h, 0)
+                    if ((len and (1 shl 31)) != 0) {
+                        // درخواست quick-ack — tgnet/tdlib آن را همراه payload می‌فرستد
+                        quickAck = true
+                        val real = len and 0x7fffffff
+                        requireBodySize(real)
+                        return Pair(readN(real) ?: return null, quickAck)
+                    }
+                    requireBodySize(len)
+                    return Pair(readN(len) ?: return null, false)
+                }
+            }
+        }
+
+        /** بدنهٔ پیام را در ترنسپورت تلگرام قاب می‌کند و (در صورت obfuscation) رمز می‌کند. */
+        fun writeBody(body: ByteArray) {
+            requireBodySize(body.size)
+            val frame: ByteArray = when (transport) {
+                1 -> { // abridged — طول باید مضرب ۴ باشد
+                    if (body.size % 4 != 0) throw IOException("بدنهٔ غیرمضرب ۴ در abridged")
+                    val q = body.size / 4
+                    if (q < 0x7f) {
+                        byteArrayOf(q.toByte()) + body
+                    } else {
+                        byteArrayOf(0x7f) +
+                            byteArrayOf(
+                                (q and 0xff).toByte(),
+                                ((q shr 8) and 0xff).toByte(),
+                                ((q shr 16) and 0xff).toByte(),
+                            ) + body
+                    }
+                }
+                else -> { // intermediate / padded — [len32LE][body]
+                    val env = ByteArray(4 + body.size)
+                    putLe32(env, 0, body.size)
+                    body.copyInto(env, 4)
+                    env
+                }
+            }
+            val wire = if (obfuscated) sendCipher!!.update(frame) else frame
+            outs.write(wire)
+            outs.flush()
+        }
+
+        // ── خواندن جریانی (بایت‌های pending + رمزگشایی CTR جریانی) ──
+
+        private fun nextByte(): Int? {
+            if (pendingOff < pending.size) {
+                val v = pending[pendingOff].toInt() and 0xff
+                pendingOff++
+                return v
+            }
+            if (decOff < decLen) {
+                val v = decBuf[decOff].toInt() and 0xff
+                decOff++
+                return v
+            }
+            if (obfuscated) {
+                // چند بایت یک‌جا رمزگشایی می‌کنیم تا هر بایت یک فراخوانی JNI نشود
+                val raw = ByteArray(4096)
+                val n = ins.read(raw)
+                if (n < 0) return null
+                if (n > 0) {
+                    val dec = recvCipher!!.update(raw, 0, n)
+                    decBuf = dec
+                    decLen = dec.size
+                    decOff = 0
+                }
+                return nextByte()
+            }
+            val v = ins.read()
+            return if (v < 0) null else v
+        }
+
+        private fun readN(n: Int): ByteArray? {
+            if (n == 0) return ByteArray(0)
+            val out = ByteArray(n)
+            var off = 0
+            // اول بافر رمزگشایی‌شدهٔ مانده
+            if (decOff < decLen) {
+                val take = minOf(n - off, decLen - decOff)
+                System.arraycopy(decBuf, decOff, out, off, take)
+                decOff += take
+                off += take
+            }
+            // بعد بایت‌های pending تشخیص
+            if (off < n && pendingOff < pending.size) {
+                val take = minOf(n - off, pending.size - pendingOff)
+                System.arraycopy(pending, pendingOff, out, off, take)
+                pendingOff += take
+                off += take
+            }
+            if (off == n) return out
+            if (obfuscated) {
+                val raw = ByteArray(n - off)
+                ins.readFully(raw)
+                val dec = recvCipher!!.update(raw)
+                if (dec.size != raw.size) throw IOException("رمزگشایی جریان ناقص")
+                System.arraycopy(dec, 0, out, off, dec.size)
+                return out
+            }
+            ins.readFully(out, off, n - off)
+            return out
         }
     }
 
@@ -550,9 +854,6 @@ object MtProxyBridge {
             decoded to null
         }
     }
-
-    private fun sha256(data: ByteArray): ByteArray =
-        MessageDigest.getInstance("SHA-256").digest(data)
 
     private fun hexDecode(s: String): ByteArray {
         if (s.length % 2 != 0 || !s.all { it.isDigit() || it in 'a'..'f' || it in 'A'..'F' }) {

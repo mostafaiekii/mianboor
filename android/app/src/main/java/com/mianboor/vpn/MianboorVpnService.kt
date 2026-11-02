@@ -57,9 +57,11 @@ class MianboorVpnService : VpnService() {
         private const val MTU = 8500
 
         /**
-         * v2.3.1: پکیج‌های تلگرام که در حالت پروکسی تلگرام وارد TUN می‌شوند —
+         * v2.4: پکیج‌های تلگرام که در حالت پروکسی تلگرام وارد TUN می‌شوند —
          * بقیهٔ اپ‌ها اصلاً مسیر تونل را نمی‌بینند (اینترنت عادی خودشان).
          * addAllowedApplication برای پکیج نصب‌نشده استثنا می‌دهد — با runCatching بی‌خطر است.
+         * اگر هیچ‌کدام نصب نبود (کلاینت‌های خاص)، fallback: همهٔ اپ‌ها به‌جز خود اپ —
+         * روتینگِ xray (فقط CIDRهای تلگرام → پروکسی) جلوی لوپ را می‌گیرد.
          */
         private val TG_APP_PACKAGES = listOf(
             "org.telegram.messenger",     // تلگرام رسمی
@@ -67,6 +69,10 @@ class MianboorVpnService : VpnService() {
             "org.thunderdog.challegram",  // Telegram X
             "org.telegram.plus",          // Plus Messenger
             "nekox.messenger",            // Nekogram X
+            "tw.nekomimi.nekogram",       // Nekogram
+            "xyz.nextalone.nagram",       // Nagram
+            "com.exteragram.messenger",   // exteraGram
+            "org.nagram.math"             // Nagram X
         )
     }
 
@@ -200,12 +206,16 @@ class MianboorVpnService : VpnService() {
                 .addRoute("0.0.0.0", 0)
                 .addRoute("::", 0)
             if (mp != null || socks != null) {
-                // v2.3.1 حالت پروکسی تلگرام: فقط اپ‌های تلگرام وارد TUN می‌شوند —
+                // v2.4 حالت پروکسی تلگرام: اول فقط اپ‌های تلگرام وارد TUN می‌شوند —
                 // خود اپ هم چون در لیست نیست خودکار بیرون می‌ماند (ترافیک xray/پل لوپ نمی‌کند).
-                // نکتهٔ پلتفرم: allowed و disallowed را نمی‌شود همزمان ست کرد (establish می‌شکند).
+                // اگر هیچ‌کدام از پکیج‌ها نصب نبود (کلاینت خاص)، fallback: همهٔ اپ‌ها
+                // به‌جز خود اپ — روتینگِ فقط-تلگرامِ xray همان تضمین را می‌دهد.
+                var anyAllowed = false
                 TG_APP_PACKAGES.forEach { pkg ->
-                    runCatching { builder.addAllowedApplication(pkg) }
+                    val ok = runCatching { builder.addAllowedApplication(pkg) }.isSuccess
+                    if (ok) anyAllowed = true
                 }
+                if (!anyAllowed) builder.addDisallowedApplication(packageName)
             } else {
                 applySplitTunneling(builder)
                 // Our own traffic (including the xray child process) must bypass

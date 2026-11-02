@@ -451,18 +451,18 @@ object XrayConfigBuilder {
             )
         }
         if (tgOnly) {
-            // ۳) حالت پروکسی تلگرام (v2.3.1): فقط مقصدهای تلگرام به تونل می‌روند.
-            // پروکسی MTProto از نظر پروتکل فقط دیتاسنترهای تلگرام را می‌شناسد
-            // (هندشیک فقط شمارهٔ DC دارد)؛ اینستاگرام و بقیهٔ اینترنت از مسیر
-            // مستقیم می‌روند — یعنی «فقط تلگرام وصل است» و بقیهٔ گوشی دست‌نخورده می‌ماند.
-            rules.put(
-                JSONObject().put("type", "field")
-                    .put("ip", JSONArray(TG_IP_RANGES))
-                    .put("outboundTag", "proxy")
-            )
+            // ۳) حالت پروکسی تلگرام (v2.4): فقط ترافیک MTProto (مقاصد IPِ دیتاسنترها)
+            //    به پروکسی می‌رود. پروکسی MTProto از نظر پروتکل «فقط» جریان MTProto
+            //    را می‌فهمد — HTTPS عادی (مثل صفحات وب core.telegram.org) داخلش
+            //    garbage است و اتصال را قطع می‌کند؛ پس دامنه‌های تلگرام → مستقیم.
             rules.put(
                 JSONObject().put("type", "field")
                     .put("domain", JSONArray(TG_DOMAINS))
+                    .put("outboundTag", "direct")
+            )
+            rules.put(
+                JSONObject().put("type", "field")
+                    .put("ip", JSONArray(TG_IP_RANGES))
                     .put("outboundTag", "proxy")
             )
             // ۴) بقیهٔ ترافیک → مستقیم (اینترنت عادی گوشی)
