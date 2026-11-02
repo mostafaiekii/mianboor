@@ -55,6 +55,19 @@ class MianboorVpnService : VpnService() {
         private const val CHANNEL_ID = "mianboor_vpn"
         private const val NOTIF_ID = 1001
         private const val MTU = 8500
+
+        /**
+         * v2.3.1: پکیج‌های تلگرام که در حالت پروکسی تلگرام وارد TUN می‌شوند —
+         * بقیهٔ اپ‌ها اصلاً مسیر تونل را نمی‌بینند (اینترنت عادی خودشان).
+         * addAllowedApplication برای پکیج نصب‌نشده استثنا می‌دهد — با runCatching بی‌خطر است.
+         */
+        private val TG_APP_PACKAGES = listOf(
+            "org.telegram.messenger",     // تلگرام رسمی
+            "org.telegram.messenger.web", // نسخهٔ وب/جایگزین
+            "org.thunderdog.challegram",  // Telegram X
+            "org.telegram.plus",          // Plus Messenger
+            "nekox.messenger",            // Nekogram X
+        )
     }
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -186,10 +199,19 @@ class MianboorVpnService : VpnService() {
                 .addDnsServer("1.1.1.1")
                 .addRoute("0.0.0.0", 0)
                 .addRoute("::", 0)
-            applySplitTunneling(builder)
-            // Our own traffic (including the xray child process) must bypass
-            // the VPN, otherwise the tunneled traffic loops forever.
-            if (!isIncludeMode()) builder.addDisallowedApplication(packageName)
+            if (mp != null || socks != null) {
+                // v2.3.1 حالت پروکسی تلگرام: فقط اپ‌های تلگرام وارد TUN می‌شوند —
+                // خود اپ هم چون در لیست نیست خودکار بیرون می‌ماند (ترافیک xray/پل لوپ نمی‌کند).
+                // نکتهٔ پلتفرم: allowed و disallowed را نمی‌شود همزمان ست کرد (establish می‌شکند).
+                TG_APP_PACKAGES.forEach { pkg ->
+                    runCatching { builder.addAllowedApplication(pkg) }
+                }
+            } else {
+                applySplitTunneling(builder)
+                // Our own traffic (including the xray child process) must bypass
+                // the VPN, otherwise the tunneled traffic loops forever.
+                if (!isIncludeMode()) builder.addDisallowedApplication(packageName)
+            }
             val fd = builder.establish() ?: throw IllegalStateException("اجازه اتصال داده نشد")
             tun = fd
         }
@@ -204,6 +226,7 @@ class MianboorVpnService : VpnService() {
                 AppPrefs.dnsMode(this),
                 AppPrefs.dnsCustom(this),
                 tgSocks,
+                mp != null || socks != null,
             )
         )
         val bin = File(applicationInfo.nativeLibraryDir, "libxray.so")

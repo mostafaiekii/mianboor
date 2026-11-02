@@ -226,10 +226,23 @@ object MtProxyBridge {
         runCatching { InetAddress.getByName(ip).hostAddress to dc }.getOrNull()
     }.toMap()
 
-    private fun dcOf(host: String): Int = try {
-        dcAddresses[InetAddress.getByName(host).hostAddress] ?: 2
-    } catch (t: Throwable) {
-        2
+    /**
+     * نگاشت مقصد → شمارهٔ DC — فقط برای IP لفظی (نسخهٔ ۲٫۳٫۱).
+     * برای دامنه‌ها هرگز DNS resolve نمی‌کنیم: در ایران DNS مسدود/مسوم است و
+     * resolve فقط هنگ می‌کند؛ مقصد دامنه (مثل core.telegram.org که با sniffing
+     * از SNI درمی‌آید) = DC2 پیش‌فرض.
+     */
+    private fun dcOf(host: String): Int {
+        val ip = host.trim()
+        if (ip.isEmpty()) return 2
+        val literal: String? = if (ip.contains(':')) {
+            // IPv6 لفظی — بدون DNS
+            runCatching { InetAddress.getByName(ip).hostAddress }.getOrNull()
+        } else {
+            // فقط رقم و نقطه = IPv4 لفظی؛ دامنه → بدون resolve
+            if (ip.contains('.') && ip.all { it.isDigit() || it == '.' }) ip else null
+        }
+        return dcAddresses[literal] ?: 2
     }
 
     // ------------------------------------------------------------------
@@ -404,7 +417,28 @@ object MtProxyBridge {
             ext.write(0x04) // ۴ بایت لیست
             ext.write(0x03); ext.write(0x04)
             ext.write(0x03); ext.write(0x03)
-            val extBytes = ext.toByteArray()
+            // ── FakeTLS پدینگ (نسخهٔ ۲٫۳٫۱ — حیاتی) ──
+            // سرورهای MTProto-پروکسی (mtprotoproxy و امثالش) برای تشخیص TLS واقعی،
+            // طول رکورد ClientHello را چک می‌کنند: < ۵۱۲ یعنی «TLS نیست» → هندشیک
+            // بی‌صدا رد می‌شود و تلگرام هیچ‌وقت وصل نمی‌شود. اکستنشن padding
+            // (0x0015) همیشه آخرین اکستنشن است؛ طول hs دقیقاً ۵۱۲ بایت می‌شود.
+            // (تأییدشده با تست واقعی روی سرور مرجع alexbers/mtprotoproxy)
+            val extBytes = run {
+                val base = ext.toByteArray()
+                val bodyNoPad = 2 + 32 + 1 + 32 + 2 + suites.size + 3 + 2 + base.size
+                val padLen = 512 - 4 - bodyNoPad - 4
+                if (padLen > 0) {
+                    val pad = ByteArray(padLen).also { rng.nextBytes(it) }
+                    val padded = ByteArrayOutputStream(base.size + padLen + 4)
+                    padded.write(base)
+                    padded.write(0x00); padded.write(0x15)
+                    padded.write((padLen shr 8) and 0xff); padded.write(padLen and 0xff)
+                    padded.write(pad)
+                    padded.toByteArray()
+                } else {
+                    base
+                }
+            }
 
             // body: version + random(صفر) + sid + suites + comp + extensions
             val body = ByteArrayOutputStream()

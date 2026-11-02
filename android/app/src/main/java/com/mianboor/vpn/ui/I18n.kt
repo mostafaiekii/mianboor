@@ -687,7 +687,7 @@ object EnStrings : Strings {
     override val tgInAppToast =
         "Connecting inside the app — nothing is added to your Telegram"
     override val tgNote =
-        "The proxy connects inside Mianboor and is never saved into your Telegram app — when your plan ends, access is fully revoked. Only Telegram traffic goes through the tunnel."
+        "The proxy connects inside Mianboor and is never saved into your Telegram app — when your plan ends, access is fully revoked. Only Telegram goes through this tunnel; for Instagram and the rest of the internet, use the Configs section."
 }
 
 object FaStrings : Strings {
@@ -1039,7 +1039,7 @@ object FaStrings : Strings {
     override val tgInAppToast =
         "در حال اتصال داخل اپ — هیچ پروکسی‌ای به تلگرامت اضافه نمی‌شود"
     override val tgNote =
-        "پروکسی داخل خود میانبر وصل می‌شود و هرگز در تلگرام شما ذخیره نمی‌شود؛ با پایان اشتراک، دسترسی کامل قطع می‌شود. فقط ترافیک تلگرام از تونل می‌گذرد."
+        "پروکسی داخل خود میانبر وصل می‌شود و هرگز در تلگرام شما ذخیره نمی‌شود؛ با پایان اشتراک، دسترسی کامل قطع می‌شود. فقط تلگرام از این تونل می‌گذرد — برای اینستاگرام و بقیهٔ اینترنت از بخش کانفیگ‌ها استفاده کنید."
 }
 
 fun stringsOf(lang: Lang): Strings = if (lang == Lang.FA) FaStrings else EnStrings

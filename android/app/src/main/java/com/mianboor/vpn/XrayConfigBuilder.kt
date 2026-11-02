@@ -365,6 +365,7 @@ object XrayConfigBuilder {
         dnsMode: String = "auto",
         dnsCustom: String = "",
         tgSocks: SocksUpstream? = null,
+        tgOnly: Boolean = false,
     ): String {
         val socksIn = JSONObject()
             .put("tag", "socks-in")
@@ -412,7 +413,11 @@ object XrayConfigBuilder {
         // ماژول DNS — سرورهای DNS از مسیر پروکسی resolve می‌شوند (دیدِ لوکیشن سرور) و جواب کش می‌شود.
         // آدرس‌های ساده: بدون outboundTag هم کوئری از اولین خروجی (proxy) می‌رود — سازگار با هر نسخهٔ Xray.
         // همیشه یک سرور سادهٔ پشتیبان آخر لیست هست تا resolve هیچ‌وقت گیر نکند.
-        val dnsServers = when (dnsMode) {
+        // حالت پروکسی تلگرام: کوئری‌های DNS مستقیم می‌روند (نه از تونل) — پس
+        // رزولورهایی می‌خواهیم که در ایران هم جواب بدهند (شکن + گوگل پشتیبان)
+        val dnsServers = if (tgOnly) {
+            JSONArray().put("178.22.122.100").put("185.51.200.2").put("8.8.8.8")
+        } else when (dnsMode) {
             "cf" -> JSONArray().put("https://1.1.1.1/dns-query").put("1.1.1.1").put("8.8.8.8")
             "google" -> JSONArray().put("https://8.8.8.8/dns-query").put("8.8.8.8").put("1.1.1.1")
             "custom" -> {
@@ -445,10 +450,31 @@ object XrayConfigBuilder {
                     .put("outboundTag", "block")
             )
         }
-        // ۳) بقیهٔ ترافیک → پروکسی
-        rules.put(
-            JSONObject().put("type", "field").put("port", "0-65535").put("outboundTag", "proxy")
-        )
+        if (tgOnly) {
+            // ۳) حالت پروکسی تلگرام (v2.3.1): فقط مقصدهای تلگرام به تونل می‌روند.
+            // پروکسی MTProto از نظر پروتکل فقط دیتاسنترهای تلگرام را می‌شناسد
+            // (هندشیک فقط شمارهٔ DC دارد)؛ اینستاگرام و بقیهٔ اینترنت از مسیر
+            // مستقیم می‌روند — یعنی «فقط تلگرام وصل است» و بقیهٔ گوشی دست‌نخورده می‌ماند.
+            rules.put(
+                JSONObject().put("type", "field")
+                    .put("ip", JSONArray(TG_IP_RANGES))
+                    .put("outboundTag", "proxy")
+            )
+            rules.put(
+                JSONObject().put("type", "field")
+                    .put("domain", JSONArray(TG_DOMAINS))
+                    .put("outboundTag", "proxy")
+            )
+            // ۴) بقیهٔ ترافیک → مستقیم (اینترنت عادی گوشی)
+            rules.put(
+                JSONObject().put("type", "field").put("port", "0-65535").put("outboundTag", "direct")
+            )
+        } else {
+            // ۳) بقیهٔ ترافیک → پروکسی
+            rules.put(
+                JSONObject().put("type", "field").put("port", "0-65535").put("outboundTag", "proxy")
+            )
+        }
 
         val root = JSONObject()
             .put("log", JSONObject().put("loglevel", "warning"))
@@ -459,6 +485,23 @@ object XrayConfigBuilder {
 
         return root.toString()
     }
+
+    /**
+     * رنج‌های IP دیتاسنترها/CDN تلگرام (نسخهٔ ۲٫۳٫۱) — برای روتینگ حالت پروکسی تلگرام.
+     * منبع: لیست‌های رسمی/شناخته‌شدهٔ مسیریابی تلگرام (IPv4 + IPv6).
+     */
+    private val TG_IP_RANGES = listOf(
+        "91.108.4.0/22", "91.108.8.0/22", "91.108.12.0/22", "91.108.16.0/22",
+        "91.108.20.0/22", "91.108.56.0/22", "149.154.160.0/20", "95.161.64.0/20",
+        "2001:67c:4e8::/48", "2001:b28:f23d::/48", "2001:b28:f23f::/48", "2a0a:f280::/32",
+    )
+
+    /** دامنه‌های تلگرام — با sniffing (http/tls) از SNI درمی‌آیند. */
+    private val TG_DOMAINS = listOf(
+        "domain:telegram.org", "domain:cdn-telegram.org", "domain:t.me",
+        "domain:telegram.me", "domain:telesco.pe", "domain:telegra.ph",
+        "domain:graph.org", "domain:tdesktop.com",
+    )
 
     // ------------------------------------------------------------------
     // Small helpers
