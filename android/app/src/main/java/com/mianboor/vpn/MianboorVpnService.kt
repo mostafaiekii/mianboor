@@ -153,9 +153,11 @@ class MianboorVpnService : VpnService() {
         // 1) Parse the link into an xray outbound (never surfaced in UI)
         //    v2.1: در حالت پروکسی تلگرام socks به‌جای لینک، outbound socks خام ساخته می‌شود
         //    v2.3: در حالت mtproto، outbound به پل MTProto لوکال وصل می‌شود (اتصال داخل اپ)
+        //    نکته: tgSocks/tgMtproto پروپرتی mutable هستند — برای smart cast اول در local val می‌گیریم
+        val mp = tgMtproto
+        val socks = tgSocks
         val server = when {
-            tgMtproto != null -> {
-                val mp = tgMtproto!!
+            mp != null -> {
                 if (!MtProxyBridge.isRunning() && !MtProxyBridge.start(mp)) {
                     throw IllegalStateException("پل پروکسی تلگرام راه نیفتاد")
                 }
@@ -164,9 +166,9 @@ class MianboorVpnService : VpnService() {
                     XrayConfigBuilder.socksUpstreamOutbound(SocksUpstream("127.0.0.1", MtProxyBridge.PORT)),
                 )
             }
-            tgSocks != null -> ParsedServer(
-                name, country, "socks", tgSocks.address, tgSocks.port, "",
-                XrayConfigBuilder.socksUpstreamOutbound(tgSocks),
+            socks != null -> ParsedServer(
+                name, country, "socks", socks.address, socks.port, "",
+                XrayConfigBuilder.socksUpstreamOutbound(socks),
             )
             else -> XrayConfigBuilder.parseLink(link, name, country)
                 ?: throw IllegalStateException("این نوع کانفیگ هنوز پشتیبانی نمی‌شود")
