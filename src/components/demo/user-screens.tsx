@@ -117,7 +117,6 @@ export function HomeScreen({
   stealthOn,
   restarting,
   onToast,
-  onOpenTgTunnel,
 }: {
   lang: Lang;
   state: VpnState;
@@ -143,8 +142,6 @@ export function HomeScreen({
   restarting?: boolean;
   /** نمایش توست دمو (برای پروکسی تلگرام) */
   onToast?: (msg: string) => void;
-  /** ورود به سیستم TgTunnel — وبگردی کامل از تونل پروکسی تلگرام */
-  onOpenTgTunnel?: () => void;
 }) {
   const t = tr(lang);
   const rtl = lang === "fa";
@@ -337,7 +334,7 @@ export function HomeScreen({
         </div>
       )}
 
-      {/* ── زیر دکمهٔ اتصال اصلی: «پروکسی تلگرام» + «وبگردی کامل (TgTunnel)» کنار هم —
+      {/* ── زیر دکمهٔ اتصال اصلی: «پروکسی تلگرام» —
             افکت شیشه‌ای رفلکس نور هر ۵ ثانیه روی دکمهٔ تلگرام ── */}
       <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
         <button
@@ -348,18 +345,6 @@ export function HomeScreen({
           <Send className="size-4" />
           {t.tgProxy}
         </button>
-        {onOpenTgTunnel && (
-          <button
-            type="button"
-            onClick={onOpenTgTunnel}
-            title={t.tgTunnelSub}
-            aria-label={t.tgTunnelSub}
-            className="flex items-center gap-2 rounded-full border border-glow/40 bg-glow/10 px-3.5 py-2.5 text-[13px] font-semibold text-glow transition-colors hover:border-glow/70"
-          >
-            <Globe className="size-4" />
-            {t.tgTunnel}
-          </button>
-        )}
       </div>
 
       <button

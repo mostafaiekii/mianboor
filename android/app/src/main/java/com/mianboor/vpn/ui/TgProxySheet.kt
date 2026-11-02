@@ -39,10 +39,10 @@ import kotlinx.coroutines.withContext
 import java.util.Locale
 
 /**
- * شیت پروکسی تلگرام (نسخهٔ ۲٫۱) — لیست پروکسی‌ها با پینگ رنگی، نشان «سریع‌ترین»
+ * شیت پروکسی تلگرام (نسخهٔ ۲٫۳) — لیست پروکسی‌ها با پینگ رنگی، نشان «سریع‌ترین»
  * روی کم‌تأخیرترین و پرچم کشور (اگر سرور فرستاده باشد). لمس هر ردیف → onConnect
- * که در MainActivity تصمیم می‌گیرد mtproto (لینک tg://proxy) یا socks (تونل فقط-تلگرام).
- * قالب عیناً SheetScaffold داخل اسکریم — همان الگوی UsageSheet.
+ * که هر دو نوع (mtproto و socks) را داخل اپ وصل می‌کند — هیچی به تلگرام کاربر
+ * اضافه نمی‌شود. قالب عیناً SheetScaffold داخل اسکریم — همان الگوی UsageSheet.
  */
 @Composable
 fun TgProxySheet(

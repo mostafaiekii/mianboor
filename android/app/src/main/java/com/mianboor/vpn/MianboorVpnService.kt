@@ -47,6 +47,10 @@ class MianboorVpnService : VpnService() {
         // v2.1: پروکسی تلگرام فقط-تلگرام — به‌جای لینک، یک آپ‌استریم socks خام
         const val EXTRA_TG_SOCKS_ADDR = "tg_socks_addr"
         const val EXTRA_TG_SOCKS_PORT = "tg_socks_port"
+        // v2.3: پروکسی mtproto داخل اپ — پل MTProto روی لوکال‌هاست؛ هیچی به تلگرام اضافه نمی‌شود
+        const val EXTRA_TG_MTPROTO_HOST = "tg_mt_host"
+        const val EXTRA_TG_MTPROTO_PORT = "tg_mt_port"
+        const val EXTRA_TG_MTPROTO_SECRET = "tg_mt_secret"
 
         private const val CHANNEL_ID = "mianboor_vpn"
         private const val NOTIF_ID = 1001
@@ -65,6 +69,9 @@ class MianboorVpnService : VpnService() {
 
     /** v2.1: آپ‌استریم socks پروکسی تلگرام — اگر ست باشد، outbound عادی با این جایگزین می‌شود. */
     private var tgSocks: SocksUpstream? = null
+
+    /** v2.3: پروکسی mtproto داخل اپ — پل MTProto به‌جای تلگرام. */
+    private var tgMtproto: MtProxyBridge.Params? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -87,16 +94,27 @@ class MianboorVpnService : VpnService() {
         val country = intent?.getStringExtra(EXTRA_COUNTRY) ?: currentCountry
         // v2.1: آپ‌استریم socks تلگرام — اختیاری؛ وقتی هست، لینک می‌تواند خالی باشد
         val tgAddr = intent?.getStringExtra(EXTRA_TG_SOCKS_ADDR)
-        if (tgAddr != null) {
+        // v2.3: پروکسی mtproto داخل اپ
+        val tgMtHost = intent?.getStringExtra(EXTRA_TG_MTPROTO_HOST)
+        if (tgMtHost != null) {
+            tgMtproto = MtProxyBridge.Params(
+                host = tgMtHost,
+                port = intent.getIntExtra(EXTRA_TG_MTPROTO_PORT, 443),
+                secret = intent.getStringExtra(EXTRA_TG_MTPROTO_SECRET).orEmpty(),
+            )
+            tgSocks = null
+        } else if (tgAddr != null) {
+            tgMtproto = null
             tgSocks = SocksUpstream(
                 address = tgAddr,
                 port = intent.getIntExtra(EXTRA_TG_SOCKS_PORT, 1080),
             )
         } else if (intent?.hasExtra(EXTRA_LINK) == true) {
+            tgMtproto = null
             tgSocks = null // اتصال عادی جدید — حالت پروکسی تلگرام پاک می‌شود
         }
 
-        if (link.isNullOrBlank() && tgSocks == null) {
+        if (link.isNullOrBlank() && tgSocks == null && tgMtproto == null) {
             scope.launch {
                 fullShutdown()
                 VpnState.phase.value = Phase.IDLE
@@ -133,11 +151,26 @@ class MianboorVpnService : VpnService() {
         VpnState.coverMsg.value = CONNECT_MSGS.random()
 
         // 1) Parse the link into an xray outbound (never surfaced in UI)
-        //    v2.1: در حالت پروکسی تلگرام به‌جای لینک، outbound socks خام ساخته می‌شود
-        val server = tgSocks?.let {
-            ParsedServer(name, country, "socks", it.address, it.port, "", XrayConfigBuilder.socksUpstreamOutbound(it))
-        } ?: XrayConfigBuilder.parseLink(link, name, country)
-            ?: throw IllegalStateException("این نوع کانفیگ هنوز پشتیبانی نمی‌شود")
+        //    v2.1: در حالت پروکسی تلگرام socks به‌جای لینک، outbound socks خام ساخته می‌شود
+        //    v2.3: در حالت mtproto، outbound به پل MTProto لوکال وصل می‌شود (اتصال داخل اپ)
+        val server = when {
+            tgMtproto != null -> {
+                val mp = tgMtproto!!
+                if (!MtProxyBridge.isRunning() && !MtProxyBridge.start(mp)) {
+                    throw IllegalStateException("پل پروکسی تلگرام راه نیفتاد")
+                }
+                ParsedServer(
+                    name, country, "mtproto", mp.host, mp.port, "",
+                    XrayConfigBuilder.socksUpstreamOutbound(SocksUpstream("127.0.0.1", MtProxyBridge.PORT)),
+                )
+            }
+            tgSocks != null -> ParsedServer(
+                name, country, "socks", tgSocks.address, tgSocks.port, "",
+                XrayConfigBuilder.socksUpstreamOutbound(tgSocks),
+            )
+            else -> XrayConfigBuilder.parseLink(link, name, country)
+                ?: throw IllegalStateException("این نوع کانفیگ هنوز پشتیبانی نمی‌شود")
+        }
 
         // 2) Bring up the TUN interface first (independent of xray boot — saves
         //    the whole establish() latency out of the critical connect path)
@@ -344,6 +377,8 @@ class MianboorVpnService : VpnService() {
         runCatching { TProxyService.stop() }
         runCatching { xray?.destroy() }
         xray = null
+        // v2.3: پل MTProto هم خاموش می‌شود
+        runCatching { MtProxyBridge.stop() }
         runCatching { tun?.close() }
         tun = null
         stopForeground(STOP_FOREGROUND_REMOVE)

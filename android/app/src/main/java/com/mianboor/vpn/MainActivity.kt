@@ -96,7 +96,6 @@ import com.mianboor.vpn.ui.LocalMb
 import com.mianboor.vpn.ui.ReferralScreen
 import com.mianboor.vpn.ui.SupportChatScreen
 import com.mianboor.vpn.ui.TgProxySheet
-import com.mianboor.vpn.ui.TgTunnelScreen
 import com.mianboor.vpn.ui.MbThemes
 import com.mianboor.vpn.ui.PlansSheet
 import com.mianboor.vpn.ui.ServersScreen
@@ -274,8 +273,6 @@ private fun MbAppInner(
     var importOpen by remember { mutableStateOf(false) }
     // ── v2.1: شیت پروکسی تلگرام ──
     var tgOpen by remember { mutableStateOf(false) }
-    // ── v2.2: وبگردی کامل (TgTunnel) ──
-    var ttOpen by remember { mutableStateOf(false) }
     var importBusy by remember { mutableStateOf(false) }
     var walletInfo by remember { mutableStateOf<WalletInfo?>(null) }
     var walletBusy by remember { mutableStateOf(false) }
@@ -1130,15 +1127,22 @@ private fun MbAppInner(
         ContextCompat.startForegroundService(context, intent)
     }
 
-    /** v2.1: اتصال فقط-تلگرام — آپ‌استریم socks پروکسی تلگرام به‌جای لینک سرور. */
-    fun launchVpnTgSocks(proxy: com.mianboor.vpn.TgProxy) {
+    /** v2.3: اتصال فقط-تلگرام داخل اپ — هر دو نوع (socks و mtproto). پروکسی به تلگرام اضافه نمی‌شود. */
+    fun launchVpnTg(proxy: com.mianboor.vpn.TgProxy) {
         tgActive = true
         val intent = Intent(context, MianboorVpnService::class.java)
             .setAction(MianboorVpnService.ACTION_CONNECT)
-            .putExtra(MianboorVpnService.EXTRA_TG_SOCKS_ADDR, proxy.server)
-            .putExtra(MianboorVpnService.EXTRA_TG_SOCKS_PORT, proxy.port)
             .putExtra(MianboorVpnService.EXTRA_NAME, proxy.title)
             .putExtra(MianboorVpnService.EXTRA_COUNTRY, proxy.country)
+        if (proxy.kind == "mtproto") {
+            // v2.3: کلاینت MTProto داخل خود اپ — پل لوکال + رمز obfuscated2/FakeTLS
+            intent.putExtra(MianboorVpnService.EXTRA_TG_MTPROTO_HOST, proxy.server)
+                .putExtra(MianboorVpnService.EXTRA_TG_MTPROTO_PORT, proxy.port)
+                .putExtra(MianboorVpnService.EXTRA_TG_MTPROTO_SECRET, proxy.secret)
+        } else {
+            intent.putExtra(MianboorVpnService.EXTRA_TG_SOCKS_ADDR, proxy.server)
+                .putExtra(MianboorVpnService.EXTRA_TG_SOCKS_PORT, proxy.port)
+        }
         VpnState.reset()
         VpnState.phase.value = Phase.CONNECTING
         ContextCompat.startForegroundService(context, intent)
@@ -1156,7 +1160,7 @@ private fun MbAppInner(
                 VpnState.phase.value = Phase.IDLE
                 VpnState.errorMessage.value = t.errPermission
             }
-            tg != null -> launchVpnTgSocks(tg)
+            tg != null -> launchVpnTg(tg)
             server != null -> launchVpn(server)
         }
     }
@@ -1468,43 +1472,34 @@ private fun MbAppInner(
     }
 
     /**
-     * v2.1: اقدام اتصال پروکسی تلگرام از شیت.
-     *  - mtproto: لینک tg://proxy (URL-encoded) به تلگرام داده می‌شود — خود تلگرام وصل می‌شود.
-     *  - socks: تونل VPN با آپ‌استریم socks همان پروکسی برپا می‌شود و برای «فقط تلگرام»
-     *    از همان ساز‌و‌کار allowlist تونل‌گذاری انتخابی استفاده می‌کنیم
-     *    (splitMode="include" + پکیج‌های تلگرام → addAllowedApplication در سرویس).
-     *    بقیه اپ‌ها از تونل خارج‌اند و اینترنت عادی می‌روند.
+     * v2.3: اقدام اتصال پروکسی تلگرام از شیت — هر دو نوع داخل اپ وصل می‌شوند:
+     *  - mtproto: کلاینت MTProto-پروکسی خودِ اپ (پل obfuscated2/FakeTLS روی لوکال‌هاست) —
+     *    لینک tg://proxy هرگز اجرا نمی‌شود؛ هیچ پروکسی‌ای به تلگرام کاربر اضافه نمی‌شود
+     *    (با پایان اشتراک و حذف از پنل، دسترسی کامل قطع می‌شود).
+     *  - socks: تونل VPN با آپ‌استریم socks همان پروکسی.
+     *  هر دو از ساز‌و‌کار allowlist «فقط-تلگرام» استفاده می‌کنند: splitMode="include"
+     *  + پکیج‌های تلگرام → بقیه اپ‌ها از تونل خارج‌اند و اینترنت عادی می‌روند.
      */
     fun connectTgProxy(p: com.mianboor.vpn.TgProxy) {
         tgOpen = false
-        if (p.kind == "socks") {
-            val tgPkgs = listOf("org.telegram.messenger", "org.telegram.messenger.web", "org.telegram.plus")
-            // وضعیت فعلی تونل‌گذاری کاربر نگه داشته می‌شود (فقط بار اول جلسهٔ فقط-تلگرام)
-            if (AppPrefs.prevSplitMode(context).isBlank()) {
-                AppPrefs.setPrevSplit(context, splitMode, splitApps)
-            }
-            AppPrefs.setSplitMode(context, "include")
-            AppPrefs.setSplitApps(context, tgPkgs)
-            splitMode = "include"      // UI تونل‌گذاری انتخابی هم همگام بماند
-            splitApps = tgPkgs
-            requestNotificationsIfNeeded()
-            val prepare = VpnService.prepare(context)
-            if (prepare != null) {
-                pendingTgSocks = p
-                vpnPermission.launch(prepare)
-            } else {
-                launchVpnTgSocks(p)
-            }
-            toast(t.tgSocksToast)
-        } else {
-            val uri = Uri.parse("tg://proxy").buildUpon()
-                .appendQueryParameter("server", p.server)
-                .appendQueryParameter("port", p.port.toString())
-                .appendQueryParameter("secret", p.secret)
-                .build()
-            runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, uri)) }
-            toast(t.tgAddedToast)
+        val tgPkgs = listOf("org.telegram.messenger", "org.telegram.messenger.web", "org.telegram.plus")
+        // وضعیت فعلی تونل‌گذاری کاربر نگه داشته می‌شود (فقط بار اول جلسهٔ فقط-تلگرام)
+        if (AppPrefs.prevSplitMode(context).isBlank()) {
+            AppPrefs.setPrevSplit(context, splitMode, splitApps)
         }
+        AppPrefs.setSplitMode(context, "include")
+        AppPrefs.setSplitApps(context, tgPkgs)
+        splitMode = "include"      // UI تونل‌گذاری انتخابی هم همگام بماند
+        splitApps = tgPkgs
+        requestNotificationsIfNeeded()
+        val prepare = VpnService.prepare(context)
+        if (prepare != null) {
+            pendingTgSocks = p
+            vpnPermission.launch(prepare)
+        } else {
+            launchVpnTg(p)
+        }
+        toast(t.tgInAppToast)
     }
 
     fun copyDeviceId() {
@@ -1608,7 +1603,6 @@ private fun MbAppInner(
                         onRenew = { plansReason = "renew" },
                         stealthOn = stealth == "strict",
                         onOpenTgProxy = { tgOpen = true },
-                        onOpenTgTunnel = { ttOpen = true },
                     )
                     Screen.INBOX -> InboxScreen(
                         lang = lang,
@@ -1922,14 +1916,6 @@ private fun MbAppInner(
                 lang = lang,
                 onClose = { tgOpen = false },
                 onConnect = { connectTgProxy(it) },
-            )
-        }
-
-        // ── v2.2: وبگردی کامل (TgTunnel) — پُل میانبر، بدون نیاز به VPS ──
-        if (ttOpen) {
-            TgTunnelScreen(
-                lang = lang,
-                onClose = { ttOpen = false },
             )
         }
 

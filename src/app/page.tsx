@@ -7,7 +7,6 @@ import {
   CreditCard,
   DownloadCloud,
   Fingerprint,
-  FlaskConical,
   Gauge,
   Gift,
   GitBranch,
@@ -33,7 +32,6 @@ import { SupportChatScreen } from "@/components/demo/support-chat";
 import { InboxScreen, KIND_META } from "@/components/demo/inbox-screen";
 import { AdminLogin, AdminPanel } from "@/components/demo/admin-screens";
 import { DevicesSheet, ImportSheet, PrivacyScreen, SpeedTestSheet, WalletScreen, type SpeedPhase, type SpeedState } from "@/components/demo/v2-features";
-import { TgTunnelLab } from "@/components/demo/tgtunnel-lab";
 import { tr, tpl, type Lang, type Strings } from "@/components/demo/i18n";
 import { THEMES, type ThemeName } from "@/components/demo/themes";
 import {
@@ -429,7 +427,6 @@ export default function VpnDemoPage() {
   const [speed, setSpeed] = useState<SpeedState | null>(null);
   const [importOpen, setImportOpen] = useState(false);
   const [devicesOpen, setDevicesOpen] = useState(false);
-  const [labOpen, setLabOpen] = useState(false);
   const [wallet, setWallet] = useState<Wallet>(freshWallet);
   const [myDevices, setMyDevices] = useState<MyDevice[]>(freshMyDevices);
   const [usageDays, setUsageDays] = useState<UsageDay[]>(seedUsageDays);
@@ -1128,7 +1125,6 @@ export default function VpnDemoPage() {
                     stealthOn={stealth === "strict"}
                     restarting={tunnelRestart}
                     onToast={showToast}
-                    onOpenTgTunnel={() => setLabOpen(true)}
                   />
                 )}
                 {screen === "servers" && (
@@ -1363,38 +1359,6 @@ export default function VpnDemoPage() {
           </div>
         </div>
       </div>
-
-      {/* ── آزمایشگاه TgTunnel: وبگردی کامل از طریق پروکسی تلگرام (دموی زنده) ── */}
-      <section dir="rtl" className="mx-auto w-full max-w-5xl px-6 pb-16">
-        <div className="rounded-3xl border border-emerald-600/20 bg-card p-6 sm:p-8">
-          <div className="flex flex-col items-start justify-between gap-5 sm:flex-row sm:items-center">
-            <div className="flex items-start gap-3">
-              <span className="grid size-12 shrink-0 place-items-center rounded-2xl bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
-                <FlaskConical className="size-6" />
-              </span>
-              <div>
-                <h2 className="text-xl font-black">آزمایشگاه: وبگردی کامل با پروکسی تلگرام</h2>
-                <p className="mt-1 max-w-xl text-sm leading-7 text-muted-foreground">
-                  همون سیستمی که قراره به میانبر اضافه بشه — اینجا زنده قابل امتحانه:
-                  اپ ← پروکسی MTProto ← دیتاسنتر تلگرام ← بات پُل ← اینترنت آزاد.
-                  حالت «پُل میانبر» بدون هیچ VPSی کار می‌کنه (همونی که توی اپ نسخهٔ ۲٫۲ میاد) و
-                  مسیر تلگرامی کامل با یه VPS واقعی روشن می‌شه.
-                </p>
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={() => setLabOpen(true)}
-              className="flex h-12 shrink-0 items-center gap-2 rounded-2xl bg-emerald-600 px-6 text-sm font-bold text-white shadow-lg shadow-emerald-600/20 transition hover:bg-emerald-700"
-            >
-              <FlaskConical className="size-4" />
-              باز کردن آزمایشگاه زنده
-            </button>
-          </div>
-        </div>
-      </section>
-
-      <TgTunnelLab open={labOpen} onClose={() => setLabOpen(false)} />
     </main>
   );
 }

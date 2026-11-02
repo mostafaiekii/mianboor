@@ -328,13 +328,10 @@ const en = {
   // ── telegram proxies ──
   tgProxy: "Telegram proxy",
   tgProxiesTitle: "Telegram proxies",
-  tgProxiesSub: "Pick one — it's added to your Telegram instantly",
+  tgProxiesSub: "Pick one — it connects inside the app, nothing is added to your Telegram",
   tgFastest: "Fastest",
-  tgProxyAdded: "Fastest proxy added to Telegram — open Telegram",
-  tgProxyNote: "This proxy works only inside Telegram; all other apps use the regular internet.",
-  // ── TgTunnel: full web browsing through the TG-proxy tunnel ──
-  tgTunnel: "Full browsing",
-  tgTunnelSub: "Browse the whole web through the Telegram-proxy tunnel (TgTunnel)",
+  tgProxyAdded: "Connected inside the app — nothing was added to your Telegram",
+  tgProxyNote: "The proxy connects inside Mianboor and is never saved into your Telegram — when your plan ends, access is fully revoked. Only Telegram traffic goes through the tunnel.",
   demoMode: "Demo mode",
   // ── gift config ──
   giftCfg: "Gift config — location unknown",
@@ -659,13 +656,10 @@ const fa: typeof en = {
   // ── پروکسی‌های تلگرام ──
   tgProxy: "پروکسی تلگرام",
   tgProxiesTitle: "پروکسی‌های تلگرام",
-  tgProxiesSub: "یکی رو انتخاب کن — همون لحظه به تلگرامت اضافه می‌شه",
+  tgProxiesSub: "یکی رو انتخاب کن — داخل خود اپ وصل می‌شه و هیچی به تلگرامت اضافه نمی‌شه",
   tgFastest: "سریع‌ترین",
-  tgProxyAdded: "سریع‌ترین پروکسی به تلگرام اضافه شد — تلگرام را باز کنید",
-  tgProxyNote: "این پروکسی فقط داخل تلگرام کار می‌کند؛ بقیه اپ‌ها از اینترنت عادی می‌روند.",
-  // ── TgTunnel: وبگردی کامل از تونل پروکسی تلگرام ──
-  tgTunnel: "وبگردی کامل",
-  tgTunnelSub: "وبگردی کل اینترنت از تونل پروکسی تلگرام (TgTunnel)",
+  tgProxyAdded: "داخل اپ وصل شد — هیچ پروکسی‌ای به تلگرامت اضافه نشد",
+  tgProxyNote: "پروکسی داخل خود میانبر وصل می‌شه و هرگز در تلگرام شما ذخیره نمی‌شه؛ با پایان اشتراک دسترسی کامل قطع می‌شه. فقط ترافیک تلگرام از تونل می‌گذره.",
   demoMode: "حالت دمو",
   // ── کانفیگ هدیه ──
   giftCfg: "کانفیگ هدیه — لوکیشن نامشخص",
