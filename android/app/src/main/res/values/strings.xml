@@ -6,4 +6,7 @@
     <string name="notif_blocked">اینترنت توسط Kill Switch بسته شده — برای بازگشت اپ را باز کن</string>
     <string name="tile_label">Mianboor VPN</string>
     <string name="qr_scanner">اسکن کد QR</string>
+    <string name="widget_connected">متصل</string>
+    <string name="widget_disconnected">وصل نیست</string>
+    <string name="widget_connect">اتصال</string>
 </resources>
