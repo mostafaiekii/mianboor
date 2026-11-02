@@ -26,6 +26,7 @@ import type { LucideIcon } from "lucide-react";
 import { HomeScreen, ServersScreen, AccountScreen, UsageSheet, type UsageRow } from "@/components/demo/user-screens";
 import { SettingsScreen } from "@/components/demo/settings-screen";
 import { SplitScreen } from "@/components/demo/split-screen";
+import { GuardianScreen, TetherSheet, VersionScreen } from "@/components/demo/guardian-screen";
 import { PlansSheet } from "@/components/demo/plans-sheet";
 import { ReferralScreen, type RefFriend, REF_CODE, REF_LINK } from "@/components/demo/referral-screen";
 import { SupportChatScreen } from "@/components/demo/support-chat";
@@ -36,6 +37,7 @@ import { tr, tpl, type Lang, type Strings } from "@/components/demo/i18n";
 import { THEMES, type ThemeName } from "@/components/demo/themes";
 import {
   FREE_QUOTA_GB,
+  GUARDIAN_DEFAULT,
   PLAN_DAYS,
   PLAN_PRICES,
   QUOTA_WARN_PCT,
@@ -44,6 +46,7 @@ import {
   type DeviceRecord,
   type DnsMode,
   type Entitlement,
+  type GuardianState,
   type MyDevice,
   type Notice,
   type NoticeAudience,
@@ -54,9 +57,11 @@ import {
   type OtaRelease,
   type PlanId,
   type Screen,
+  type SortMode,
   type SpeedResult,
   type SplitState,
   type StealthMode,
+  type TetherState,
   type UsageDay,
   type VpnState,
   type Wallet,
@@ -395,7 +400,7 @@ export default function VpnDemoPage() {
   const [devices, setDevices] = useState<DeviceRecord[]>(freshDevices);
   const [trialLocked, setTrialLocked] = useState(false);
   const [usedGb, setUsedGb] = useState(1.2);
-  const [split, setSplit] = useState<SplitState>({ mode: "exclude", apps: [] });
+  const [split, setSplit] = useState<SplitState>({ mode: "exclude", apps: [], addresses: [], blockIr: false });
   const [friends, setFriends] = useState<RefFriend[]>(freshFriends);
   const [giftDays, setGiftDays] = useState(13);
   const [toast, setToast] = useState<{ msg: string; k: number } | null>(null);
@@ -433,6 +438,18 @@ export default function VpnDemoPage() {
   const [deadServers, setDeadServers] = useState<number[]>([]);
   /* ── تعویض DNS حین اتصال زنده: ری‌استارت لحظه‌ای تونل روی حلقهٔ اتصال ── */
   const [tunnelRestart, setTunnelRestart] = useState(false);
+  /* ── نسخهٔ ۳: گاردین + موتور پیشرفته + مرتب‌سازی + تترینگ + صفحهٔ نسخه ── */
+  const [guardian, setGuardian] = useState<GuardianState>(GUARDIAN_DEFAULT);
+  const [proxyMode, setProxyMode] = useState(false);
+  const [mux, setMux] = useState(true);
+  const [tether, setTether] = useState<TetherState>({ on: false, port: 10810 });
+  const [tetherOpen, setTetherOpen] = useState(false);
+  const [socksPort, setSocksPort] = useState(10810);
+  const [batteryOff, setBatteryOff] = useState(false);
+  const [groupCountry, setGroupCountry] = useState(true);
+  const [sort, setSort] = useState<SortMode>("ping");
+  const [retryingId, setRetryingId] = useState<number | null>(null);
+  const [verChecking, setVerChecking] = useState(false);
 
   const t = tr(lang);
   const holdStart = useRef(0);
@@ -679,6 +696,18 @@ export default function VpnDemoPage() {
 
   /* ── v2: منتخب‌ها / ورود کانفیگ / کیف پول / دستگاه‌ها ── */
   const toggleFav = (id: number) => setFavorites((f) => (f.includes(id) ? f.filter((x) => x !== id) : [...f, id]));
+
+  /* تلاش مجدد پینگ یک سرور (خانه/علاقه‌مندی‌ها) — واقعا دوباره اندازه می‌گیره */
+  const retryFav = (id: number) => {
+    if (retryingId) return;
+    setRetryingId(id);
+    const base = configs.find((c) => c.id === id)?.ping ?? 50;
+    setPings((prev) => ({ ...prev, [id]: Math.max(9, Math.round(base * (0.75 + Math.random() * 0.6))) }));
+    setTimeout(() => {
+      setRetryingId(null);
+      showToast(t.pingRetried);
+    }, 900);
+  };
 
   const addCustomServer = (c: { name: string; country: string; protocol: string; host: string }) => {
     setConfigs((cs) => [
@@ -932,7 +961,7 @@ export default function VpnDemoPage() {
     setDevices(freshDevices());
     setTrialLocked(false);
     setUsedGb(1.2);
-    setSplit({ mode: "exclude", apps: [] });
+    setSplit({ mode: "exclude", apps: [], addresses: [], blockIr: false });
     setFriends(freshFriends());
     setGiftDays(13);
     setTheme("midnight");
@@ -962,6 +991,18 @@ export default function VpnDemoPage() {
     setSpeed(null);
     setImportOpen(false);
     setDevicesOpen(false);
+    /* نسخهٔ ۳ */
+    setGuardian(GUARDIAN_DEFAULT);
+    setProxyMode(false);
+    setMux(true);
+    setTether({ on: false, port: 10810 });
+    setTetherOpen(false);
+    setSocksPort(10810);
+    setBatteryOff(false);
+    setGroupCountry(true);
+    setSort("ping");
+    setRetryingId(null);
+    setVerChecking(false);
     setWallet(freshWallet());
     setMyDevices(freshMyDevices());
     setUsageDays(seedUsageDays());
@@ -1125,6 +1166,15 @@ export default function VpnDemoPage() {
                     stealthOn={stealth === "strict"}
                     restarting={tunnelRestart}
                     onToast={showToast}
+                    favServers={favorites
+                      .map((id) => liveConfigs.find((c) => c.id === id))
+                      .filter((c): c is ConfigItem => Boolean(c))}
+                    retryingId={retryingId}
+                    onFavSelect={(id) => {
+                      setSelectedId(id);
+                      setScreen("home");
+                    }}
+                    onFavRetry={retryFav}
                   />
                 )}
                 {screen === "servers" && (
@@ -1147,6 +1197,10 @@ export default function VpnDemoPage() {
                     onImport={() => setImportOpen(true)}
                     onPremiumTap={() => setPlans("premium-lock")}
                     onBack={() => setScreen("home")}
+                    sort={sort}
+                    setSort={setSort}
+                    groupByCountry={groupCountry}
+                    onToast={showToast}
                   />
                 )}
                 {screen === "account" && (
@@ -1174,6 +1228,17 @@ export default function VpnDemoPage() {
                     onOpenWallet={() => setScreen("wallet")}
                     onOpenDevices={() => setDevicesOpen(true)}
                     onOpenPrivacy={() => setScreen("privacy")}
+                    server={server}
+                    giftDays={giftDays}
+                    onOpenServers={() => setScreen("servers")}
+                    onSetPass={() => {
+                      const p = window.prompt(t.passPlaceholder);
+                      if (p && p.trim().length >= 4) showToast(t.passSaved);
+                    }}
+                    onDeleteAcc={() => {
+                      if (window.confirm(t.deleteAccWarn)) showToast(t.deleteAccDone);
+                    }}
+                    vpnOn={vpn === "on"}
                   />
                 )}
                 {screen === "wallet" && (
@@ -1232,11 +1297,36 @@ export default function VpnDemoPage() {
                     onOpenPrivacy={() => setScreen("privacy")}
                     onReinstall={reinstall}
                     version={appVersion}
+                    proxyMode={proxyMode}
+                    setProxyMode={setProxyMode}
+                    mux={mux}
+                    setMux={setMux}
+                    tether={tether}
+                    setTether={setTether}
+                    socksPort={socksPort}
+                    setSocksPort={setSocksPort}
+                    batteryOff={batteryOff}
+                    setBatteryOff={setBatteryOff}
+                    groupCountry={groupCountry}
+                    setGroupCountry={setGroupCountry}
+                    onOpenVersion={() => {
+                      setScreen("version");
+                      setVerChecking(true);
+                      setTimeout(() => setVerChecking(false), 1400);
+                    }}
+                    onOpenTether={() => setTetherOpen(true)}
+                    onOpenGuardian={() => setScreen("guardian")}
                     onBack={() => setScreen("home")}
                   />
                 )}
                 {screen === "split" && (
                   <SplitScreen lang={lang} split={split} setSplit={setSplit} onBack={() => setScreen("account")} />
+                )}
+                {screen === "guardian" && (
+                  <GuardianScreen lang={lang} guardian={guardian} setGuardian={setGuardian} onBack={() => setScreen("settings")} />
+                )}
+                {screen === "version" && (
+                  <VersionScreen lang={lang} version={appVersion} checking={verChecking} onBack={() => setScreen("settings")} />
                 )}
                 {screen === "login" && (
                   <AdminLogin
@@ -1309,6 +1399,18 @@ export default function VpnDemoPage() {
               )}
               {importOpen && <ImportSheet lang={lang} onAddServer={addCustomServer} onImportSub={importSub} onClose={() => setImportOpen(false)} />}
               {devicesOpen && <DevicesSheet lang={lang} devices={myDevices} onUnlink={unlinkDevice} onClose={() => setDevicesOpen(false)} />}
+
+              {/* ── شیت اشتراک‌گذاری نقطه اتصال (نسخهٔ ۳) ── */}
+              {tetherOpen && (
+                <TetherSheet
+                  lang={lang}
+                  tether={tether}
+                  setTether={setTether}
+                  socksPort={socksPort}
+                  onClose={() => setTetherOpen(false)}
+                  onToast={showToast}
+                />
+              )}
 
               {/* اعلان‌ها: نوتیف heads-up گوشی + پاپ‌آپ داخل اپ + پاپ‌آپ آپدیت OTA */}
               {push && <PushBanner n={push.n} onOpen={() => { setPush(null); setScreen("inbox"); }} />}

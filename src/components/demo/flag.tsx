@@ -308,3 +308,18 @@ export function Flag({ code, size = 36 }: { code: string; size?: number }) {
     </svg>
   );
 }
+
+/**
+ * پرچم ترکیبی — سرور مقصد + ایران (مبدا کاربر)، مثل اپ‌های مدرن VPN.
+ * پرچم ایران کوچک‌تر و پایین‌جلو قرار می‌گیره تا «از ایران به مقصد» یه‌جا دیده بشه.
+ */
+export function ComboFlag({ code, size = 44 }: { code: string; size?: number }) {
+  return (
+    <span className="relative inline-block shrink-0" style={{ width: size, height: size }} aria-hidden="true">
+      <Flag code={code} size={size} />
+      <span className="absolute -bottom-1 -end-1 grid place-items-center rounded-full bg-night p-0.5 ring-1 ring-ink/15">
+        <Flag code="ir" size={Math.round(size * 0.48)} />
+      </span>
+    </span>
+  );
+}

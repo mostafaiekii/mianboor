@@ -2,6 +2,57 @@
 
 export type VpnState = "off" | "connecting" | "on" | "blocked";
 
+export type GuardianId =
+  | "ads"
+  | "trackers"
+  | "adult"
+  | "yt"
+  | "gambling"
+  | "gov"
+  | "pay"
+  | "social"
+  | "crypto"
+  | "fake";
+
+/** گاردین: true = این دسته مسدود است */
+export type GuardianState = Record<GuardianId, boolean>;
+
+/** دسته‌های گاردین — مثل اپ‌های امنیتی مدرن */
+export const GUARDIAN_IDS: GuardianId[] = [
+  "ads",
+  "trackers",
+  "adult",
+  "yt",
+  "gambling",
+  "gov",
+  "pay",
+  "social",
+  "crypto",
+  "fake",
+];
+
+export const GUARDIAN_DEFAULT: GuardianState = {
+  ads: true,
+  trackers: true,
+  adult: true,
+  yt: false,
+  gambling: false,
+  gov: false,
+  pay: false,
+  social: false,
+  crypto: false,
+  fake: false,
+};
+
+/** اشتراک‌گذاری نقطه اتصال (هات‌اسپات) */
+export interface TetherState {
+  on: boolean;
+  port: number;
+}
+
+/** مرتب‌سازی لیست سرورها */
+export type SortMode = "ping" | "az";
+
 export type Screen =
   | "home"
   | "servers"
@@ -14,7 +65,9 @@ export type Screen =
   | "support"
   | "inbox"
   | "wallet"
-  | "privacy";
+  | "privacy"
+  | "guardian"
+  | "version";
 
 export interface ConfigItem {
   id: number;
@@ -107,6 +160,10 @@ export interface SplitApp {
 export interface SplitState {
   mode: SplitMode;
   apps: string[];
+  /** نشانی‌های IP/CIDR علامت‌گذاری‌شده (تقسیم تونل بر پایه آی‌پی) */
+  addresses: string[];
+  /** مسدود کردن اتصالات داخلی .ir حین اتصال */
+  blockIr: boolean;
 }
 
 /* ── v2 features ── */

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import {
   ArrowDown,
   ArrowUp,
+  ArrowUpDown,
   BadgeCheck,
   Bell,
   CalendarClock,
@@ -20,10 +21,14 @@ import {
   Gift,
   GitBranch,
   Globe,
+  Infinity as InfinityIcon,
   Inbox,
   Info,
+  KeyRound,
+  LayoutGrid,
   Loader2,
   Lock,
+  Mail,
   Play,
   Plus,
   Power,
@@ -34,16 +39,20 @@ import {
   ShieldCheck,
   Smartphone,
   Star,
+  Ticket,
+  Trash2,
   TriangleAlert,
   User,
+  Users,
   Wallet as WalletIcon,
   X,
   Zap,
 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
-import { COUNTRIES, Flag } from "./flag";
+import { COUNTRIES, ComboFlag, Flag } from "./flag";
 import { TG_SUPPORT, tr, type Lang } from "./i18n";
-import { FREE_QUOTA_GB, TG_PROXY_FALLBACK, type ConfigItem, type Entitlement, type SpeedResult, type SplitState, type TgProxy, type UsageDay, type VpnState } from "./types";
+import { SegmentedBar } from "./guardian-screen";
+import { FREE_QUOTA_GB, TG_PROXY_FALLBACK, type ConfigItem, type Entitlement, type SortMode, type SpeedResult, type SplitState, type TgProxy, type UsageDay, type VpnState } from "./types";
 import { FavStar, SpeedChip, UsageChart } from "./v2-features";
 
 /** یک ردیف مصرف — اپ یا سرور. در اپ واقعی از TrafficStats/VpnService می‌آید. */
@@ -117,6 +126,10 @@ export function HomeScreen({
   stealthOn,
   restarting,
   onToast,
+  favServers,
+  retryingId,
+  onFavSelect,
+  onFavRetry,
 }: {
   lang: Lang;
   state: VpnState;
@@ -142,6 +155,14 @@ export function HomeScreen({
   restarting?: boolean;
   /** نمایش توست دمو (برای پروکسی تلگرام) */
   onToast?: (msg: string) => void;
+  /** سرورهای سنجاق‌شده کاربر — نوار «اضافه‌شده» بالای بنر */
+  favServers?: ConfigItem[];
+  /** کدام سرور در حال تلاش مجدد پینگ است */
+  retryingId?: number | null;
+  /** انتخاب سرور از نوار علاقه‌مندی‌ها */
+  onFavSelect?: (id: number) => void;
+  /** پینگ دوبارهٔ یک سرور */
+  onFavRetry?: (id: number) => void;
 }) {
   const t = tr(lang);
   const rtl = lang === "fa";
@@ -347,22 +368,102 @@ export function HomeScreen({
         </button>
       </div>
 
+      {/* ── بنر سرور فعلی — پرچم ترکیبی (مقصد + ایران) + تاخیر + تلاش مجدد ── */}
       <button
         type="button"
         onClick={onPickServer}
-        className="mt-3 flex items-center gap-4 rounded-2xl border border-panel-edge bg-panel p-4 text-start transition-colors hover:border-glow/40"
+        className={
+          on
+            ? "mt-4 flex w-full items-center gap-3 rounded-2xl border border-glow/40 bg-panel p-4 text-start transition-colors hover:border-glow/70"
+            : "mt-4 flex w-full items-center gap-3 rounded-2xl border border-panel-edge bg-panel p-4 text-start transition-colors hover:border-glow/40"
+        }
       >
-        {server ? <Flag code={server.country} size={40} /> : <span className="size-10 rounded-full bg-ink/10" />}
-        <span className="flex-1">
-          <span className="block text-base font-semibold text-ink">{server ? server.name : t.noMatch}</span>
+        {server ? <ComboFlag code={server.country} size={46} /> : <span className="size-11 rounded-full bg-ink/10" />}
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-lg font-bold text-ink" dir="ltr" style={{ textAlign: rtl ? "right" : "left" }}>{server ? server.name : t.noMatch}</span>
           {server && (
-            <span className="mt-1 flex items-center gap-2 text-sm text-dim">
-              <Bars ping={server.ping} /> <span className="tabular-nums">{server.ping} ms</span>
+            <span className="mt-1 flex items-center gap-1.5 text-sm text-dim">
+              <Bars ping={server.ping} />
+              <span className="tabular-nums">
+                {t.delay} {server.ping}
+              </span>
             </span>
           )}
         </span>
-        <Fwd className="size-5 text-dim" />
+        {/* تلاش مجدد پینگ سرور فعلی */}
+        {server && onFavRetry && (
+          <span
+            role="button"
+            tabIndex={0}
+            aria-label={t.retry}
+            title={t.retry}
+            onClick={(e) => {
+              e.stopPropagation();
+              onFavRetry(server.id);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.stopPropagation();
+                onFavRetry(server.id);
+              }
+            }}
+            className="grid size-9 shrink-0 place-items-center rounded-xl border border-panel-edge bg-night text-dim hover:text-glow"
+          >
+            {retryingId === server.id ? <Loader2 className="size-4 animate-spin" /> : <RotateCcw className="size-4" />}
+          </span>
+        )}
+        <Fwd className="size-5 shrink-0 text-dim" />
       </button>
+
+      {/* ── نوار «اضافه‌شده» — سرورهای سنجاق‌شده با پینگ و تلاش مجدد ── */}
+      {favServers && favServers.length > 0 && (
+        <div className="mt-4">
+          <div className="text-sm font-semibold text-ink">{t.favSection}</div>
+          <div className="scroll-hide mt-2 flex gap-2 overflow-x-auto pb-1">
+            {favServers.map((f) => {
+              const sel = server?.id === f.id;
+              return (
+                <div
+                  key={f.id}
+                  className={
+                    sel
+                      ? "flex w-[108px] shrink-0 flex-col items-center gap-1.5 rounded-2xl border border-glow/50 bg-panel p-3"
+                      : "flex w-[108px] shrink-0 flex-col items-center gap-1.5 rounded-2xl border border-panel-edge bg-panel p-3"
+                  }
+                >
+                  <button type="button" onClick={() => onFavSelect?.(f.id)} aria-label={f.name} className="flex flex-col items-center gap-1.5">
+                    <Flag code={f.country} size={34} />
+                    <span className="flex items-center gap-1 text-xs tabular-nums text-dim">
+                      <Bars ping={f.ping} /> {f.ping}
+                    </span>
+                  </button>
+                  <span className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => onFavSelect?.(f.id)}
+                      aria-label={t.selectLocation}
+                      title={t.selectLocation}
+                      className="grid size-6 place-items-center rounded-md bg-night text-glow"
+                    >
+                      <Check className="size-3.5" strokeWidth={3} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onFavRetry?.(f.id)}
+                      aria-label={t.retry}
+                      title={t.retry}
+                      className="grid size-6 place-items-center rounded-md bg-night text-dim hover:text-glow"
+                    >
+                      {retryingId === f.id ? <Loader2 className="size-3 animate-spin" /> : <RotateCcw className="size-3" />}
+                    </button>
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+          <div className="mt-2 border-t border-dashed border-panel-edge" />
+        </div>
+      )}
 
       {/* دانلود و آپلود کنار هم */}
       <div className="mt-3 grid grid-cols-2 items-stretch gap-2">
@@ -488,6 +589,10 @@ export function ServersScreen({
   onImport,
   onPremiumTap,
   onBack,
+  sort,
+  setSort,
+  groupByCountry,
+  onToast,
 }: {
   lang: Lang;
   configs: ConfigItem[];
@@ -506,25 +611,172 @@ export function ServersScreen({
   onImport: () => void;
   onPremiumTap: () => void;
   onBack: () => void;
+  /** مرتب‌سازی: کمترین پینگ یا الفبا */
+  sort: SortMode;
+  setSort: (m: SortMode) => void;
+  /** دسته‌بندی سرورها بر اساس کشور (تنظیمات) */
+  groupByCountry: boolean;
+  onToast?: (m: string) => void;
 }) {
   const t = tr(lang);
   const rtl = lang === "fa";
   const Back = rtl ? ChevronRight : ChevronLeft;
   const Fwd = rtl ? ChevronLeft : ChevronRight;
   const [q, setQ] = useState("");
-  const [tab, setTab] = useState<"free" | "premium">("free");
+  const [tab, setTab] = useState<"all" | "free" | "premium">("all");
+  const [sortOpen, setSortOpen] = useState(false);
+  const [expanded, setExpanded] = useState<number | null>(null);
   const enabled = configs.filter((c) => c.enabled);
   const freeEnabled = enabled.filter((c) => !c.premium);
   const premEnabled = enabled.filter((c) => c.premium);
-  // سنجاق‌شده‌ها اول، بعد بقیه — هر دو با کم‌ترین پینگ بالا
-  const base = (tab === "free" ? freeEnabled : premEnabled).filter((c) => c.name.toLowerCase().includes(q.toLowerCase()));
+  const tabbed = tab === "free" ? freeEnabled : tab === "premium" ? premEnabled : enabled;
+  const base = tabbed.filter((c) => c.name.toLowerCase().includes(q.toLowerCase()));
+  /* سنجاق‌شده‌ها اول، بعد مرتب‌سازی انتخابی */
+  const sorted = (arr: ConfigItem[]) =>
+    sort === "az"
+      ? [...arr].sort((a, b) => a.name.localeCompare(b.name))
+      : [...arr].sort((a, b) => a.ping - b.ping);
   const list = [
-    ...base.filter((c) => favorites.includes(c.id)).sort((a, b) => a.ping - b.ping),
-    ...base.filter((c) => !favorites.includes(c.id)).sort((a, b) => a.ping - b.ping),
+    ...sorted(base.filter((c) => favorites.includes(c.id))),
+    ...sorted(base.filter((c) => !favorites.includes(c.id))),
   ];
+  /* گروه‌بندی کشوری: پرچم و نام هر کشور به‌عنوان سرفصل */
+  const groups: Array<{ country: string; items: ConfigItem[] }> = [];
+  if (groupByCountry) {
+    const seen = new Map<string, ConfigItem[]>();
+    for (const c of list) {
+      const arr = seen.get(c.country) ?? [];
+      arr.push(c);
+      seen.set(c.country, arr);
+    }
+    for (const [country, items] of seen) groups.push({ country, items });
+  }
   // Smart Connect really measures: lowest live ping among the servers this user can join.
   const pool = premiumUser ? enabled : freeEnabled.length ? freeEnabled : enabled;
   const best = [...pool].sort((a, b) => a.ping - b.ping)[0];
+
+  /* نمونه‌های هر سرور — مثلا nl1/nl2/nl3 با پینگ و بار متفاوت (قطعی و بدون رندر شومیز) */
+  const instancesOf = (c: ConfigItem) =>
+    [1, 2, 3].map((i) => {
+      const seg = c.host.split(".");
+      seg[0] = (seg[0].replace(/\d+$/, "") || seg[0]) + i;
+      const host = seg.join(".");
+      const ping = Math.max(9, c.ping + (((c.id * 13 + i * 29) % 26) - 6));
+      const load = 18 + ((c.id * 17 + i * 41) % 72);
+      return { host, ping, load, i };
+    });
+
+  const renderRow = (c: ConfigItem) => {
+    const sel = c.id === selectedId;
+    const locked = c.premium && !premiumUser;
+    const isBest = best?.id === c.id;
+    const fav = favorites.includes(c.id);
+    const spd = speedResults[c.id];
+    const open = expanded === c.id;
+    return (
+      <div key={c.id} className="flex flex-col">
+        <div
+          role="button"
+          tabIndex={0}
+          onClick={() => (locked ? onPremiumTap() : onSelect(c.id))}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              if (locked) onPremiumTap();
+              else onSelect(c.id);
+            }
+          }}
+          aria-label={`${c.name}${locked ? " (premium)" : ""}`}
+          title={c.country === "gift" ? t.giftCfg : undefined}
+          className={
+            locked
+              ? "flex cursor-pointer items-center gap-3 rounded-xl border border-panel-edge bg-panel/60 px-3 py-3 text-start opacity-75"
+              : sel
+                ? "flex cursor-pointer items-center gap-3 rounded-xl border border-glow/40 bg-panel px-3 py-3 text-start"
+                : "flex cursor-pointer items-center gap-3 rounded-xl border border-panel-edge bg-panel px-3 py-3 text-start hover:border-ink/20"
+          }
+        >
+          <Flag code={c.country} size={32} />
+          <span className="min-w-0 flex-1">
+            <span className="flex items-center gap-1.5">
+              {fav && <Star className="size-3 shrink-0 fill-gold text-gold" />}
+              <span className="block truncate text-sm font-semibold text-ink" dir="ltr" style={{ textAlign: rtl ? "right" : "left" }}>{c.name}</span>
+              {c.premium && (
+                <span className="shrink-0 rounded-full bg-gold/15 px-1.5 py-0.5 text-[10px] font-black uppercase text-gold" title={t.unlimited}>
+                  VIP
+                </span>
+              )}
+              {c.premium && <InfinityIcon className="size-3.5 shrink-0 text-gold" aria-label={t.unlimited} />}
+            </span>
+            <span className="block truncate text-sm text-dim">
+              {locked ? t.premiumLockSub : c.country === "gift" ? t.giftCfg : c.protocol}
+            </span>
+          </span>
+          {spd && <SpeedChip lang={lang} r={spd} />}
+          <span className={`w-12 shrink-0 text-end text-sm tabular-nums ${pingTone(c.ping)}`}>{c.ping} ms</span>
+          {isBest && !locked && (
+            <span className="shrink-0 rounded-full bg-glow/15 px-1.5 py-0.5 text-[10px] font-bold uppercase text-glow">
+              {t.best}
+            </span>
+          )}
+          {!locked && <FavStar active={fav} onClick={() => onToggleFav(c.id)} label={fav ? t.starRemove : t.starAdd} />}
+          {locked ? (
+            <>
+              <Crown className="size-4 shrink-0 fill-gold text-gold" />
+              <Lock className="size-4 shrink-0 text-gold" />
+            </>
+          ) : (
+            <span className={sel ? "grid size-5 shrink-0 place-items-center rounded-full bg-glow" : "size-5 shrink-0 rounded-full border-2 border-ink/25"}>
+              {sel && <Check className="size-3.5 text-on-glow" strokeWidth={3} />}
+            </span>
+          )}
+          {/* باز/بستن نمونه‌های سرور */}
+          <button
+            type="button"
+            aria-label={t.instances}
+            aria-expanded={open}
+            title={t.instances}
+            onClick={(e) => {
+              e.stopPropagation();
+              setExpanded(open ? null : c.id);
+            }}
+            className="grid size-6 shrink-0 place-items-center rounded-md text-dim hover:text-glow"
+          >
+            <ChevronDown className={open ? "size-4 transition-transform rotate-180" : "size-4 transition-transform"} />
+          </button>
+        </div>
+
+        {/* نمونه‌ها — با بار سرور و اتصال مستقیم */}
+        {open && !locked && (
+          <div className="screen-in mx-1 mt-1 flex flex-col gap-1.5 rounded-xl border border-panel-edge bg-night/60 p-2">
+            {instancesOf(c).map((ins) => (
+              <button
+                key={ins.host}
+                type="button"
+                onClick={() => {
+                  onSelect(c.id);
+                  onToast?.(t.instConnected.replace("{h}", ins.host));
+                }}
+                className="flex items-center gap-2.5 rounded-lg px-2 py-2 text-start transition-colors hover:bg-panel"
+              >
+                <span className="grid size-7 shrink-0 place-items-center rounded-md bg-panel text-[10px] font-bold text-glow">{ins.i}</span>
+                <span className="min-w-0 flex-1">
+                  <span dir="ltr" className="block truncate font-mono text-xs text-ink">{ins.host}</span>
+                  <span className="mt-1 flex items-center gap-2">
+                    <span className="h-1 w-16 overflow-hidden rounded-full bg-ink/10">
+                      <span className="block h-full rounded-full bg-glow" style={{ width: `${ins.load}%` }} />
+                    </span>
+                    <span className="text-[10px] text-dim">{ins.load}%</span>
+                  </span>
+                </span>
+                <span className={`w-12 shrink-0 text-end text-xs tabular-nums ${pingTone(ins.ping)}`}>{ins.ping} ms</span>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  };
 
   return (
     <div dir={rtl ? "rtl" : "ltr"} className="flex min-h-0 flex-1 flex-col px-5 pt-2">
@@ -570,19 +822,61 @@ export function ServersScreen({
           {syncing ? <Loader2 className="size-4 animate-spin" /> : <RotateCcw className="size-4" />}
         </button>
       </div>
-      <label className="mt-4 flex items-center gap-3 rounded-xl border border-panel-edge bg-panel px-4 py-3">
-        <Search className="size-4 text-dim" />
-        <input
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder={t.search}
-          aria-label={t.search}
-          className="w-full bg-transparent text-sm text-ink outline-none placeholder:text-dim"
-        />
-      </label>
-      {/* ── تب رایگان / پرمیوم — دو تب کنار هم، مثل اپ ── */}
-      <div className="mt-3 grid grid-cols-2 gap-0 rounded-xl border border-panel-edge bg-panel p-0">
+      <div className="mt-3 flex items-center gap-2">
+        <label className="flex min-w-0 flex-1 items-center gap-3 rounded-xl border border-panel-edge bg-panel px-4 py-3">
+          <Search className="size-4 text-dim" />
+          <input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder={t.search}
+            aria-label={t.search}
+            className="w-full bg-transparent text-sm text-ink outline-none placeholder:text-dim"
+          />
+        </label>
+        {/* مرتب‌سازی: کمترین پینگ / A-Z — منوی بازشو مثل اپ‌های مدرن */}
+        <div className="relative shrink-0">
+          <button
+            type="button"
+            onClick={() => setSortOpen((o) => !o)}
+            aria-label={t.sortTip}
+            aria-expanded={sortOpen}
+            title={t.sortTip}
+            className="grid size-11 place-items-center rounded-xl border border-panel-edge bg-panel text-dim hover:text-glow"
+          >
+            <ArrowUpDown className="size-4" />
+          </button>
+          {sortOpen && (
+            <div className="absolute end-0 top-12 z-20 w-44 rounded-2xl border border-panel-edge bg-panel p-1 shadow-xl">
+              {([
+                ["ping", t.sortPing],
+                ["az", t.sortAz],
+              ] as const).map(([k, label]) => (
+                <button
+                  key={k}
+                  type="button"
+                  onClick={() => {
+                    setSort(k);
+                    setSortOpen(false);
+                  }}
+                  aria-pressed={sort === k}
+                  className={
+                    sort === k
+                      ? "flex w-full items-center justify-between rounded-xl bg-glow/15 px-3 py-2.5 text-sm font-bold text-glow"
+                      : "flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-sm text-ink hover:bg-night"
+                  }
+                >
+                  {label}
+                  {sort === k && <Check className="size-4" strokeWidth={3} />}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+      {/* ── تب همه / رایگان / پرمیوم — سه تب کنار هم ── */}
+      <div className="mt-2 grid grid-cols-3 gap-0 rounded-xl border border-panel-edge bg-panel p-0">
         {([
+          ["all", t.tabAll, enabled.length],
           ["free", t.tabFree, freeEnabled.length],
           ["premium", t.tabPremium, premEnabled.length],
         ] as const).map(([key, label, count]) => (
@@ -626,67 +920,22 @@ export function ServersScreen({
           {syncing ? t.syncing : syncOk === null ? t.syncNever : syncOk ? t.syncOkAgo.replace("{m}", "<1") : t.syncFail}
         </span>
       </div>
-      <div className="scroll-hide mt-2 flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto pb-3">
-        {list.map((c) => {
-          const sel = c.id === selectedId;
-          const locked = c.premium && !premiumUser;
-          const isBest = best?.id === c.id;
-          const fav = favorites.includes(c.id);
-          const spd = speedResults[c.id];
-          return (
-            <div
-              key={c.id}
-              role="button"
-              tabIndex={0}
-              onClick={() => (locked ? onPremiumTap() : onSelect(c.id))}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === " ") {
-                  e.preventDefault();
-                  if (locked) onPremiumTap();
-                  else onSelect(c.id);
-                }
-              }}
-              aria-label={`${c.name}${locked ? " (premium)" : ""}`}
-              title={c.country === "gift" ? t.giftCfg : undefined}
-              className={
-                locked
-                  ? "flex cursor-pointer items-center gap-3 rounded-xl border border-panel-edge bg-panel/60 px-3 py-3 text-start opacity-75"
-                  : sel
-                    ? "flex cursor-pointer items-center gap-3 rounded-xl border border-glow/40 bg-panel px-3 py-3 text-start"
-                    : "flex cursor-pointer items-center gap-3 rounded-xl border border-panel-edge bg-panel px-3 py-3 text-start hover:border-ink/20"
-              }
-            >
-              <Flag code={c.country} size={32} />
-              <span className="min-w-0 flex-1">
-                <span className="flex items-center gap-1.5">
-                  {fav && <Star className="size-3 shrink-0 fill-gold text-gold" />}
-                  <span className="block truncate text-sm font-semibold text-ink">{c.name}</span>
-                </span>
-                <span className="block truncate text-sm text-dim">
-                  {locked ? t.premiumLockSub : c.country === "gift" ? t.giftCfg : c.protocol}
-                </span>
-              </span>
-              {spd && <SpeedChip lang={lang} r={spd} />}
-              <span className={`w-12 shrink-0 text-end text-sm tabular-nums ${pingTone(c.ping)}`}>{c.ping} ms</span>
-              {isBest && !locked && (
-                <span className="shrink-0 rounded-full bg-glow/15 px-1.5 py-0.5 text-[10px] font-bold uppercase text-glow">
-                  {t.best}
-                </span>
-              )}
-              {!locked && <FavStar active={fav} onClick={() => onToggleFav(c.id)} label={fav ? t.starRemove : t.starAdd} />}
-              {locked ? (
-                <>
-                  <Crown className="size-4 shrink-0 fill-gold text-gold" />
-                  <Lock className="size-4 shrink-0 text-gold" />
-                </>
-              ) : (
-                <span className={sel ? "grid size-5 shrink-0 place-items-center rounded-full bg-glow" : "size-5 shrink-0 rounded-full border-2 border-ink/25"}>
-                  {sel && <Check className="size-3.5 text-on-glow" strokeWidth={3} />}
-                </span>
-              )}
-            </div>
-          );
-        })}
+      <div
+        className="scroll-hide mt-2 flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto pb-3"
+        onClick={() => sortOpen && setSortOpen(false)}
+      >
+        {groupByCountry
+          ? groups.map((g) => (
+              <div key={g.country} className="flex flex-col gap-2">
+                <div className="flex items-center gap-2 px-1 pt-1.5 text-xs font-bold uppercase tracking-wide text-dim">
+                  <Flag code={g.country} size={18} />
+                  {COUNTRIES[g.country] ?? g.country}
+                  <span className="opacity-60">· {g.items.length}</span>
+                </div>
+                {g.items.map((c) => renderRow(c))}
+              </div>
+            ))
+          : list.map((c) => renderRow(c))}
         {list.length === 0 && <div className="py-8 text-center text-sm text-dim">{t.noMatch}</div>}
       </div>
     </div>
@@ -746,6 +995,12 @@ export function AccountScreen({
   onOpenWallet,
   onOpenDevices,
   onOpenPrivacy,
+  server,
+  giftDays,
+  onOpenServers,
+  onSetPass,
+  onDeleteAcc,
+  vpnOn,
 }: {
   lang: Lang;
   entitlement: Entitlement;
@@ -771,13 +1026,30 @@ export function AccountScreen({
   onOpenWallet: () => void;
   onOpenDevices: () => void;
   onOpenPrivacy: () => void;
+  /** سرور فعلی برای کارت «سرور فعلی» */
+  server: ConfigItem | null;
+  /** روزهای هدیهٔ فعال — ستون «داده VIP» */
+  giftDays: number;
+  /** نمایش همه سرویس‌ها — پرش به لیست سرورها */
+  onOpenServers: () => void;
+  /** تعیین گذرواژه */
+  onSetPass: () => void;
+  /** حذف حساب کاربری */
+  onDeleteAcc: () => void;
+  /** تونل الان وصله؟ — badge کارت سرور فعلی */
+  vpnOn: boolean;
 }) {
   const t = tr(lang);
   const rtl = lang === "fa";
   const Fwd = rtl ? ChevronLeft : ChevronRight;
   const [renewOpen, setRenewOpen] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
   const premium = entitlement.plan !== "free";
   const pct = premium ? 1 : trialLocked ? 1 : usedGb / FREE_QUOTA_GB;
+  /* درصد باقی‌ماندهٔ ظرفیت — نوار سگمنتی سرور فعلی */
+  const remainPct = premium ? 1 : trialLocked ? 0 : Math.max(0, 1 - usedGb / FREE_QUOTA_GB);
+  const vipDataGb = (giftDays * 0.25).toFixed(1);
+  const creditDays = entitlement.expiresAt ? Math.max(0, Math.ceil((entitlement.expiresAt - Date.now()) / 86400_000)) : giftDays;
   const usedStr = premium ? "∞" : `${usedGb.toFixed(1)}`;
   const totalStr = premium ? t.unlimited : `${FREE_QUOTA_GB} GB`;
   const until = entitlement.expiresAt
@@ -802,6 +1074,37 @@ export function AccountScreen({
       className="scroll-hide flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-5 pt-2 pb-3"
     >
       <h2 className="font-display text-2xl font-bold text-ink">{t.account}</h2>
+
+      {/* ── ایمیل + وضعیت تایید + حذف حساب / تعیین گذرواژه ── */}
+      <div className="rounded-2xl border border-panel-edge bg-panel p-4">
+        <div className="flex items-center gap-3">
+          <span className="grid size-11 shrink-0 place-items-center rounded-full bg-ink/10">
+            <Mail className="size-5 text-ink" />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span dir="ltr" className="block truncate text-start text-sm font-semibold text-ink">mroidad@gmail.com</span>
+            <span className="mt-1 inline-flex items-center gap-1 rounded-full bg-glow/15 px-2 py-0.5 text-[11px] font-bold text-glow">
+              <BadgeCheck className="size-3.5" /> {t.verified}
+            </span>
+          </span>
+        </div>
+        <div className="mt-3 grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            onClick={onSetPass}
+            className="flex items-center justify-center gap-1.5 rounded-xl border border-panel-edge bg-night py-2.5 text-xs font-semibold text-ink transition-colors hover:border-glow/40"
+          >
+            <KeyRound className="size-3.5 text-dim" /> {t.setPass}
+          </button>
+          <button
+            type="button"
+            onClick={onDeleteAcc}
+            className="flex items-center justify-center gap-1.5 rounded-xl border border-danger/30 bg-danger/10 py-2.5 text-xs font-semibold text-danger transition-colors hover:bg-danger/20"
+          >
+            <Trash2 className="size-3.5" /> {t.deleteAcc}
+          </button>
+        </div>
+      </div>
 
       {/* plan card */}
       {premium ? (
@@ -873,6 +1176,76 @@ export function AccountScreen({
       </button>
       {trialLocked && !premium && <div className="-mt-1 rounded-xl border border-danger/30 bg-danger/10 px-3 py-2 text-xs leading-5 text-danger">{t.trialUsedSub}</div>}
 
+      {/* ── سرور فعلی — نوار سگمنتی + آمار ۲×۲ + همهٔ سرویس‌ها/گزینه‌های بیشتر ── */}
+      <div className="rounded-3xl border border-panel-edge bg-panel p-4">
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            <div className="text-sm font-bold text-ink">{t.svCurrent}</div>
+            <div className="mt-0.5 truncate text-xs text-dim">{server ? server.host : "—"}</div>
+          </div>
+          <span className="shrink-0 rounded-full bg-glow/15 px-2.5 py-1 text-[11px] font-bold text-glow">{vpnOn ? "● " + t.connected : t.svCurrent}</span>
+        </div>
+        <div className="mt-3 text-end font-display text-3xl font-black tabular-nums text-ink">{Math.round(remainPct * 100)}%</div>
+        <div className="mt-2">
+          <SegmentedBar pct={remainPct} bars={22} />
+        </div>
+        <div className="mt-4 grid grid-cols-2 gap-2">
+          <div className="rounded-2xl border border-panel-edge bg-night px-3 py-2.5 text-center">
+            <div className="text-sm font-bold tabular-nums text-ink">{usedStr} GB {lang === "fa" ? "از" : "of"} {totalStr === t.unlimited ? "∞" : totalStr}</div>
+            <div className="mt-0.5 text-[11px] text-dim">{t.dataUsage}</div>
+          </div>
+          <div className="rounded-2xl border border-panel-edge bg-night px-3 py-2.5 text-center">
+            <div className="text-sm font-bold tabular-nums text-ink">{vipDataGb} GB</div>
+            <div className="mt-0.5 text-[11px] text-dim">{t.vipData}</div>
+          </div>
+          <div className="rounded-2xl border border-panel-edge bg-night px-3 py-2.5 text-center">
+            <div className="text-sm font-bold tabular-nums text-ink">2 {t.users}</div>
+            <div className="mt-0.5 text-[11px] text-dim">{t.usersOnline}</div>
+          </div>
+          <div className="rounded-2xl border border-panel-edge bg-night px-3 py-2.5 text-center">
+            <div className="text-sm font-bold tabular-nums text-ink">{creditDays} {t.days}</div>
+            <div className="mt-0.5 text-[11px] text-dim">{t.credit}</div>
+          </div>
+        </div>
+        <div className="my-4 border-t border-dashed border-panel-edge" />
+        <button
+          type="button"
+          onClick={onOpenServers}
+          className="flex w-full items-center gap-3 rounded-2xl border border-panel-edge bg-night px-4 py-3.5 text-start transition-colors hover:border-glow/40"
+        >
+          <Ticket className="size-5 shrink-0 text-dim" />
+          <span className="flex-1 text-sm font-semibold text-ink">{t.allServices}</span>
+          <Fwd className="size-5 shrink-0 text-dim" />
+        </button>
+        <button
+          type="button"
+          onClick={() => setMoreOpen((o) => !o)}
+          aria-expanded={moreOpen}
+          className="mt-2 flex w-full items-center gap-3 rounded-2xl border border-panel-edge bg-night px-4 py-3.5 text-start transition-colors hover:border-glow/40"
+        >
+          <LayoutGrid className="size-5 shrink-0 text-dim" />
+          <span className="flex-1 text-sm font-semibold text-ink">{moreOpen ? t.lessOptions : t.moreOptions}</span>
+          {moreOpen ? <X className="size-5 shrink-0 text-dim" /> : <Fwd className="size-5 shrink-0 text-dim" />}
+        </button>
+      </div>
+
+      {/* ── تقسیم تونل — همیشه قابل‌مشاهده (قابلیت اصلی) ── */}
+      <button
+        type="button"
+        onClick={onOpenSplit}
+        className="flex items-center gap-3 rounded-2xl border border-panel-edge bg-panel p-4 text-start transition-colors hover:border-glow/40"
+      >
+        <GitBranch className="size-5 shrink-0 text-dim" />
+        <span className="flex-1">
+          <span className="block text-sm font-semibold text-ink">{t.split}</span>
+          <span className="block text-sm text-dim">{splitSub}</span>
+        </span>
+        <Fwd className="size-5 shrink-0 text-dim" />
+      </button>
+
+      {/* ── گزینه‌های بیشتر — بقیهٔ سرویس‌ها پس از باز شدن ── */}
+      {moreOpen && (
+        <>
       {rows.map(({ icon: I, t: title, d, v, set }) => (
         <div key={title} className="flex items-center gap-3 rounded-2xl border border-panel-edge bg-panel p-4">
           <I className="size-5 shrink-0 text-dim" />
@@ -898,21 +1271,8 @@ export function AccountScreen({
         <Fwd className="size-5 shrink-0 text-dim" />
       </button>
 
-      {/* ── کیف پول: موجودی، کد هدیه، پرداخت از کیف پول ── */}
-      <button
-        type="button"
-        onClick={onOpenWallet}
-        className="flex items-center gap-3 rounded-2xl border border-panel-edge bg-panel p-4 text-start transition-colors hover:border-glow/40"
-      >
-        <WalletIcon className="size-5 shrink-0 text-dim" />
-        <span className="flex-1">
-          <span className="block text-sm font-semibold text-ink">{t.wallet}</span>
-          <span className="block text-sm text-dim">{t.walletSub}</span>
-        </span>
-        <Fwd className="size-5 shrink-0 text-dim" />
-      </button>
-
       {/* ── دستگاه‌های من: مدیریت دسترسی از سمت کاربر ── */}
+      {moreOpen && (
       <button
         type="button"
         onClick={onOpenDevices}
@@ -925,6 +1285,7 @@ export function AccountScreen({
         </span>
         <Fwd className="size-5 shrink-0 text-dim" />
       </button>
+      )}
 
       {/* renew subscription + explainer */}
       <div className="rounded-2xl border border-panel-edge bg-panel">
@@ -1019,6 +1380,22 @@ export function AccountScreen({
         <span className="flex-1">
           <span className="block text-sm font-semibold text-ink">{t.privacyRow}</span>
           <span className="block text-sm text-dim">{t.privacyRowSub}</span>
+        </span>
+        <Fwd className="size-5 shrink-0 text-dim" />
+      </button>
+        </>
+      )}
+
+      {/* ── کیف پول: موجودی، کد هدیه، پرداخت از کیف پول — همیشه قابل‌مشاهده ── */}
+      <button
+        type="button"
+        onClick={onOpenWallet}
+        className="flex items-center gap-3 rounded-2xl border border-panel-edge bg-panel p-4 text-start transition-colors hover:border-glow/40"
+      >
+        <WalletIcon className="size-5 shrink-0 text-dim" />
+        <span className="flex-1">
+          <span className="block text-sm font-semibold text-ink">{t.wallet}</span>
+          <span className="block text-sm text-dim">{t.walletSub}</span>
         </span>
         <Fwd className="size-5 shrink-0 text-dim" />
       </button>

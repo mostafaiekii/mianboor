@@ -9,12 +9,12 @@
  */
 
 import { useEffect, useState } from "react";
-import { Activity, ChevronLeft, ChevronRight, Fingerprint, FlaskConical, Info, Palette, Send, ShieldCheck } from "lucide-react";
+import { Activity, BatteryCharging, ChevronLeft, ChevronRight, Cpu, FlaskConical, Fingerprint, Globe, Info, Network, Palette, Send, ShieldCheck, Wifi } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { TG_SUPPORT, tr, type Lang } from "./i18n";
 import { THEMES, THEME_ORDER, type ThemeName } from "./themes";
 import { PhoneExtrasCard } from "./v2-features";
-import type { DnsMode, StealthMode } from "./types";
+import type { DnsMode, StealthMode, TetherState } from "./types";
 
 export function SettingsScreen({
   lang,
@@ -44,6 +44,22 @@ export function SettingsScreen({
   onOpenPrivacy,
   onReinstall,
   version,
+  /* ── نسخهٔ ۳: قابلیت‌های پیشرفته ── */
+  proxyMode,
+  setProxyMode,
+  mux,
+  setMux,
+  tether,
+  setTether,
+  socksPort,
+  setSocksPort,
+  batteryOff,
+  setBatteryOff,
+  groupCountry,
+  setGroupCountry,
+  onOpenVersion,
+  onOpenTether,
+  onOpenGuardian,
   onBack,
 }: {
   lang: Lang;
@@ -76,6 +92,22 @@ export function SettingsScreen({
   onReinstall: () => void;
   /** نسخهٔ فعلی اپ — بعد از آپدیت OTA به‌روز می‌شه */
   version: string;
+  /* ── نسخهٔ ۳ ── */
+  proxyMode: boolean;
+  setProxyMode: (v: boolean) => void;
+  mux: boolean;
+  setMux: (v: boolean) => void;
+  tether: TetherState;
+  setTether: React.Dispatch<React.SetStateAction<TetherState>>;
+  socksPort: number;
+  setSocksPort: (v: number) => void;
+  batteryOff: boolean;
+  setBatteryOff: (v: boolean) => void;
+  groupCountry: boolean;
+  setGroupCountry: (v: boolean) => void;
+  onOpenVersion: () => void;
+  onOpenTether: () => void;
+  onOpenGuardian: () => void;
   onBack: () => void;
 }) {
   const t = tr(lang);
@@ -276,18 +308,118 @@ export function SettingsScreen({
         )}
       </div>
 
-      {/* ── ۶. پینگ زنده ── */}
-      <div className="mt-3 flex items-center gap-3 rounded-2xl border border-panel-edge bg-panel p-4">
-        <Activity className="size-5 text-dim" />
+      {/* ── ۵½. گاردین — مسدودسازی هوشمند محتوا ── */}
+      <button
+        type="button"
+        onClick={onOpenGuardian}
+        className="mt-3 flex items-center gap-3 rounded-2xl border border-panel-edge bg-panel p-4 text-start transition-colors hover:border-glow/40"
+      >
+        <ShieldCheck className="size-5 shrink-0 text-glow" />
         <span className="flex-1">
-          <span className="block text-sm font-semibold text-ink">{t.livePingSet}</span>
-          <span className="block text-sm text-dim">{t.livePingSetDesc}</span>
+          <span className="block text-sm font-semibold text-ink">{t.guardian}</span>
+          <span className="block text-sm leading-5 text-dim">{t.guardianSub}</span>
         </span>
-        <Switch checked={pingLive} onCheckedChange={setPingLive} aria-label={t.livePingSet} />
+        {rtl ? <ChevronLeft className="size-5 shrink-0 text-dim" /> : <ChevronRight className="size-5 shrink-0 text-dim" />}
+      </button>
+
+      {/* ── ۶. پینگ زنده — منتقل‌شده به بخش لیست سرورها (پایین) ── */}
+
+      {/* ── ۶½. موتور پیشرفته — نسخهٔ ۳: پروکسی مود، Mux، تترینگ، پورت، باتری ── */}
+      <div className="mt-3 rounded-2xl border border-panel-edge bg-panel p-4">
+        <div className="flex items-center gap-2">
+          <Cpu className="size-4 text-glow" />
+          <span className="text-sm font-semibold text-ink">{t.advEngine}</span>
+        </div>
+        <div className="mt-3 flex flex-col gap-3.5">
+          {/* حالت پروکسی */}
+          <div className="flex items-center gap-3">
+            <Network className="size-5 shrink-0 text-dim" />
+            <span className="min-w-0 flex-1">
+              <span className="block text-sm font-medium text-ink">{t.proxyMode}</span>
+              <span className="block text-xs leading-5 text-dim">{t.proxyModeSub}</span>
+            </span>
+            <Switch checked={proxyMode} onCheckedChange={setProxyMode} aria-label={t.proxyMode} />
+          </div>
+          {/* Multiplexer */}
+          <div className="flex items-center gap-3">
+            <Activity className="size-5 shrink-0 text-dim" />
+            <span className="min-w-0 flex-1">
+              <span className="block text-sm font-medium text-ink">{t.mux}</span>
+              <span className="block text-xs leading-5 text-dim">{t.muxSub}</span>
+            </span>
+            <Switch checked={mux} onCheckedChange={setMux} aria-label={t.mux} />
+          </div>
+          {/* اشتراک‌گذاری نقطه اتصال */}
+          <button type="button" onClick={onOpenTether} className="flex items-center gap-3 text-start">
+            <Wifi className="size-5 shrink-0 text-dim" />
+            <span className="min-w-0 flex-1">
+              <span className="block text-sm font-medium text-ink">{t.tether}</span>
+              <span className="block text-xs leading-5 text-dim">{tether.on ? t.tetherOnToast : t.tetherSub}</span>
+            </span>
+            {rtl ? <ChevronLeft className="size-5 shrink-0 text-dim" /> : <ChevronRight className="size-5 shrink-0 text-dim" />}
+          </button>
+          {/* پورت SOCKS5 و HTTP */}
+          <div className="flex items-center gap-3">
+            <Network className="size-5 shrink-0 text-dim" />
+            <span className="flex-1 text-sm font-medium text-ink">{t.socksPort}</span>
+            <input
+              dir="ltr"
+              type="number"
+              inputMode="numeric"
+              min={1024}
+              max={65535}
+              value={socksPort}
+              onChange={(e) => {
+                const v = parseInt(e.target.value, 10);
+                if (!Number.isNaN(v) && v >= 1024 && v <= 65535) setSocksPort(v);
+              }}
+              aria-label={t.socksPort}
+              className="w-24 shrink-0 rounded-full border border-panel-edge bg-night px-3 py-1.5 text-center font-mono text-sm tabular-nums text-ink outline-none focus:border-glow/40"
+            />
+          </div>
+          {/* غیرفعال‌کردن بهینه‌سازی باتری */}
+          <div className="flex items-center gap-3">
+            <BatteryCharging className="size-5 shrink-0 text-dim" />
+            <span className="min-w-0 flex-1">
+              <span className="block text-sm font-medium text-ink">{t.batteryOff}</span>
+              <span className="block text-xs leading-5 text-dim">{t.batteryOffSub}</span>
+            </span>
+            <Switch checked={batteryOff} onCheckedChange={setBatteryOff} aria-label={t.batteryOff} />
+          </div>
+          <div className="-mt-1 text-end text-xs font-medium">
+            <span className={batteryOff ? "text-glow" : "text-dim"}>{batteryOff ? t.batteryOffDone : t.batteryOffIdle}</span>
+          </div>
+        </div>
       </div>
 
       {/* ── ۷. قابلیت‌های گوشی: ویجت، کاشی QS، ربات تلگرام ── */}
       <PhoneExtrasCard lang={lang} />
+
+      {/* ── ۷½. لیست سرورها: پینگ خودکار + دسته‌بندی کشور ── */}
+      <div className="mt-3 rounded-2xl border border-panel-edge bg-panel p-4">
+        <div className="flex items-center gap-2">
+          <Globe className="size-4 text-dim" />
+          <span className="text-sm font-semibold text-ink">{t.serverListSec}</span>
+        </div>
+        <div className="mt-3 flex flex-col gap-3.5">
+          <div className="flex items-center gap-3">
+            <Activity className="size-5 shrink-0 text-dim" />
+            <span className="min-w-0 flex-1">
+              <span className="block text-sm font-medium text-ink">{t.livePingSet}</span>
+              <span className="block text-xs leading-5 text-dim">{t.livePingSetDesc}</span>
+            </span>
+            <Switch checked={pingLive} onCheckedChange={setPingLive} aria-label={t.livePingSet} />
+          </div>
+          <div className="flex items-center gap-3">
+            <Globe className="size-5 shrink-0 text-dim" />
+            <span className="min-w-0 flex-1">
+              <span className="block text-sm font-medium text-ink">{t.groupCountry}</span>
+              <span className="block text-xs leading-5 text-dim">{t.groupCountrySub}</span>
+            </span>
+            <Switch checked={groupCountry} onCheckedChange={setGroupCountry} aria-label={t.groupCountry} />
+          </div>
+        </div>
+      </div>
 
       {/* ── ۸. حمایت / پشتیبانی ── */}
       <a
@@ -320,17 +452,20 @@ export function SettingsScreen({
         {rtl ? <ChevronLeft className="size-5 text-dim" /> : <ChevronRight className="size-5 text-dim" />}
       </button>
 
-      {/* ── ۱۰. درباره ── */}
-      <div className="mt-3 rounded-2xl border border-panel-edge bg-panel p-4">
-        <div className="flex items-center gap-2">
-          <Info className="size-4 text-dim" />
-          <span className="text-sm font-semibold text-ink">{t.about}</span>
-        </div>
-        <div className="mt-2 text-sm text-dim" dir="ltr">
-          {t.aboutLine.replace("{v}", version)}
-        </div>
-        <div className="mt-1 text-sm leading-6 text-dim">{t.noKey}</div>
-      </div>
+      {/* ── ۱۰. نسخه — صفحهٔ حلقه‌های به‌روزرسانی ── */}
+      <button
+        type="button"
+        onClick={onOpenVersion}
+        className="mt-3 flex items-center gap-3 rounded-2xl border border-panel-edge bg-panel p-4 text-start transition-colors hover:border-glow/40"
+      >
+        <Info className="size-5 shrink-0 text-dim" />
+        <span className="flex-1">
+          <span className="block text-sm font-semibold text-ink">{t.versionRow}</span>
+          <span dir="ltr" className="block text-sm text-dim">{t.aboutLine.replace("{v}", version)}</span>
+        </span>
+        <span dir="ltr" className="shrink-0 rounded-full bg-night px-2.5 py-1 font-mono text-xs text-dim">{version}</span>
+        {rtl ? <ChevronLeft className="size-5 shrink-0 text-dim" /> : <ChevronRight className="size-5 shrink-0 text-dim" />}
+      </button>
 
       {/* ── ۱۱. آزمایشگاه دمو: محافظت‌های واقعی را تحریک کن ── */}
       <div className="mt-3 rounded-2xl border border-glow/30 bg-glow/5 p-4">
