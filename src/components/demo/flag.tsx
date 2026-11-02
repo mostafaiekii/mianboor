@@ -39,6 +39,10 @@ const DARK_GOLD = "#B07C08";
 /* golden lion facing the hoist, sword upright in the forepaw,         */
 /* radiant sun rising behind the back. All inside the white band.      */
 /* ------------------------------------------------------------------ */
+/* Deterministic float rounding — keeps SSR and client markup byte-identical
+   (prevents react hydration attribute mismatches on <line x1/y1/x2/y2>). */
+const r4 = (n: number) => Number(n.toFixed(4));
+
 function LionSun() {
   const cx = 19.4, cy = 14.9, rSun = 1.5;
   const rays: React.ReactNode[] = [];
@@ -47,10 +51,10 @@ function LionSun() {
     rays.push(
       <line
         key={i}
-        x1={cx + Math.cos(a) * (rSun + 0.45)}
-        y1={cy + Math.sin(a) * (rSun + 0.45)}
-        x2={cx + Math.cos(a) * (rSun + 1.45)}
-        y2={cy + Math.sin(a) * (rSun + 1.45)}
+        x1={r4(cx + Math.cos(a) * (rSun + 0.45))}
+        y1={r4(cy + Math.sin(a) * (rSun + 0.45))}
+        x2={r4(cx + Math.cos(a) * (rSun + 1.45))}
+        y2={r4(cy + Math.sin(a) * (rSun + 1.45))}
         stroke={GOLD}
         strokeWidth="0.55"
         strokeLinecap="round"

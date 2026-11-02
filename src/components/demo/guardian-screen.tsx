@@ -26,7 +26,7 @@ import {
   X,
 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
-import { tr, type Lang } from "./i18n";
+import { tr, tpl, type Lang } from "./i18n";
 import { GUARDIAN_IDS, type GuardianId, type GuardianState, type TetherState } from "./types";
 
 /* آیکن هر دستهٔ گاردین */
@@ -282,5 +282,5 @@ export function VersionScreen({
 }
 
 function tpl2(s: string, n: number) {
-  return s.replace("{n}", String(n));
+  return tpl(s, n);
 }

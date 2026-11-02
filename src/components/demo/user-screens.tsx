@@ -50,7 +50,7 @@ import {
 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { COUNTRIES, ComboFlag, Flag } from "./flag";
-import { TG_SUPPORT, tr, type Lang } from "./i18n";
+import { TG_SUPPORT, tr, tpl, type Lang } from "./i18n";
 import { SegmentedBar } from "./guardian-screen";
 import { FREE_QUOTA_GB, TG_PROXY_FALLBACK, type ConfigItem, type Entitlement, type SortMode, type SpeedResult, type SplitState, type TgProxy, type UsageDay, type VpnState } from "./types";
 import { FavStar, SpeedChip, UsageChart } from "./v2-features";
@@ -1526,7 +1526,7 @@ export function UsageSheet({
 }
 
 function tpl2(s: string, n: number, mode: string) {
-  return s.replace("{n}", String(n)).replace("{mode}", mode);
+  return tpl(s, n).replace("{mode}", mode);
 }
 
 function WifiIcon(props: React.SVGProps<SVGSVGElement>) {

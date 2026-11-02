@@ -1,9 +1,0 @@
-{
-  "name": "mianboor-telegram-bot",
-  "scripts": {
-    "dev": "bun --hot index.ts"
-  },
-  "dependencies": {
-    "grammy": "^1.46.0"
-  }
-}

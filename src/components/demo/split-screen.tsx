@@ -51,10 +51,11 @@ export function SplitScreen({
   const toggleApp = (id: string) =>
     setSplit((s) => ({ ...s, apps: s.apps.includes(id) ? s.apps.filter((x) => x !== id) : [...s.apps, id] }));
 
-  /* اعتبارسنجی سادهٔ آی‌پی یا CIDR — مثل اپ واقعی */
+  /* اعتبارسنجی آی‌پی یا CIDR — اکتت ۰..۲۵۵ و پریفیکس ۰..۳۲، مثل اپ واقعی */
   const addAddr = () => {
     const v = addr.trim();
-    const ok = /^(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})(\/\d{1,2})?$/.test(v);
+    const oct = "(25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]?\\d)";
+    const ok = new RegExp(`^(${oct}\\.${oct}\\.${oct}\\.${oct})(/(3[0-2]|[12]?\\d))?$`).test(v);
     if (!ok) {
       setAddrErr(true);
       setTimeout(() => setAddrErr(false), 1800);

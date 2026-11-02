@@ -49,7 +49,7 @@ const en = {
   autoConnectSub: "On unsecured Wi-Fi",
   split: "Split Tunneling",
   splitSubOff: "Choose apps that use VPN",
-  splitSubOn: "{n} apps · {mode}",
+  splitSubOn: "{n} {p:app|apps} · {mode}",
   modeExcl: "excluded",
   modeIncl: "VPN-only",
   support: "Support",
@@ -101,7 +101,7 @@ const en = {
   modServers: "Server list",
   modUi: "UI",
   // admin orders badge
-  pendingOrders: "You have {n} pending orders",
+  pendingOrders: "You have {n} pending {p:order|orders}",
   // plans
   plansTitle: "Go Premium",
   currentPlan: "Current plan",
@@ -147,8 +147,8 @@ const en = {
   splitModeIncl: "Only these apps use VPN",
   splitExclHint: "Excluded apps bypass the VPN and use your real network.",
   splitInclHint: "Only selected apps go through the VPN — everything else uses your real network.",
-  exclCount: "{n} apps excluded from VPN",
-  inclCount: "{n} apps routed through VPN",
+  exclCount: "{n} app{s} excluded from VPN",
+  inclCount: "{n} app{s} routed through VPN",
   exclCount0: "No apps excluded — everything goes through VPN",
   inclCount0: "Nothing selected — everything goes through VPN",
   resetSplit: "Clear selection",
@@ -178,7 +178,7 @@ const en = {
   invStep3: "You both get 3 days — 7 more if they go Premium",
   friendsJoined: "Friends joined",
   giftDays: "Gift days",
-  claimGift: "Claim {n} gift days",
+  claimGift: "Claim {n} gift {p:day|days}",
   giftClaimedToast: "Gift days activated 🎁",
   noGiftYet: "No gift days yet — invite a friend!",
   giftNote: "Gift days turn into premium time on your account.",
@@ -186,8 +186,8 @@ const en = {
   simFriendSub: "Demo: adds a friend & gift days",
   friendJoined: "joined with your code",
   friendBought: "went Premium",
-  daysShort: "+{n} days",
-  giftPlusToast: "+{n} gift days 🎁",
+  daysShort: "+{n} {p:day|days}",
+  giftPlusToast: "+{n} gift {p:day|days} 🎁",
   // AI support chat
   chatWith: "Support Chat",
   aiOnline: "AI assistant · online",
@@ -351,7 +351,7 @@ const en = {
   gBlocked: "Blocked",
   gAllowed: "Allowed",
   guardianCta: "Tap a category to block or allow it",
-  guardianCount: "{n} categories blocked",
+  guardianCount: "{n} {p:category|categories} blocked",
   // ── settings extras ──
   proxyMode: "Proxy mode",
   proxyModeSub: "Route apps through the local proxy instead of the VPN tun",
@@ -849,5 +849,14 @@ export const STR: Record<Lang, typeof en> = { en, fa };
 export type Strings = typeof en;
 export const tr = (l: Lang): Strings => STR[l];
 
-/** Small helper for "{n} …" templates. */
-export const tpl = (s: string, n: number) => s.replace("{n}", String(n));
+/**
+ * Small helper for "{n} …" templates with smart English plurals:
+ *   {s} → "" when n === 1, otherwise "s"        → "{n} app{s}"
+ *   {p:a|b} → "a" when n === 1, otherwise "b"   → "{n} {p:day|days}"
+ * Persian strings simply don't use the markers.
+ */
+export const tpl = (s: string, n: number) =>
+  s
+    .replace(/\{p:([^|}]*)\|([^}]*)\}/g, n === 1 ? "$1" : "$2")
+    .replace(/\{s\}/g, n === 1 ? "" : "s")
+    .replace("{n}", String(n));
