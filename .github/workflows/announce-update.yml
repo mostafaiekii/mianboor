@@ -1,0 +1,37 @@
+name: Announce in-app update
+
+# اعلام دستی نسخهٔ جدید به اپ‌های نصب‌شده — همان کاری که بعد از هر تگ انجام می‌شود.
+# کاربرد: وقتی فرمت لینک اعلامی عوض می‌شود یا اعلام یک تگ قبلی باید تازه شود.
+#
+#   Dispatch با version=2.8.0  →  سرور latest را به 2.8.0 با لینک .apk روی دامنهٔ خودمان ست می‌کند.
+#   لینک با «.apk» تمام می‌شود تا اپ‌های قدیمی (v2.6/v2.7) هم بتوانند آپدیت را ببینند و
+#   مستقیم از سرور خودمان (بدون گیت‌هاب، بدون فیلتر) دانلود کنند.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to announce (e.g. 2.8.0)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  announce:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Announce latest version to clients
+        env:
+          ADMIN_KEY: ${{ secrets.MIANOOR_ADMIN_KEY }}
+        run: |
+          VER="${{ github.event.inputs.version }}"
+          VER="${VER#v}"
+          CODE=$(curl -sSL "https://raw.githubusercontent.com/${{ github.repository }}/main/android/app/build.gradle.kts" \
+            | grep -oP 'versionCode\s*=\s*\K\d+' | head -1)
+          echo "Announcing v$VER (code $CODE) with own-domain .apk link…"
+          curl -sS -m 20 -X PUT "https://mianboor.vercel.app/api/admin/settings" \
+            -H "x-admin-key: $ADMIN_KEY" -H "Content-Type: application/json" \
+            -d "{\"latestVersion\":\"$VER\",\"latestCode\":${CODE:-0},\"latestUrl\":\"https://mianboor.vercel.app/api/client/update/download/$VER/Mianboor-v$VER.apk\"}"
+          echo

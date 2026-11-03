@@ -119,5 +119,5 @@ jobs:
           echo "Announcing v$VER (code $CODE) to the server…"
           curl -sS -m 20 -X PUT "https://mianboor.vercel.app/api/admin/settings" \
             -H "x-admin-key: $KEY" -H "Content-Type: application/json" \
-            -d "{\"latestVersion\":\"$VER\",\"latestCode\":$CODE,\"latestUrl\":\"https://github.com/mostafaiekii/mianboor/releases/tag/$GITHUB_REF_NAME\"}" \
+            -d "{\"latestVersion\":\"$VER\",\"latestCode\":$CODE,\"latestUrl\":\"https://mianboor.vercel.app/api/client/update/download/$VER/Mianboor-v$VER.apk\"}" \
             || echo "announce failed — the app falls back to checking GitHub Releases directly"
