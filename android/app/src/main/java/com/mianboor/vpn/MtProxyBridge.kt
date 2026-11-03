@@ -420,7 +420,22 @@ object MtProxyBridge {
             proxyOut.flush()
         }
 
-        /** یک بدنهٔ پیام از سمت پروکسی برمی‌دارد؛ null = اتصال تمام. */
+        /**
+         * یک بدنهٔ پیام از سمت پروکسی برمی‌دارد؛ null = اتصال تمام.
+         *
+         * نکتهٔ حیاتی (نسخهٔ ۲٫۶ — ریشهٔ «تلگرام بالا نمی‌آید»): پروکسی‌های MTProto
+         * بعد از هندشیک، قاب‌های padded-intermediate را «عیناً» رله می‌کنند و
+         * دیتاسنتر تلگرام انتهای هر قاب را با پدینگ ترنسپورت (۰ تا ۱۵ بایت و
+         * گاهی بیشتر — اندازهٔ قاب کاملاً دلخواه است) پر می‌کند. اگر این پدینگ
+         * برداشته نشود، قابِ حاصل برای ترنسپورت abridged سمت تلگرام (که طولش
+         * باید مضرب ۴ باشد) نامعتبر است و اتصال بی‌صدا بسته می‌شد.
+         * stripTransportPadding عین همان کاری است که tgnet خودش می‌کند:
+         *   - پیام رمزشده: [auth_key_id(8)][msg_key(16)][رمز N%16==0][پدینگ P]
+         *     ⟸ P = (len − 24) mod 16
+         *   - پیام لختِ هندشیک (auth_key_id=0): [akid(8)][msg_id(8)][len(4)][بدنه]
+         *     ⟸ هرچه بعد از ۲۰+len آمد پدینگ است.
+         * توکن quick-ack سرور (۰xFFFFFFFF) هم همان‌جا رد می‌شود.
+         */
         fun recvBody(): ByteArray? {
             while (true) {
                 // تلاش برای پارس قاب کامل از بافر تجمعی
@@ -433,11 +448,13 @@ object MtProxyBridge {
                     }
                     requireBodySize(total)
                     if (bufLen >= 4 + total) {
-                        val body = buf.copyOfRange(4, 4 + total)
+                        var body = buf.copyOfRange(4, 4 + total)
                         consume(4 + total)
                         if (body.size >= 4 && le32(body, 0) == -1) {
                             continue // توکن quick-ack سرور (0xFFFFFFFF) — رد
                         }
+                        body = stripTransportPadding(body)
+                        if (body.isEmpty()) continue
                         return body
                     }
                 }
@@ -448,6 +465,31 @@ object MtProxyBridge {
                     val dec = recvCipher.update(payload)
                     if (dec.isNotEmpty()) append(dec)
                 }
+            }
+        }
+
+        /**
+         * پدینگ ترنسپورتِ انتهای قاب‌های padded-intermediate را می‌گیرد.
+         * مرجع اندازه‌گیری: پاسخ واقعی دیتاسنتر به req_pq_multi (۱۲ بار تست مستقیم)
+         * طول‌های ۱۰۲/۱۰۳/۱۹۲/۱۶۶/... — یعنی اکثراً مضرب ۴ نیستند.
+         */
+        private fun stripTransportPadding(body: ByteArray): ByteArray {
+            if (body.size < 24) return body // قاب‌های خطا/کوچک — دست نمی‌زنیم
+            var zero = true
+            for (i in 0 until 8) {
+                if (body[i].toInt() != 0) {
+                    zero = false
+                    break
+                }
+            }
+            return if (zero && body.size >= 20) {
+                // پیام لخت هندشیک — طول واقعی پیام داخل قاب است
+                val msgLen = le32(body, 16)
+                if (msgLen >= 4 && msgLen <= body.size - 20) body.copyOf(20 + msgLen) else body
+            } else {
+                // پیام رمزشده — بخش رمز باید مضرب ۱۶ باشد؛ باقیِ انتهایی پدینگ است
+                val pad = (body.size - 24) % 16
+                if (pad > 0) body.copyOf(body.size - pad) else body
             }
         }
 

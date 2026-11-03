@@ -130,6 +130,9 @@ export function HomeScreen({
   retryingId,
   onFavSelect,
   onFavRetry,
+  tgActive,
+  onTgStop,
+  onTgConnect,
 }: {
   lang: Lang;
   state: VpnState;
@@ -163,6 +166,12 @@ export function HomeScreen({
   onFavSelect?: (id: number) => void;
   /** پینگ دوبارهٔ یک سرور */
   onFavRetry?: (id: number) => void;
+  /** پروکسی تلگرام فعلاً وصله — نسخهٔ ۲٫۶: داخل خود اپ، مثل خود APK */
+  tgActive?: { id: string; title: string } | null;
+  /** قطع پروکسی تلگرام */
+  onTgStop?: () => void;
+  /** اتصال پروکسی تلگرام از داخل اپ (نسخهٔ ۲٫۶) — به بالا خبر می‌ده */
+  onTgConnect?: (p: TgProxy) => void;
 }) {
   const t = tr(lang);
   const rtl = lang === "fa";
@@ -209,6 +218,28 @@ export function HomeScreen({
         /* شبکه در دسترس نیست → fallback */
       }
       if (!dead) setTgProxies(list);
+      /* نسخهٔ ۲٫۶: پینگ واقعی TCP — عین TgProxyManager.measureAll خود APK؛
+         همهٔ اهداف همزمان، نامرئی‌ها 999 و ته لیست. شکست → پینگ نمایشی می‌ماند. */
+      try {
+        const pingRes = await fetch("/api/client/telegram/ping", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            targets: list.slice(0, 12).map((p) => ({ id: p.id, host: p.server, port: p.port })),
+          }),
+        });
+        const pj = pingRes.ok ? await pingRes.json().catch(() => null) : null;
+        if (!dead && pj && pj.ok === true && pj.pings && typeof pj.pings === "object") {
+          setTgProxies((prev) =>
+            prev.map((p) => {
+              const ms = (pj.pings as Record<string, number>)[p.id];
+              return typeof ms === "number" && ms > 0 ? { ...p, ping: ms } : p;
+            }),
+          );
+        }
+      } catch {
+        /* پینگ واقعی نشد — نمایشی می‌ماند */
+      }
     })();
     return () => {
       dead = true;
@@ -221,6 +252,7 @@ export function HomeScreen({
     setTimeout(() => {
       setTgBusyId(null);
       setTgDoneId(p.id);
+      onTgConnect?.(p);
       onToast?.(t.tgProxyAdded);
     }, 1200);
   };
@@ -365,8 +397,38 @@ export function HomeScreen({
         >
           <Send className="size-4" />
           {t.tgProxy}
+          {tgActive && <span className="size-2 rounded-full bg-glow breathe" aria-hidden="true" />}
         </button>
       </div>
+
+      {/* ── نسخهٔ ۲٫۶: پروکسی تلگرام از داخل اپ وصله — بنر حالت تلگرام ── */}
+      {tgActive && (
+        <div
+          role="status"
+          className="mt-3 flex items-center gap-3 rounded-2xl border border-gold/40 bg-gold/10 p-3"
+        >
+          <span className="relative grid size-10 shrink-0 place-items-center rounded-full bg-gold/15">
+            <Send className="size-5 text-gold" />
+            <span className="pulse-ring absolute size-10 rounded-full border border-gold/60" aria-hidden="true" />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-sm font-bold text-ink">{t.tgActiveTitle}</span>
+            <span className="mt-0.5 block truncate text-xs leading-4 text-dim">
+              {tgActive.title} · {t.tgActiveSub}
+            </span>
+          </span>
+          {onTgStop && (
+            <button
+              type="button"
+              onClick={onTgStop}
+              aria-label={t.tgStop}
+              className="shrink-0 rounded-full border border-panel-edge bg-night px-3 py-1.5 text-xs font-bold text-dim transition-colors hover:border-gold/50 hover:text-ink"
+            >
+              {t.tgStop}
+            </button>
+          )}
+        </div>
+      )}
 
       {/* ── بنر سرور فعلی — پرچم ترکیبی (مقصد + ایران) + تاخیر + تلاش مجدد ── */}
       <button
@@ -508,12 +570,16 @@ export function HomeScreen({
               </button>
             </div>
             <div className="mt-0.5 text-sm text-dim">{t.tgProxiesSub}</div>
+            <div className="mt-1 flex items-center gap-1 text-[11px] text-gold/80">
+              <Loader2 className="size-3 animate-spin" aria-hidden="true" /> {t.tgPingReal}
+            </div>
 
             {/* همیشه مرتب: سریع‌ترین بالای لیست (سورت صعودی بر اساس پینگ، مرده‌ها ته) */}
             <div className="scroll-hide mt-3 flex max-h-96 min-h-0 flex-col gap-2 overflow-y-auto">
               {[...tgProxies].sort((a, b) => a.ping - b.ping).map((p) => {
                 const fastest = p.ping === Math.min(...tgProxies.map((x) => x.ping));
-                const isDone = tgDoneId === p.id;
+                const isActive = tgActive?.id === p.id;
+                const isDone = isActive || tgDoneId === p.id;
                 const isBusy = tgBusyId === p.id;
                 const gift = !p.country || p.country === "gift";
                 return (

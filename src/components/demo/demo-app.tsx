@@ -402,6 +402,8 @@ export default function DemoApp() {
   const [theme, setTheme] = useState<ThemeName>("midnight");
   const [selectedId, setSelectedId] = useState<number | null>(2);
   const [vpn, setVpn] = useState<VpnState>("off");
+  /* ── نسخهٔ ۲٫۶: پروکسی تلگرام فعال — مثل خود APK داخل خود اپ وصل می‌شه ── */
+  const [tgActive, setTgActive] = useState<{ id: string; title: string } | null>(null);
   const [seconds, setSeconds] = useState(0);
   const [passHash, setPassHash] = useState(DEMO_AUTH);
   const [unlocked, setUnlocked] = useState(false);
@@ -1186,6 +1188,12 @@ export default function DemoApp() {
                       setScreen("home");
                     }}
                     onFavRetry={retryFav}
+                    tgActive={tgActive}
+                    onTgStop={() => {
+                      setTgActive(null);
+                      showToast(t.tgStop);
+                    }}
+                    onTgConnect={(p) => setTgActive({ id: p.id, title: p.title })}
                   />
                 )}
                 {screen === "servers" && (

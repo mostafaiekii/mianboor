@@ -332,6 +332,10 @@ const en = {
   tgFastest: "Fastest",
   tgProxyAdded: "Connected inside the app — nothing was added to your Telegram",
   tgProxyNote: "The proxy connects inside Mianboor and is never saved into your Telegram — when your plan ends, access is fully revoked. Only Telegram traffic goes through the tunnel.",
+  tgActiveTitle: "Telegram proxy active",
+  tgActiveSub: "Only Telegram goes through the tunnel — the rest of your phone uses its normal internet",
+  tgStop: "Disconnect",
+  tgPingReal: "Real TCP ping — servers are measured live, dead ones sink to the bottom",
   demoMode: "Demo mode",
   // ── gift config ──
   giftCfg: "Gift config — location unknown",
@@ -750,6 +754,10 @@ const fa: typeof en = {
   tgFastest: "سریع‌ترین",
   tgProxyAdded: "داخل اپ وصل شد — هیچ پروکسی‌ای به تلگرامت اضافه نشد",
   tgProxyNote: "پروکسی داخل خود میانبر وصل می‌شه و هرگز در تلگرام شما ذخیره نمی‌شه؛ با پایان اشتراک دسترسی کامل قطع می‌شه. فقط ترافیک تلگرام از تونل می‌گذره.",
+  tgActiveTitle: "پروکسی تلگرام فعاله",
+  tgActiveSub: "فقط تلگرام از تونل می‌گذره — بقیهٔ گوشی با اینترنت عادی خودش",
+  tgStop: "قطع",
+  tgPingReal: "پینگ واقعی TCP — سرورها لحظه‌ای اندازه‌گیری می‌شن؛ مرده‌ها ته لیست",
   demoMode: "حالت دمو",
   // ── کانفیگ هدیه ──
   giftCfg: "کانفیگ هدیه — لوکیشن نامشخص",
