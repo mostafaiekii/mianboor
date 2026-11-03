@@ -26,7 +26,7 @@ import type { LucideIcon } from "lucide-react";
 import { HomeScreen, ServersScreen, AccountScreen, UsageSheet, type UsageRow } from "@/components/demo/user-screens";
 import { SettingsScreen } from "@/components/demo/settings-screen";
 import { SplitScreen } from "@/components/demo/split-screen";
-import { GuardianScreen, TetherSheet, VersionScreen } from "@/components/demo/guardian-screen";
+import { GuardianScreen, SIM_LATEST_VERSION, TetherSheet, VersionScreen } from "@/components/demo/guardian-screen";
 import { PlansSheet } from "@/components/demo/plans-sheet";
 import { ReferralScreen, type RefFriend, REF_CODE, REF_LINK } from "@/components/demo/referral-screen";
 import { SupportChatScreen } from "@/components/demo/support-chat";
@@ -77,7 +77,19 @@ const authHash = (s: string) => {
 const DEMO_AUTH = "cbumi3"; /* دمو: admin / mb200 — فقط گیت نمایش دمو؛ احراز واقعی ادمین سمت سرور و env-محور است */
 const PING_MS = 3000;
 const DEVICE_ID = "MB-7F3A-92K1";
-const APP_VERSION = "1.6.0";
+const APP_VERSION = "2.7.0";
+
+/** مقایسهٔ نسخه — «a جدیدتر از b؟» */
+function verGtStr(a: string, b: string): boolean {
+  const pa = a.split(".").map(Number);
+  const pb = b.split(".").map(Number);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const x = pa[i] ?? 0;
+    const y = pb[i] ?? 0;
+    if (x !== y) return x > y;
+  }
+  return false;
+}
 
 /** کشور و آی‌پی مبدا کاربر — فقط برای فلش لحظهٔ اتصال («از ایران به …»): در اپ واقعی از ipwho.is می‌آید */
 const ORIGIN = { ip: "5.160.42.117", country: "ir" };
@@ -463,6 +475,9 @@ export default function DemoApp() {
   const [sort, setSort] = useState<SortMode>("ping");
   const [retryingId, setRetryingId] = useState<number | null>(null);
   const [verChecking, setVerChecking] = useState(false);
+  /* v2.8: بنر نسخهٔ جدید روی خانه — وقتی نسخهٔ نصب‌شده از آخرین انتشار عقب است */
+  const [updateDismissed, setUpdateDismissed] = useState(false);
+  const updateTag = !updateDismissed && verGtStr(SIM_LATEST_VERSION, appVersion) ? SIM_LATEST_VERSION : null;
 
   const t = tr(lang);
   const holdStart = useRef(0);
@@ -991,6 +1006,7 @@ export default function DemoApp() {
     setOtaProgress(0);
     setPendingOta(false);
     setAppVersion(APP_VERSION);
+    setUpdateDismissed(false);
     /* v2 */
     setKillSwitch(true);
     setFailover(true);
@@ -1179,6 +1195,12 @@ export default function DemoApp() {
                     stealthOn={stealth === "strict"}
                     restarting={tunnelRestart}
                     onToast={showToast}
+                    updateTag={updateTag}
+                    onUpdateClick={() => {
+                      setVerChecking(true);
+                      setScreen("version");
+                    }}
+                    onDismissUpdate={() => setUpdateDismissed(true)}
                     favServers={favorites
                       .map((id) => liveConfigs.find((c) => c.id === id))
                       .filter((c): c is ConfigItem => Boolean(c))}
@@ -1345,7 +1367,13 @@ export default function DemoApp() {
                   <GuardianScreen lang={lang} guardian={guardian} setGuardian={setGuardian} onBack={() => setScreen("settings")} />
                 )}
                 {screen === "version" && (
-                  <VersionScreen lang={lang} version={appVersion} checking={verChecking} onBack={() => setScreen("settings")} />
+                  <VersionScreen
+                    lang={lang}
+                    version={appVersion}
+                    checking={verChecking}
+                    onInstalled={(v) => setAppVersion(v)}
+                    onBack={() => setScreen("settings")}
+                  />
                 )}
                 {screen === "login" && (
                   <AdminLogin

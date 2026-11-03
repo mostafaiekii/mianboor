@@ -85,21 +85,21 @@ function fmt(sec: number): string {
   return `${h}:${m}:${s}`;
 }
 
-/** Bilingual brand: big word + the other language underneath. */
+/** Bilingual brand: big word + the other language underneath — v2.8: bigger & bolder. */
 export function Brand({ lang }: { lang: Lang }) {
   return (
     <span className="flex flex-col leading-none">
       {lang === "en" ? (
         <>
-          <span dir="ltr" className="font-display text-xl font-extrabold tracking-tight text-ink">
+          <span dir="ltr" className="font-display text-3xl font-extrabold tracking-wide text-ink">
             MIANBOOR
           </span>
-          <span className="mt-1 text-xs font-medium text-dim">میانبر</span>
+          <span className="mt-1.5 text-sm font-bold text-dim">میانبر</span>
         </>
       ) : (
         <>
-          <span className="text-xl font-extrabold text-ink">میانبر</span>
-          <span dir="ltr" className="mt-1 font-display text-xs font-medium text-dim">
+          <span className="text-3xl font-extrabold text-ink">میانبر</span>
+          <span dir="ltr" className="mt-1.5 font-display text-sm font-bold tracking-wide text-dim">
             Mianboor
           </span>
         </>
@@ -133,6 +133,10 @@ export function HomeScreen({
   tgActive,
   onTgStop,
   onTgConnect,
+  /* v2.8: بنر نسخهٔ جدید — آپدیت کاملاً داخل اپ، بدون گیت‌هاب */
+  updateTag,
+  onUpdateClick,
+  onDismissUpdate,
 }: {
   lang: Lang;
   state: VpnState;
@@ -172,6 +176,10 @@ export function HomeScreen({
   onTgStop?: () => void;
   /** اتصال پروکسی تلگرام از داخل اپ (نسخهٔ ۲٫۶) — به بالا خبر می‌ده */
   onTgConnect?: (p: TgProxy) => void;
+  /* v2.8: بنر نسخهٔ جدید — آپدیت کاملاً داخل اپ، بدون گیت‌هاب */
+  updateTag?: string | null;
+  onUpdateClick?: () => void;
+  onDismissUpdate?: () => void;
 }) {
   const t = tr(lang);
   const rtl = lang === "fa";
@@ -259,6 +267,34 @@ export function HomeScreen({
 
   return (
     <div dir={rtl ? "rtl" : "ltr"} className="flex flex-1 flex-col overflow-y-auto scroll-hide px-6 pt-2">
+      {/* v2.8: بنر نسخهٔ جدید — دانلود و نصب کامل داخل خود اپ */}
+      {updateTag && (
+        <div className="mb-3 flex items-center gap-3 rounded-2xl border border-gold/40 bg-gold/10 p-3">
+          <span className="grid size-9 shrink-0 place-items-center rounded-full bg-gold/20 text-gold">
+            <Crown className="size-4.5" />
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className="text-sm font-bold text-ink">{t.updateTitle}</div>
+            <div className="mt-0.5 truncate text-xs text-dim">{t.updateSub.replace("{v}", updateTag)}</div>
+          </div>
+          <div className="flex shrink-0 flex-col items-center gap-1">
+            <button
+              type="button"
+              onClick={onUpdateClick}
+              className="rounded-full bg-gold px-3.5 py-1.5 text-xs font-bold text-night transition hover:brightness-110 active:scale-95"
+            >
+              {t.updateBtn}
+            </button>
+            <button
+              type="button"
+              onClick={onDismissUpdate}
+              className="text-[11px] text-dim hover:text-ink"
+            >
+              {t.updateLater}
+            </button>
+          </div>
+        </div>
+      )}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <ShieldCheck className="size-7 shrink-0 text-glow" />
