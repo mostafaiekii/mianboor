@@ -58,7 +58,8 @@ db/*.db
 db/*.db-journal
 .zscripts/
 upload/
-download/
+# فقط پوشهٔ ریشه (کی‌استور) — نه هر پوشهٔ download در هر عمقی
+/download/
 
 # local design/preview assets — never publish to the repo
 /brand/
