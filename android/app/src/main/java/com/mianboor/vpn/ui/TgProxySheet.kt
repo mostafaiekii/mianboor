@@ -82,6 +82,22 @@ fun TgProxySheet(
                     color = mb.dim, fontSize = 13.sp, textAlign = TextAlign.Center,
                     modifier = Modifier.fillMaxWidth().padding(vertical = 28.dp),
                 )
+            } else if (proxies.isEmpty()) {
+                // v2.7: لیست خالی — نه لیست جعلی دمو؛ پیام صادقانه
+                Column(
+                    Modifier.fillMaxWidth().padding(vertical = 28.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    Icon(
+                        ic(R.drawable.ic_send), null,
+                        tint = mb.dim.copy(alpha = 0.5f), modifier = Modifier.size(34.dp),
+                    )
+                    Text(
+                        t.tgEmpty, color = mb.dim, fontSize = 13.sp, textAlign = TextAlign.Center,
+                        lineHeight = 19.sp,
+                        modifier = Modifier.fillMaxWidth().padding(top = 12.dp, start = 24.dp, end = 24.dp),
+                    )
+                }
             } else {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     proxies.forEachIndexed { index, p ->

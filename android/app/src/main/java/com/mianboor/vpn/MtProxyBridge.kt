@@ -64,6 +64,18 @@ object MtProxyBridge {
     /** پورت پل روی لوکال‌هاست — outbound سمت xray به همین‌جا وصل می‌شود. */
     const val PORT = 10907
 
+    /**
+     * v2.7 — ریشهٔ «تلگرام بالا نمی‌آید» (P0):
+     * پروکسی‌های مدرن MTProto (mtg و امثالش) برای سکرت‌های dd/ee «همیشه»
+     * هندشیک FakeTLS می‌خواهند — حتی وقتی سکرت دامنه ندارد. نسخه‌های قبل برای
+     * سکرت بدون دامنه host=null برمی‌گرداند و پل، فریم را بدون ClientHello
+     * ولی با قاب TLS record می‌فرستاد → هر پروکسی واقعی اتصال را بی‌صدا می‌بست.
+     * حالا سکرت بدون دامنه هم FakeTLS با SNI پیش‌فرض می‌گیرد (SNI در HMAC نقشی
+     * ندارد — mtg و mtprotoproxy هر SNI را می‌پذیرند).
+     * با پل JVM تست شد: req_pq_multi → res_pq از دیتاسنتر واقعی تلگرام ✓
+     */
+    const val DEFAULT_FAKE_TLS_HOST = "www.google.com"
+
     /** پارامترهای پروکسی مقصد — از لینک tg://proxy پارس شده. */
     data class Params(val host: String, val port: Int, val secret: String)
 
@@ -135,6 +147,7 @@ object MtProxyBridge {
         conns[client] = true
         var upstream: Socket? = null
         try {
+            android.util.Log.d("MtProxyBridge", "new client conn → proxy ${p.host}:${p.port}")
             client.tcpNoDelay = true
             val buffered = BufferedInputStream(client.getInputStream(), 32 * 1024)
             val ins = DataInputStream(buffered)
@@ -215,7 +228,8 @@ object MtProxyBridge {
             runCatching { proxy.shutdownOutput() }
             runCatching { down.get(3, TimeUnit.SECONDS) }
         } catch (t: Throwable) {
-            // هر خطا = بستن هر دو سمت
+            // هر خطا = بستن هر دو سمت — با لاگ برای عیب‌یابی logcat
+            android.util.Log.w("MtProxyBridge", "client dropped: ${t::class.java.simpleName}: ${t.message}")
         } finally {
             conns.remove(client)
             runCatching { client.close() }
@@ -315,6 +329,7 @@ object MtProxyBridge {
     ) {
         private val secretKey: ByteArray
         private val fakeTlsHost: String?
+        private val fakeTls: Boolean
 
         private val sendCipher: Cipher
         private val recvCipher: Cipher
@@ -329,6 +344,7 @@ object MtProxyBridge {
                 ?: throw IOException("سکرت پروکسی نامعتبر است")
             secretKey = key
             fakeTlsHost = host
+            fakeTls = host != null
             val rng = SecureRandom()
 
             // ── فریم ۶۴ بایتی obfuscated2 (عین mtg generateHandshake) ──
@@ -377,8 +393,9 @@ object MtProxyBridge {
 
         /** هندشیک کامل با پروکسی — بعد از این، پمپ آماده است. */
         fun handshake() {
-            if (fakeTlsHost != null) {
-                proxyOut.write(clientHello(fakeTlsHost))
+            if (fakeTls) {
+                val host = fakeTlsHost ?: DEFAULT_FAKE_TLS_HOST
+                proxyOut.write(clientHello(host))
                 proxyOut.flush()
                 // ServerHello(0x16) + ChangeCipherSpec(0x14) + نویز — تا اولین AppData رد می‌کنیم
                 var seenAppData = false
@@ -389,7 +406,7 @@ object MtProxyBridge {
             }
             // فریم obfuscated2 — در حالت FakeTLS داخل اولین رکورد AppData می‌رود؛
             // عین tdlib: قبل از اولین رکورد، یک رکورد ChangeCipherSpec می‌آید.
-            if (fakeTlsHost != null) {
+            if (fakeTls) {
                 proxyOut.write(byteArrayOf(0x14, 0x03, 0x03, 0x00, 0x01, 0x01))
                 writeTlsRecord(proxyOut, wireFrame, 0, wireFrame.size)
             } else {
@@ -410,12 +427,17 @@ object MtProxyBridge {
             putLe32(env, 0, if (quickAck) (body.size or (1 shl 31)) else body.size)
             body.copyInto(env, 4)
             val enc = sendCipher.update(env)
-            // رکورد TLS سقف 16379 بایت دارد — تیکه‌تیکه می‌فرستیم (CTR جریانی است)
-            var off = 0
-            while (off < enc.size) {
-                val n = minOf(16379, enc.size - off)
-                writeTlsRecord(proxyOut, enc, off, n)
-                off += n
+            if (!fakeTls) {
+                // حالت قدیمی بدون FakeTLS — بایت خام، بدون قاب TLS
+                proxyOut.write(enc)
+            } else {
+                // رکورد TLS سقف 16379 بایت دارد — تیکه‌تیکه می‌فرستیم (CTR جریانی است)
+                var off = 0
+                while (off < enc.size) {
+                    val n = minOf(16379, enc.size - off)
+                    writeTlsRecord(proxyOut, enc, off, n)
+                    off += n
+                }
             }
             proxyOut.flush()
         }
@@ -459,6 +481,17 @@ object MtProxyBridge {
                     }
                 }
                 // دادهٔ بیشتر لازم است — رکورد TLS بعدی
+                if (!fakeTls) {
+                    // حالت قدیمی بدون FakeTLS — بایت خام
+                    val raw = ByteArray(16 * 1024)
+                    val n = proxyIn.read(raw)
+                    if (n < 0) throw IOException("proxy stream cut")
+                    if (n > 0) {
+                        val dec = recvCipher.update(raw, 0, n)
+                        if (dec.isNotEmpty()) append(dec)
+                    }
+                    continue
+                }
                 val (type, payload) = readTlsRecord(proxyIn)
                 if (type != 0x17) continue // رکورد غیر-AppData رد می‌شود
                 if (payload.isNotEmpty()) {
@@ -888,11 +921,14 @@ object MtProxyBridge {
             val key = decoded.copyOfRange(1, 17)
             if (decoded.size > 17) {
                 val host = String(decoded.copyOfRange(17, decoded.size), Charsets.US_ASCII).trim()
-                if (host.isNotEmpty() && host.all { it.code in 0x21..0x7e }) key to host else key to null
+                if (host.isNotEmpty() && host.all { it.code in 0x21..0x7e }) key to host
+                else key to DEFAULT_FAKE_TLS_HOST
             } else {
-                key to null
+                // v2.7: سکرت بدون دامنه = FakeTLS با SNI پیش‌فرض (نه حلت خام!)
+                key to DEFAULT_FAKE_TLS_HOST
             }
         } else {
+            // سکرت خام ۱۶ بایتی قدیمی — حالت بدون FakeTLS
             decoded to null
         }
     }

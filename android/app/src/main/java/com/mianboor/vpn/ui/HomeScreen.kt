@@ -11,6 +11,8 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -91,6 +93,9 @@ fun HomeScreen(
     stealthOn: Boolean = false,
     // ── v2.1: پروکسی تلگرام ──
     onOpenTgProxy: () -> Unit = {},
+    // ── v2.7: نوار فشردهٔ «اضافه‌شده» — سرورهای سنجاق‌شده بالای کارت‌های مصرف ──
+    favServers: List<ConfigItem> = emptyList(),
+    onFavSelect: (String) -> Unit = {},
 ) {
     val t = stringsOf(lang)
     val mb = LocalMb.current
@@ -416,6 +421,46 @@ fun HomeScreen(
                     }
                 }
                 FwdChevron(rtl)
+            }
+        }
+
+        // ── v2.7: نوار فشردهٔ «اضافه‌شده» — سرورهای سنجاق‌شده با ارتفاع کم،
+        //    تا کارت‌های دانلود/آپلود بالاتر بیایند (缩 تاریخچه) ──
+        if (favServers.isNotEmpty()) {
+            Column(Modifier.fillMaxWidth().padding(top = 10.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(t.favSection, color = mb.ink, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                    Spacer(Modifier.width(6.dp))
+                    Text("${favServers.size}", color = mb.dim, fontSize = 11.sp)
+                }
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    favServers.forEach { f ->
+                        Row(
+                            Modifier
+                                .clip(RoundedCornerShape(50))
+                                .background(if (server?.key == f.key) mb.glow.copy(alpha = 0.14f) else mb.panel)
+                                .border(
+                                    1.dp,
+                                    if (server?.key == f.key) mb.glow.copy(alpha = 0.5f) else mb.panelEdge,
+                                    RoundedCornerShape(50),
+                                )
+                                .clickable { onFavSelect(f.key) }
+                                .padding(horizontal = 10.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Flag(f.country, 20.dp)
+                            Spacer(Modifier.width(6.dp))
+                            Text(f.name, color = mb.ink, fontSize = 11.sp, maxLines = 1)
+                            Spacer(Modifier.width(4.dp))
+                            Text("${f.ping}", color = pingColor(f.ping, mb), fontSize = 10.sp)
+                        }
+                    }
+                }
             }
         }
 

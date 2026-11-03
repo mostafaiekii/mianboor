@@ -336,6 +336,63 @@ interface Strings {
     val tgLoading: String
     val tgInAppToast: String
     val tgNote: String
+
+    // ── v2.7 ──
+    val tgEmpty: String
+    val guardian: String
+    val guardianSub: String
+    val guardianCount: (Int) -> String
+    val guardianCta: String
+    val gBlocked: String
+    val gAllowed: String
+    val gAds: String
+    val gTrackers: String
+    val gAdult: String
+    val gYt: String
+    val gGambling: String
+    val gGov: String
+    val gPay: String
+    val gSocial: String
+    val gCrypto: String
+    val gFake: String
+    val advEngine: String
+    val proxyMode: String
+    val proxyModeSub: String
+    val mux: String
+    val muxSub: String
+    val tether: String
+    val tetherSub: String
+    val tetherTitle: String
+    val tetherOn: String
+    val tetherDesc: String
+    val tetherHost: String
+    val tetherPort: String
+    val tetherOnToast: String
+    val socksPortRow: String
+    val batteryOff: String
+    val batteryOffSub: String
+    val batteryOffDone: String
+    val batteryOffIdle: String
+    val serverListSec: String
+    val groupCountry: String
+    val groupCountrySub: String
+    val sortTip: String
+    val sortPing: String
+    val sortAz: String
+    val versionRow: String
+    val verUpToDate: String
+    val verReady: String
+    val verChecking: String
+    val verNewAvailable: (String) -> String
+    val verDownloadBtn: String
+    val verDownloading: (Int) -> String
+    val verInstallBtn: String
+    val verPermNeeded: String
+    val verCheckFail: String
+    val favSection: String
+    val blockIr: String
+    val blockIrSub: String
+    val applyNextConn: String
 }
 
 object EnStrings : Strings {
@@ -688,6 +745,65 @@ object EnStrings : Strings {
         "Connecting inside the app — nothing is added to your Telegram"
     override val tgNote =
         "The proxy connects inside Mianboor and is never saved into your Telegram app — when your plan ends, access is fully revoked. Only Telegram goes through this tunnel; for Instagram and the rest of the internet, use the Configs section."
+
+    // ── v2.7 ──
+    override val tgEmpty =
+        "No proxy is available right now. Ask support to add one — it will appear here instantly."
+    override val guardian = "Guardian"
+    override val guardianSub = "Guardian blocks unwanted content like ads and harmful material"
+    override val guardianCount = { n: Int -> "$n categories blocked" }
+    override val guardianCta = "Tap a category to block or allow it"
+    override val gBlocked = "Blocked"
+    override val gAllowed = "Allowed"
+    override val gAds = "Ads"
+    override val gTrackers = "Trackers"
+    override val gAdult = "Adult content"
+    override val gYt = "YouTube ads"
+    override val gGambling = "Gambling"
+    override val gGov = "Government sites"
+    override val gPay = "Payment gateways"
+    override val gSocial = "Social networks"
+    override val gCrypto = "Crypto"
+    override val gFake = "Fake news"
+    override val advEngine = "Advanced engine"
+    override val proxyMode = "Proxy mode"
+    override val proxyModeSub = "Route apps through the local proxy instead of the VPN tun"
+    override val mux = "Multiplexer"
+    override val muxSub = "Bundle many streams over one connection"
+    override val tether = "Connection sharing"
+    override val tetherSub = "Share the VPN with hotspot devices"
+    override val tetherTitle = "Share connection point (VPN hotspot)"
+    override val tetherOn = "Enable connection sharing"
+    override val tetherDesc =
+        "Devices on your hotspot use the VPN through the local proxy — set their proxy to the host and port below."
+    override val tetherHost = "Host"
+    override val tetherPort = "Port"
+    override val tetherOnToast = "Hotspot sharing is live — devices behind your hotspot now use the VPN"
+    override val socksPortRow = "SOCKS5 & HTTP port"
+    override val batteryOff = "Disable battery optimization"
+    override val batteryOffSub = "Keeps the tunnel alive under aggressive power saving"
+    override val batteryOffDone = "Optimization disabled"
+    override val batteryOffIdle = "Optimization is on"
+    override val serverListSec = "Server list"
+    override val groupCountry = "Group servers by country"
+    override val groupCountrySub = "Collapse the list into country sections"
+    override val sortTip = "Sort"
+    override val sortPing = "By lowest ping"
+    override val sortAz = "A-Z"
+    override val versionRow = "Version"
+    override val verUpToDate = "Perfect! Mianboor is up to date"
+    override val verReady = "You are ready for a fast and stable connection!"
+    override val verChecking = "Checking for updates…"
+    override val verNewAvailable = { v: String -> "Version $v is available — install it right inside the app" }
+    override val verDownloadBtn = "Download & install"
+    override val verDownloading = { p: Int -> if (p in 0..100) "Downloading… $p%" else "Downloading…" }
+    override val verInstallBtn = "Install now"
+    override val verPermNeeded = "Allow installing once — then updates happen fully inside the app"
+    override val verCheckFail = "Could not check for updates — try again"
+    override val favSection = "Added"
+    override val blockIr = "Block .ir connections"
+    override val blockIrSub = "While on VPN, Iranian domains stay out of the tunnel"
+    override val applyNextConn = "Applied on the next connection"
 }
 
 object FaStrings : Strings {
@@ -1040,6 +1156,63 @@ object FaStrings : Strings {
         "در حال اتصال داخل اپ — هیچ پروکسی‌ای به تلگرامت اضافه نمی‌شود"
     override val tgNote =
         "پروکسی داخل خود میانبر وصل می‌شود و هرگز در تلگرام شما ذخیره نمی‌شود؛ با پایان اشتراک، دسترسی کامل قطع می‌شود. فقط تلگرام از این تونل می‌گذرد — برای اینستاگرام و بقیهٔ اینترنت از بخش کانفیگ‌ها استفاده کنید."
+
+    // ── v2.7 ──
+    override val tgEmpty = "فعلاً هیچ پروکسی‌ای در دسترس نیست. از پشتیبانی بخواه پروکسی اضافه کنه — همین‌جا فوراً ظاهر می‌شه."
+    override val guardian = "گاردین"
+    override val guardianSub = "گاردین موانع ناخواسته مانند تبلیغات و محتوای مضر را مسدود خواهد کرد"
+    override val guardianCount = { n: Int -> "$n دسته مسدود است" }
+    override val guardianCta = "برای مسدود یا آزادکردن، روی هر دسته بزن"
+    override val gBlocked = "مسدود است"
+    override val gAllowed = "مجاز است"
+    override val gAds = "تبلیغات"
+    override val gTrackers = "ترکرها و ردیاب‌ها"
+    override val gAdult = "محتوای بزرگسال"
+    override val gYt = "تبلیغات یوتیوب"
+    override val gGambling = "شرط‌بندی و قمار"
+    override val gGov = "سایت‌های دولتی"
+    override val gPay = "درگاه‌های پرداخت"
+    override val gSocial = "شبکه‌های اجتماعی"
+    override val gCrypto = "کریپتو"
+    override val gFake = "اخبار جعلی"
+    override val advEngine = "موتور اتصال"
+    override val proxyMode = "حالت پروکسی"
+    override val proxyModeSub = "ترافیک اپ‌ها به‌جای تونل VPN از پروکسی محلی رد می‌شه"
+    override val mux = "فعال‌کردن Multiplexer"
+    override val muxSub = "چند استریم روی یک اتصال — بار handshake کمتر"
+    override val tether = "اشتراک‌گذاری نقطه اتصال"
+    override val tetherSub = "VPN با دستگاه‌های هات‌اسپوت به اشتراک گذاشته می‌شه"
+    override val tetherTitle = "اشتراک‌گذاری نقطه اتصال VPN"
+    override val tetherOn = "فعال‌سازی اشتراک‌گذاری نقطه اتصال"
+    override val tetherDesc = "برای اجازه‌دادن به دستگاه‌هایی که به نقطه اتصال شما متصل هستند تا از VPN شما استفاده کنند، به‌سادگی پروکسی را روی دستگاه‌های مذکور با استفاده از تنظیمات زیر پیکربندی کنید."
+    override val tetherHost = "هاست"
+    override val tetherPort = "پورت"
+    override val tetherOnToast = "اشتراک‌گذاری فعال شد — دستگاه‌های پشت هات‌اسپوت از VPN استفاده می‌کنن"
+    override val socksPortRow = "پورت SOCKS5 و HTTP"
+    override val batteryOff = "غیرفعال‌کردن بهینه‌سازی باتری"
+    override val batteryOffSub = "تا تونل در حالت صرفه‌جویی شدید قطع نشه"
+    override val batteryOffDone = "بهینه‌سازی غیرفعال شد"
+    override val batteryOffIdle = "بهینه‌سازی فعال است"
+    override val serverListSec = "لیست سرورها"
+    override val groupCountry = "دسته‌بندی سرورها بر اساس کشور"
+    override val groupCountrySub = "لیست به بخش‌های کشوری مرتب می‌شه"
+    override val sortTip = "مرتب‌سازی"
+    override val sortPing = "بر پایه کمترین پینگ"
+    override val sortAz = "A-Z بر پایه"
+    override val versionRow = "نسخه"
+    override val verUpToDate = "عالی! میانبر شما به‌روز است"
+    override val verReady = "آمادهٔ اتصال سریع و پایدار هستید!"
+    override val verChecking = "در حال بررسی نسخهٔ جدید…"
+    override val verNewAvailable = { v: String -> "نسخهٔ $v آماده‌ست — مستقیم داخل اپ نصب کن" }
+    override val verDownloadBtn = "دانلود و نصب"
+    override val verDownloading = { p: Int -> if (p in 0..100) "در حال دانلود… $p٪" else "در حال دانلود…" }
+    override val verInstallBtn = "همین حالا نصب کن"
+    override val verPermNeeded = "فقط یک بار اجازهٔ نصب بده — بعدش به‌روزرسانی کاملاً داخل خود اپ انجام می‌شه"
+    override val verCheckFail = "بررسی نسخه انجام نشد — دوباره تلاش کن"
+    override val favSection = "اضافه‌شده"
+    override val blockIr = "مسدود کردن اتصالات .ir"
+    override val blockIrSub = "حین اتصال، دامنه‌های ایرانی از تونل خارج می‌مونن"
+    override val applyNextConn = "در اتصال بعدی اعمال می‌شود"
 }
 
 fun stringsOf(lang: Lang): Strings = if (lang == Lang.FA) FaStrings else EnStrings

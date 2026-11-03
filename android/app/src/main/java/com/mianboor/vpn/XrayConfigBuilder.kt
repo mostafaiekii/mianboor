@@ -366,13 +366,32 @@ object XrayConfigBuilder {
         dnsCustom: String = "",
         tgSocks: SocksUpstream? = null,
         tgOnly: Boolean = false,
+        mux: Boolean = false,
+        guardian: Set<String> = emptySet(),
+        blockIr: Boolean = false,
+        socksPort: Int = SOCKS_PORT,
+        listenAll: Boolean = false,
+        withHttpInbound: Boolean = false,
     ): String {
+        val listenAddr = if (listenAll) "0.0.0.0" else "127.0.0.1"
         val socksIn = JSONObject()
             .put("tag", "socks-in")
-            .put("listen", "127.0.0.1")
-            .put("port", SOCKS_PORT)
+            .put("listen", listenAddr)
+            .put("port", socksPort)
             .put("protocol", "socks")
             .put("settings", JSONObject().put("auth", "noauth").put("udp", true))
+            .put(
+                "sniffing",
+                JSONObject().put("enabled", true).put("destOverride", JSONArray(listOf("http", "tls")))
+            )
+
+        // v2.7: ورودی HTTP لوکال — برای اشتراک نقطه اتصال و مرورگرها
+        val httpIn = JSONObject()
+            .put("tag", "http-in")
+            .put("listen", listenAddr)
+            .put("port", socksPort + 1)
+            .put("protocol", "http")
+            .put("settings", JSONObject())
             .put(
                 "sniffing",
                 JSONObject().put("enabled", true).put("destOverride", JSONArray(listOf("http", "tls")))
@@ -403,6 +422,13 @@ object XrayConfigBuilder {
                 }
             }
             proxy.put("streamSettings", stream)
+            // v2.7: Multiplexer — چند استریم روی یک اتصال، بار handshake کمتر
+            if (mux) {
+                proxy.put(
+                    "mux",
+                    JSONObject().put("enabled", true).put("concurrency", 8)
+                )
+            }
         }
 
         val direct = JSONObject().put("tag", "direct").put("protocol", "freedom").put("settings", JSONObject())
@@ -450,6 +476,28 @@ object XrayConfigBuilder {
                     .put("outboundTag", "block")
             )
         }
+        // v2.7: گاردین — مسدودسازی محتوا بر اساس دسته‌های انتخابی کاربر
+        val guardianDomains = guardianRuleDomains(guardian)
+        if (guardianDomains.isNotEmpty()) {
+            rules.put(
+                JSONObject().put("type", "field")
+                    .put("domain", JSONArray(guardianDomains))
+                    .put("outboundTag", "block")
+            )
+        }
+        if (blockIr && !tgOnly) {
+            // v2.7: دامنه‌های ایرانی از تونل خارج می‌مانند (مستقیم)
+            rules.put(
+                JSONObject().put("type", "field")
+                    .put("domain", JSONArray(listOf("domain:ir")))
+                    .put("outboundTag", "direct")
+            )
+            rules.put(
+                JSONObject().put("type", "field")
+                    .put("ip", JSONArray(listOf("geoip:ir")))
+                    .put("outboundTag", "direct")
+            )
+        }
         if (tgOnly) {
             // ۳) حالت پروکسی تلگرام (v2.4): فقط ترافیک MTProto (مقاصد IPِ دیتاسنترها)
             //    به پروکسی می‌رود. پروکسی MTProto از نظر پروتکل «فقط» جریان MTProto
@@ -476,14 +524,48 @@ object XrayConfigBuilder {
             )
         }
 
+        val inbounds = JSONArray().put(socksIn)
+        if (withHttpInbound) inbounds.put(httpIn)
+
         val root = JSONObject()
             .put("log", JSONObject().put("loglevel", "warning"))
             .put("dns", dns)
-            .put("inbounds", JSONArray().put(socksIn))
+            .put("inbounds", inbounds)
             .put("outbounds", JSONArray().put(proxy).put(direct).put(block).put(dnsOut))
             .put("routing", JSONObject().put("domainStrategy", "AsIs").put("rules", rules))
 
         return root.toString()
+    }
+
+    /**
+     * v2.7: دامنه‌های گاردین — فقط دسته‌های واقعی و بدون وابستگی به geosite‌های
+     * ناشناخته (اگر geosite ناموجود در کانفیگ باشد، xray بالا نمی‌آید!)
+     */
+    private fun guardianRuleDomains(cats: Set<String>): List<String> {
+        val out = mutableListOf<String>()
+        if ("ads" in cats) out.add("geosite:category-ads-all")
+        if ("trackers" in cats) out.addAll(
+            listOf(
+                "domain:google-analytics.com", "domain:googletagmanager.com",
+                "domain:doubleclick.net", "domain:googlesyndication.com",
+                "domain:hotjar.com", "domain:mixpanel.com", "domain:scorecardresearch.com",
+                "domain:segment.io", "domain:amplitude.com",
+            )
+        )
+        if ("adult" in cats) out.add("geosite:category-porn")
+        if ("yt" in cats) out.addAll(listOf("domain:youtube.com", "domain:ytimg.com", "domain:youtu.be", "domain:googlevideo.com"))
+        if ("gambling" in cats) out.add("geosite:category-gambling")
+        if ("gov" in cats) out.addAll(listOf("domain:gov.ir", "domain:dolat.ir", "domain:president.ir"))
+        if ("pay" in cats) out.addAll(listOf("domain:paypal.com", "domain:stripe.com", "domain:coinbase.com"))
+        if ("social" in cats) out.addAll(
+            listOf(
+                "domain:instagram.com", "domain:facebook.com", "domain:twitter.com",
+                "domain:x.com", "domain:tiktok.com", "domain:snapchat.com",
+            )
+        )
+        if ("crypto" in cats) out.add("geosite:category-cryptocurrency")
+        if ("fake" in cats) out.addAll(listOf("domain:infowars.com", "domain:brighteon.com"))
+        return out
     }
 
     /**
@@ -493,7 +575,9 @@ object XrayConfigBuilder {
     private val TG_IP_RANGES = listOf(
         "91.108.4.0/22", "91.108.8.0/22", "91.108.12.0/22", "91.108.16.0/22",
         "91.108.20.0/22", "91.108.56.0/22", "149.154.160.0/20", "95.161.64.0/20",
-        "2001:67c:4e8::/48", "2001:b28:f23d::/48", "2001:b28:f23f::/48", "2a0a:f280::/32",
+        "91.105.192.0/23", "185.76.151.0/24",
+        "2001:67c:4e8::/48", "2001:b28:f23c::/48", "2001:b28:f23d::/48",
+        "2001:b28:f23f::/48", "2a0a:f280::/32",
     )
 
     /** دامنه‌های تلگرام — با sniffing (http/tls) از SNI درمی‌آیند. */

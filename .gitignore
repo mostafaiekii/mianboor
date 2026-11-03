@@ -81,3 +81,4 @@ keystore/keystore.jks
 android/keystore/
 tool-results/
 dev.log
+.tgtest/

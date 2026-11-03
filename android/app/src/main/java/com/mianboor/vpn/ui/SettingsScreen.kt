@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -21,6 +22,10 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -59,10 +64,30 @@ fun SettingsScreen(
     onOpenPrivacy: () -> Unit,
     onSupport: () -> Unit,
     onBack: () -> Unit,
+    // ── v2.7 ──
+    guardianOn: Boolean = false,
+    onOpenGuardian: () -> Unit = {},
+    proxyMode: Boolean = false,
+    setProxyMode: (Boolean) -> Unit = {},
+    mux: Boolean = false,
+    setMux: (Boolean) -> Unit = {},
+    tetherOn: Boolean = false,
+    socksPort: Int = 10809,
+    setSocksPort: (Int) -> Unit = {},
+    batteryOff: Boolean = false,
+    onToggleBattery: () -> Unit = {},
+    groupCountry: Boolean = false,
+    setGroupCountry: (Boolean) -> Unit = {},
+    onOpenVersion: () -> Unit = {},
+    tetherApplyNote: String = "",
+    onToggleTether: (Boolean) -> Unit = {},
+    blockIr: Boolean = false,
+    setBlockIr: (Boolean) -> Unit = {},
 ) {
     val t = stringsOf(lang)
     val mb = LocalMb.current
     val rtl = lang == Lang.FA
+    var tetherOpen by remember { mutableStateOf(false) }
 
     Column(
         Modifier
@@ -176,6 +201,8 @@ fun SettingsScreen(
                 SettingSwitchRow(t.killSwitch, t.killSwitchSub, killSwitch) { setKillSwitch(it) }
                 SettingSwitchRow(t.failover, t.failoverSub, failover) { setFailover(it) }
                 SettingSwitchRow(t.autoReconn, t.autoReconnSub, autoReconn) { setAutoReconn(it) }
+                // v2.7: مسدودسازی دامنه‌های .ir — از تونل خارج می‌مانند
+                SettingSwitchRow(t.blockIr, t.blockIrSub, blockIr) { setBlockIr(it) }
             }
         }
 
@@ -274,6 +301,109 @@ fun SettingsScreen(
             }
         }
 
+        // ── ۵½. گاردین — مسدودسازی هوشمند محتوا (v2.7) ──
+        PanelCard(Modifier.padding(top = 12.dp), onClick = onOpenGuardian) {
+            Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(ic(R.drawable.ic_shield_check), null, tint = mb.glow, modifier = Modifier.size(20.dp))
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(t.guardian, color = mb.ink, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                    Text(t.guardianSub, color = mb.dim, fontSize = 12.sp, lineHeight = 16.sp, maxLines = 2)
+                }
+                Text(
+                    if (guardianOn) t.gBlocked else t.gAllowed,
+                    color = if (guardianOn) mb.glow else mb.dim,
+                    fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
+                )
+                Spacer(Modifier.width(6.dp))
+                FwdChevron(rtl)
+            }
+        }
+
+        // ── ۵¾. موتور پیشرفته — حالت پروکسی، Mux، تترینگ، پورت، باتری (v2.7) ──
+        PanelCard(Modifier.padding(top = 12.dp)) {
+            Column(Modifier.fillMaxWidth().padding(16.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(ic(R.drawable.ic_git_branch), null, tint = mb.glow, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text(t.advEngine, color = mb.ink, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                }
+                Spacer(Modifier.height(12.dp))
+                SettingSwitchRow(t.proxyMode, t.proxyModeSub, proxyMode) { setProxyMode(it) }
+                SettingSwitchRow(t.mux, t.muxSub, mux) { setMux(it) }
+                // تترینگ — ردیف ورود به شیت
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(10.dp))
+                        .clickable { tetherOpen = true }
+                        .padding(vertical = 6.dp, horizontal = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text(t.tether, color = mb.ink, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                        Text(
+                            if (tetherOn) t.tetherOnToast else t.tetherSub,
+                            color = mb.dim, fontSize = 12.sp, lineHeight = 16.sp,
+                            maxLines = 2,
+                        )
+                    }
+                    FwdChevron(rtl, Modifier.size(15.dp))
+                }
+                // پورت سوکس/HTTP
+                Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(t.socksPortRow, color = mb.ink, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                        Text(
+                            if (lang == Lang.FA) "HTTP روی پورت +۱ هم باز می‌شود" else "HTTP opens on port +1",
+                            color = mb.dim, fontSize = 12.sp,
+                        )
+                    }
+                    BasicTextField(
+                        value = socksPort.toString(),
+                        onValueChange = { v -> v.filter { it.isDigit() }.take(5).toIntOrNull()?.let { setSocksPort(it) } },
+                        singleLine = true,
+                        textStyle = TextStyle(color = mb.ink, fontSize = 13.sp),
+                        modifier = Modifier
+                            .width(86.dp)
+                            .clip(RoundedCornerShape(50))
+                            .background(mb.night)
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                        decorationBox = { inner -> Box(contentAlignment = Alignment.Center) { inner() } },
+                    )
+                }
+                // باتری
+                Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(t.batteryOff, color = mb.ink, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                        Text(t.batteryOffSub, color = mb.dim, fontSize = 12.sp, lineHeight = 16.sp)
+                    }
+                    Text(
+                        if (batteryOff) t.batteryOffDone else t.batteryOffIdle,
+                        color = if (batteryOff) mb.glow else mb.dim, fontSize = 12.sp,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(50))
+                            .clickable { onToggleBattery() }
+                            .padding(horizontal = 8.dp, vertical = 6.dp),
+                    )
+                }
+            }
+        }
+
+        // ── ۶½. لیست سرورها — پینگ زنده + دسته‌بندی کشور (v2.7) ──
+        PanelCard(Modifier.padding(top = 12.dp)) {
+            Column(Modifier.fillMaxWidth().padding(16.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(ic(R.drawable.ic_globe), null, tint = mb.dim, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text(t.serverListSec, color = mb.ink, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                }
+                Spacer(Modifier.height(12.dp))
+                SettingSwitchRow(t.livePingSet, t.livePingSetDesc, pingLive) { setPingLive(it) }
+                SettingSwitchRow(t.groupCountry, t.groupCountrySub, groupCountry) { setGroupCountry(it) }
+            }
+        }
+
         // ── ۸) حریم خصوصی ──
         PanelCard(Modifier.padding(top = 12.dp), onClick = onOpenPrivacy) {
             Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -300,7 +430,32 @@ fun SettingsScreen(
             }
         }
 
-        // ── ۱۰) درباره اپ ──
+        // ── ۱۰) نسخه — حلقه‌های به‌روزرسانی داخل اپ (v2.7) ──
+        PanelCard(Modifier.padding(top = 12.dp), onClick = onOpenVersion) {
+            Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(ic(R.drawable.ic_info), null, tint = mb.dim, modifier = Modifier.size(20.dp))
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(t.versionRow, color = mb.ink, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        t.aboutLine(BuildConfig.VERSION_NAME),
+                        color = mb.dim, fontSize = 13.sp,
+                    )
+                }
+                Text(
+                    BuildConfig.VERSION_NAME,
+                    color = mb.dim, fontSize = 12.sp,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(50))
+                        .background(mb.night)
+                        .padding(horizontal = 10.dp, vertical = 4.dp),
+                )
+                Spacer(Modifier.width(6.dp))
+                FwdChevron(rtl)
+            }
+        }
+
+        // ── ۱۰½) درباره اپ ──
         PanelCard(Modifier.padding(top = 12.dp)) {
             Column(Modifier.fillMaxWidth().padding(16.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -318,7 +473,106 @@ fun SettingsScreen(
 
         Spacer(Modifier.height(14.dp))
     }
+
+    // ── شیت اشتراک‌گذاری نقطه اتصال (v2.7) ──
+    if (tetherOpen) {
+        val host = remember { wlanIpv4() ?: "192.168.43.1" }
+        androidx.compose.ui.window.Dialog(
+            onDismissRequest = { tetherOpen = false },
+            properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false),
+        ) {
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .background(mb.night.copy(alpha = 0.75f))
+                    .clickable(indication = null, interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }) { tetherOpen = false },
+                contentAlignment = Alignment.BottomCenter,
+            ) {
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
+                        .background(mb.panel)
+                        .padding(horizontal = 20.dp, vertical = 18.dp),
+                ) {
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(ic(R.drawable.ic_wifi), null, tint = mb.glow, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(10.dp))
+                        Text(t.tetherTitle, color = mb.ink, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                        Spacer(Modifier.weight(1f))
+                        Text(
+                            "✕", color = mb.dim, fontSize = 15.sp,
+                            modifier = Modifier
+                                .clip(CircleShape)
+                                .clickable { tetherOpen = false }
+                                .padding(6.dp),
+                        )
+                    }
+                    Text(
+                        t.tetherDesc, color = mb.dim, fontSize = 13.sp, lineHeight = 19.sp,
+                        modifier = Modifier.padding(top = 10.dp),
+                    )
+                    // host / port
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(top = 14.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(mb.night)
+                            .padding(14.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text(t.tetherHost, color = mb.dim, fontSize = 11.sp)
+                            Text(host, color = mb.ink, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                        }
+                        Spacer(Modifier.width(12.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(t.tetherPort, color = mb.dim, fontSize = 11.sp)
+                            Text(
+                                "$port (SOCKS) · ${port + 1} (HTTP)",
+                                color = mb.ink, fontSize = 13.sp, fontWeight = FontWeight.Bold,
+                            )
+                        }
+                    }
+                    Text(
+                        t.applyNextConn, color = mb.gold, fontSize = 12.sp,
+                        modifier = Modifier.padding(top = 10.dp),
+                    )
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(top = 14.dp)
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(if (tetherOn) mb.panelEdge else mb.glow)
+                            .clickable { if (tetherOn) onDisable() else onEnable() }
+                            .padding(vertical = 13.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            if (tetherOn) {
+                                if (lang == Lang.FA) "غیرفعال‌کردن اشتراک‌گذاری" else "Disable sharing"
+                            } else t.tetherOn,
+                            color = if (tetherOn) mb.dim else mb.night,
+                            fontSize = 14.sp, fontWeight = FontWeight.Bold,
+                        )
+                    }
+                }
+            }
+        }
+    }
 }
+
+/** اولین IPv4 غیر-لوکال (معمولاً آی‌پی هات‌اسپوت/وای‌فای گوشی). */
+internal fun wlanIpv4(): String? = runCatching {
+    java.net.NetworkInterface.getNetworkInterfaces().asSequence()
+        .filter { it.isUp && !it.isLoopback }
+        .flatMap { it.inetAddresses.asSequence() }
+        .filterIsInstance<java.net.Inet4Address>()
+        .filter { !it.isLoopbackAddress }
+        .map { it.hostAddress }
+        .firstOrNull()
+}.getOrNull()
 
 @Composable
 private fun LangButton(label: String, active: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {

@@ -189,27 +189,17 @@ object MianboorApi {
     // Telegram proxies — v2.1
     // ------------------------------------------------------------------
 
-    /** لیست دمو/آفلاین — وقتی سرور جواب نداد یا ok=false بود استفاده می‌شود. */
-    private val FALLBACK_TG_PROXIES = listOf(
-        TgProxy(
-            title = "پروکسی طلایی تلگرام", server = "91.107.213.199", port = 443,
-            kind = "mtproto", secret = "ee1603010200ee1603010200aabbccdd", country = "fi",
-        ),
-        TgProxy(
-            title = "پروکسی تلگرام اروپا", server = "5.188.206.14", port = 8443,
-            kind = "mtproto",
-            secret = "dd0000000000000aabbccddeeff00112233445566778899aabbccddeeff0011", country = "nl",
-        ),
-        TgProxy(
-            title = "پروکسی تلگرام ترکیه", server = "soc.mianboor.xyz", port = 1080,
-            kind = "socks", country = "tr",
-        ),
-    )
+    /**
+     * v2.7: لیست دموی جعلی حذف شد — سکرت‌های ساختگی هیچ‌وقت کار نمی‌کنند و کاربر
+     * را گول می‌زدند. حالا اگر سرور جواب نداد یا لیست خالی بود، خالی برمی‌گردد و
+     * شیت پیام «پروکسی در دسترس نیست» نشان می‌دهد.
+     */
+    private val FALLBACK_TG_PROXIES: List<TgProxy> = emptyList()
 
     /**
      * GET /api/client/telegram/proxies — با همان احراز هویت getConfigs (توکن در کوئری).
      * پاسخ: { ok, proxies:[{id,title,server,port,kind,secret,country}] } یا { ok:false, demo:true, proxies:[…] }.
-     * ok=false یا هر خطای شبکه → لیست دموی داخلی — شیت هیچ‌وقت خالی نمی‌ماند.
+     * ok=false یا هر خطای شبکه → لیست خالی (شیت حالت خالی را نشان می‌دهد).
      */
     fun getTgProxies(serverUrl: String, clientToken: String): List<TgProxy> {
         val base = serverUrl.trim().trimEnd('/')

@@ -195,7 +195,9 @@ class MianboorVpnService : VpnService() {
 
         // 2) Bring up the TUN interface first (independent of xray boot — saves
         //    the whole establish() latency out of the critical connect path)
-        if (tun == null) {
+        //    v2.7: حالت پروکسی (proxyMode) — بدون TUN؛ فقط سوکس/HTTP لوکال
+        val proxyOnly = AppPrefs.proxyMode(this)
+        if (tun == null && !proxyOnly) {
             val builder = Builder()
                 .setSession("Mianboor")
                 .setMtu(MTU)
@@ -227,6 +229,9 @@ class MianboorVpnService : VpnService() {
         }
 
         // 3) Launch the bundled xray core — با تنظیمات v2 (استلث + DNS انتخابی)
+        //    v2.7: mux + گاردین + blockIr + پورت سوکس انتخابی + تترینگ (هرترفیس‌شنوی)
+        val socksPort = AppPrefs.socksPort(this)
+        val tether = AppPrefs.tetherOn(this) && !proxyOnly
         val confFile = File(filesDir, "xray.json")
         confFile.writeText(
             XrayConfigBuilder.buildConfigJson(
@@ -237,6 +242,12 @@ class MianboorVpnService : VpnService() {
                 AppPrefs.dnsCustom(this),
                 tgSocks,
                 mp != null || socks != null,
+                mux = AppPrefs.mux(this),
+                guardian = AppPrefs.guardian(this),
+                blockIr = AppPrefs.blockIr(this),
+                socksPort = socksPort,
+                listenAll = tether,
+                withHttpInbound = tether,
             )
         )
         val bin = File(applicationInfo.nativeLibraryDir, "libxray.so")
@@ -249,13 +260,24 @@ class MianboorVpnService : VpnService() {
         Thread { runCatching { proc.inputStream.bufferedReader().forEachLine { } } }.start()
 
         // 4) Wait for the local SOCKS port to come up
-        if (!waitForSocks(XrayConfigBuilder.SOCKS_PORT, timeoutMs = 6000)) {
+        if (!waitForSocks(socksPort, timeoutMs = 6000)) {
             throw IllegalStateException("هسته اتصال راه نیفتاد")
+        }
+
+        // v2.7: حالت پروکسی — بدون TUN؛ اتصال یعنی سوکس لوکال بالاست
+        if (proxyOnly) {
+            if (!link.isNullOrBlank()) AppPrefs.setLastServer(this, link, name, country)
+            VpnState.serverName.value = server.name
+            VpnState.serverCountry.value = country
+            VpnState.coverMsg.value = ""
+            VpnState.errorMessage.value = null
+            VpnState.phase.value = Phase.CONNECTED
+            return
         }
 
         // 5) Start the socks5 tunnel (TUN -> xray)
         val tunConf = File(filesDir, "tunnel.yaml")
-        tunConf.writeText(tunnelYaml())
+        tunConf.writeText(tunnelYaml(socksPort))
         runCatching { TProxyService.stop() }
         val started = TProxyService.start(tunConf.absolutePath, tun!!.fd)
         if (!started) throw IllegalStateException("تونل امن راه نیفتاد")
@@ -284,8 +306,10 @@ class MianboorVpnService : VpnService() {
         statsJob?.cancel()
         statsJob = scope.launch {
             var retries = 0
+            val proxyOnly = AppPrefs.proxyMode(this@MianboorVpnService)
             while (isActive) {
-                if (!TProxyService.isRunning()) {
+                val engineAlive = if (proxyOnly) xray?.isAlive == true else TProxyService.isRunning()
+                if (!engineAlive) {
                     if (AppPrefs.killSwitch(this@MianboorVpnService)) {
                         // ── Kill Switch: TUN باز می‌ماند (ترافیک بلعیده می‌شود) و موتور دوباره برپا می‌شود ──
                         if (retries < 2) {
@@ -327,8 +351,14 @@ class MianboorVpnService : VpnService() {
                     }
                 }
                 val st = TProxyService.stats()
-                VpnState.txBytes.value = if (st.size > 1) st[1] else 0L
-                VpnState.rxBytes.value = if (st.size > 3) st[3] else 0L
+                if (proxyOnly) {
+                    // حالت پروکسی آمار TUN ندارد — صفر می‌ماند
+                    VpnState.txBytes.value = 0L
+                    VpnState.rxBytes.value = 0L
+                } else {
+                    VpnState.txBytes.value = if (st.size > 1) st[1] else 0L
+                    VpnState.rxBytes.value = if (st.size > 3) st[3] else 0L
+                }
                 delay(1000)
             }
         }
@@ -423,7 +453,7 @@ class MianboorVpnService : VpnService() {
     // Helpers
     // ------------------------------------------------------------------
 
-    private fun tunnelYaml(): String = """
+    private fun tunnelYaml(socksPort: Int = XrayConfigBuilder.SOCKS_PORT): String = """
         tunnel:
           mtu: $MTU
           ipv4: 198.18.0.1
@@ -436,7 +466,7 @@ class MianboorVpnService : VpnService() {
             gc-interval: 120
         socks5:
           address: 127.0.0.1
-          port: ${XrayConfigBuilder.SOCKS_PORT}
+          port: $socksPort
           udp: 'udp'
         misc:
           log-level: warn

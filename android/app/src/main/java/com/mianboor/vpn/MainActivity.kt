@@ -96,6 +96,9 @@ import com.mianboor.vpn.ui.LocalMb
 import com.mianboor.vpn.ui.ReferralScreen
 import com.mianboor.vpn.ui.SupportChatScreen
 import com.mianboor.vpn.ui.TgProxySheet
+import com.mianboor.vpn.ui.VerState
+import com.mianboor.vpn.ui.VersionScreen
+import com.mianboor.vpn.ui.GuardianScreen
 import com.mianboor.vpn.ui.MbThemes
 import com.mianboor.vpn.ui.PlansSheet
 import com.mianboor.vpn.ui.ServersScreen
@@ -122,7 +125,7 @@ import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.security.MessageDigest
 
-enum class Screen { HOME, SERVERS, ACCOUNT, SETTINGS, SPLIT, INBOX, REFERRAL, SUPPORT, WALLET, PRIVACY, LOGIN, ADMIN }
+enum class Screen { HOME, SERVERS, ACCOUNT, SETTINGS, SPLIT, INBOX, REFERRAL, SUPPORT, WALLET, PRIVACY, LOGIN, ADMIN, GUARDIAN, VERSION }
 
 data class Entitlement(val plan: String, val expiresAt: Long)
 
@@ -262,7 +265,40 @@ private fun MbAppInner(
     var stealth by remember { mutableStateOf(AppPrefs.stealth(context)) }
     var dnsMode by remember { mutableStateOf(AppPrefs.dnsMode(context)) }
     var dnsCustom by remember { mutableStateOf(AppPrefs.dnsCustom(context)) }
+    // ── v2.7: موتور پیشرفته + گاردین + لیست سرورها ──
+    var mux by remember { mutableStateOf(AppPrefs.mux(context)) }
+    var proxyMode by remember { mutableStateOf(AppPrefs.proxyMode(context)) }
+    var tetherOn by remember { mutableStateOf(AppPrefs.tetherOn(context)) }
+    var socksPort by remember { mutableStateOf(AppPrefs.socksPort(context)) }
+    var groupCountry by remember { mutableStateOf(AppPrefs.groupCountry(context)) }
+    var sortMode by remember { mutableStateOf(AppPrefs.sortMode(context)) }
+    var guardian by remember { mutableStateOf(AppPrefs.guardian(context)) }
+    var blockIr by remember { mutableStateOf(AppPrefs.blockIr(context)) }
+    var verState by remember { mutableStateOf<VerState>(VerState.Idle) }
+    var batteryOff by remember {
+        mutableStateOf(
+            runCatching {
+                val pm = context.getSystemService(android.os.PowerManager::class.java)
+                pm != null && pm.isIgnoringBatteryOptimizations(context.packageName)
+            }.getOrDefault(false)
+        )
+    }
     var favorites by remember { mutableStateOf(AppPrefs.favorites(context)) }
+
+    // v2.7: وضعیت باتری بعد از برگشت از صفحهٔ سیستم تازه شود
+    val lifecycleOwner = androidx.compose.ui.platform.LocalLifecycleOwner.current
+    androidx.compose.runtime.DisposableEffect(lifecycleOwner) {
+        val obs = androidx.lifecycle.LifecycleEventObserver { _, e ->
+            if (e == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                batteryOff = runCatching {
+                    val pm = context.getSystemService(android.os.PowerManager::class.java)
+                    pm != null && pm.isIgnoringBatteryOptimizations(context.packageName)
+                }.getOrDefault(batteryOff)
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(obs)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(obs) }
+    }
 
     var adminCodes by remember { mutableStateOf<List<AdminCode>>(emptyList()) }
     // v2.1: پروکسی‌های تلگرام (پنل مدیر)
@@ -362,26 +398,59 @@ private fun MbAppInner(
         }
     }
 
-    /** OTA: دانلود مستقیم APK نسخهٔ جدید و باز کردن خودکار نصب‌کننده. */
+    /**
+     * v2.7: به‌روزرسانی کاملاً داخل اپ — بدون مرورگر و بدون لینک بیرونی.
+     * چرخه: check → Available → download (با درصد) → ReadyToInstall → نصب session.
+     */
+    fun checkForUpdate() {
+        verState = VerState.Checking
+        scope.launch(Dispatchers.IO) {
+            val rel = Updater.checkLatest(AppPrefs.latestUpdateUrl(context))
+            withContext(Dispatchers.Main) {
+                verState = when {
+                    rel == null -> VerState.CheckFailed
+                    Updater.isNewer(rel.version, BuildConfig.VERSION_NAME) -> VerState.Available(rel.version)
+                    else -> VerState.UpToDate
+                }
+                if (rel != null) AppPrefs.setLatestUpdateUrl(context, rel.apkUrl)
+            }
+        }
+    }
+
+    fun downloadUpdate() {
+        val url = AppPrefs.latestUpdateUrl(context)
+        if (url.isBlank()) { verState = VerState.CheckFailed; return }
+        verState = VerState.Downloading(0)
+        scope.launch(Dispatchers.IO) {
+            runCatching {
+                Updater.download(context, url) { pct, _, _ ->
+                    scope.launch(Dispatchers.Main) {
+                        if (verState is VerState.Downloading) verState = VerState.Downloading(pct)
+                    }
+                }
+            }.onSuccess {
+                withContext(Dispatchers.Main) {
+                    verState = if (Updater.canInstall(context)) VerState.ReadyToInstall else VerState.PermNeeded
+                }
+            }.onFailure {
+                withContext(Dispatchers.Main) { verState = VerState.CheckFailed }
+            }
+        }
+    }
+
+    fun installUpdate() {
+        val ok = Updater.installDownloaded(context)
+        if (!ok) verState = VerState.CheckFailed
+    }
+
+    fun requestInstallPerm() {
+        Updater.requestInstallPermission(context)
+    }
+
+    /** OTA قدیمی — برای سازگاری بنر خانه؛ حالا مسیر داخل-اپی را صدا می‌زند. */
     fun downloadAndInstallUpdate() {
-        val url = AppPrefs.latestUpdateUrl(context).ifBlank { "https://github.com/mostafaiekii/mianboor/releases/latest" }
-        if (!url.endsWith(".apk")) {
-            runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
-            return
-        }
-        try {
-            val dm = context.getSystemService(Context.DOWNLOAD_SERVICE) as android.app.DownloadManager
-            if (otaDownloadId != -1L) dm.remove(otaDownloadId)
-            val req = android.app.DownloadManager.Request(Uri.parse(url))
-                .setTitle("Mianboor update")
-                .setMimeType("application/vnd.android.package-archive")
-                .setNotificationVisibility(android.app.DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-                .setDestinationInExternalFilesDir(context, null, "ota/update.apk")
-            otaDownloadId = dm.enqueue(req)
-            Toast.makeText(context, if (AppPrefs.lang(context) == "fa") "دانلود شروع شد…" else "Download started…", Toast.LENGTH_SHORT).show()
-        } catch (t: Throwable) {
-            runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
-        }
+        checkForUpdate()
+        screen = Screen.VERSION
     }
 
     fun toast(msg: String) {
@@ -1202,6 +1271,8 @@ private fun MbAppInner(
      */
     fun reconnectWithPrefs(applyMsg: String? = null) {
         if (VpnState.phase.value != Phase.CONNECTED) return
+        // v2.7: در حالت پروکسی تلگرام تعویض سرور عادی معنا ندارد
+        if (tgActive) return
         val target = selectedConfig ?: return
         if (applyMsg != null) toast(applyMsg)
         VpnState.phase.value = Phase.DISCONNECTING
@@ -1603,6 +1674,12 @@ private fun MbAppInner(
                         onRenew = { plansReason = "renew" },
                         stealthOn = stealth == "strict",
                         onOpenTgProxy = { tgOpen = true },
+                        favServers = favorites
+                            .mapNotNull { key -> liveConfigs.firstOrNull { it.key == key } },
+                        onFavSelect = { key ->
+                            selectedKey = key
+                            AppPrefs.setSelectedKey(context, key)
+                        },
                     )
                     Screen.INBOX -> InboxScreen(
                         lang = lang,
@@ -1653,6 +1730,12 @@ private fun MbAppInner(
                         },
                         onPremiumTap = { plansReason = "premium-lock" },
                         onBack = { screen = Screen.HOME },
+                        groupCountry = groupCountry,
+                        sortMode = sortMode,
+                        onToggleSort = {
+                            sortMode = if (sortMode == "ping") "az" else "ping"
+                            AppPrefs.setSortMode(context, sortMode)
+                        },
                         serverHost = runCatching {
                             android.net.Uri.parse(AppPrefs.serverUrl(context)).host ?: ""
                         }.getOrDefault(""),
@@ -1770,6 +1853,78 @@ private fun MbAppInner(
                         onOpenPrivacy = { screen = Screen.PRIVACY },
                         onSupport = { openTelegram() },
                         onBack = { screen = Screen.HOME },
+                        // ── v2.7 ──
+                        guardianOn = guardian.isNotEmpty(),
+                        onOpenGuardian = { screen = Screen.GUARDIAN },
+                        proxyMode = proxyMode,
+                        setProxyMode = { v ->
+                            proxyMode = v
+                            AppPrefs.setProxyMode(context, v)
+                            // تونل وصل باید با مود جدید دوباره برپا شود (TUN ↔ بدون TUN)
+                            if (VpnState.phase.value == Phase.CONNECTED) reconnectWithPrefs()
+                        },
+                        mux = mux,
+                        setMux = { v ->
+                            mux = v
+                            AppPrefs.setMux(context, v)
+                            reconnectWithPrefs(t.applyNextConn)
+                        },
+                        tetherOn = tetherOn,
+                        onToggleTether = { v ->
+                            tetherOn = v
+                            AppPrefs.setTetherOn(context, v)
+                            if (v) toast(t.tetherOnToast)
+                            if (VpnState.phase.value == Phase.CONNECTED) reconnectWithPrefs()
+                        },
+                        socksPort = socksPort,
+                        setSocksPort = { v ->
+                            if (v in 1024..65535) {
+                                socksPort = v
+                                AppPrefs.setSocksPort(context, v)
+                            }
+                        },
+                        batteryOff = batteryOff,
+                        onToggleBattery = {
+                            runCatching {
+                                context.startActivity(
+                                    Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS)
+                                        .setData(android.net.Uri.parse("package:$packageName"))
+                                )
+                            }
+                        },
+                        groupCountry = groupCountry,
+                        setGroupCountry = { v ->
+                            groupCountry = v
+                            AppPrefs.setGroupCountry(context, v)
+                        },
+                        blockIr = blockIr,
+                        setBlockIr = { v ->
+                            blockIr = v
+                            AppPrefs.setBlockIr(context, v)
+                            reconnectWithPrefs(t.applyNextConn)
+                        },
+                        onOpenVersion = { screen = Screen.VERSION },
+                    )
+                    Screen.GUARDIAN -> GuardianScreen(
+                        lang = lang,
+                        enabled = guardian,
+                        onToggle = { id ->
+                            val next = if (id in guardian) guardian - id else guardian + id
+                            guardian = next
+                            AppPrefs.setGuardian(context, next)
+                            reconnectWithPrefs(t.applyNextConn)
+                        },
+                        onBack = { screen = Screen.SETTINGS },
+                    )
+                    Screen.VERSION -> VersionScreen(
+                        lang = lang,
+                        version = BuildConfig.VERSION_NAME,
+                        state = verState,
+                        onCheck = { checkForUpdate() },
+                        onDownload = { downloadUpdate() },
+                        onInstall = { installUpdate() },
+                        onPerm = { requestInstallPerm() },
+                        onBack = { verState = VerState.Idle; screen = Screen.SETTINGS },
                     )
                     Screen.SPLIT -> SplitScreen(
                         lang = lang,

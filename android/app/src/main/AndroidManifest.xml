@@ -8,6 +8,8 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SYSTEM_EXEMPTED" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- v2.7: دکمهٔ غیرفعال‌کردن بهینه‌سازی باتری -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <!-- v2: فقط برای اسکن کد QR کانفیگ — هیچ تصویری ذخیره نمی‌شود -->
     <uses-permission android:name="android.permission.CAMERA" />

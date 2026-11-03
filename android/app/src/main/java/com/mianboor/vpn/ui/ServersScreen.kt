@@ -34,6 +34,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -67,6 +68,10 @@ fun ServersScreen(
     onToggleFav: (String) -> Unit = {},
     onSpeedTest: () -> Unit = {},
     onImport: () -> Unit = {},
+    // ── v2.7 ──
+    groupCountry: Boolean = false,
+    sortMode: String = "ping",
+    onToggleSort: () -> Unit = {},
 ) {
     val t = stringsOf(lang)
     val mb = LocalMb.current
@@ -77,11 +82,20 @@ fun ServersScreen(
     val enabled = configs.filter { it.enabled }
     val freeEnabled = enabled.filter { !it.premium }
     val premEnabled = enabled.filter { it.premium }
-    // سنجاق‌شده‌ها اول، بعد بقیه — هر دو با کم‌ترین پینگ بالا
+    // سنجاق‌شده‌ها اول، بعد مرتب‌سازی انتخابی (پینگ یا الفبا — v2.7)
+    val sorter: (List<ConfigItem>) -> List<ConfigItem> = { arr ->
+        if (sortMode == "az") arr.sortedBy { it.name.lowercase() } else arr.sortedBy { it.ping }
+    }
     val base = (if (tab == "free") freeEnabled else premEnabled)
         .filter { it.name.lowercase().contains(q.lowercase()) }
-    val list = base.filter { it.key in favorites }.sortedBy { it.ping } +
-        base.filter { it.key !in favorites }.sortedBy { it.ping }
+    val list = sorter(base.filter { it.key in favorites }) +
+        sorter(base.filter { it.key !in favorites })
+    // گروه‌بندی کشوری (v2.7): سرفصل پرچم + نام هر کشور
+    val groups: List<Pair<String, List<ConfigItem>>> = if (groupCountry) {
+        val seen = LinkedHashMap<String, MutableList<ConfigItem>>()
+        list.forEach { c -> seen.getOrPut(c.country) { mutableListOf() }.add(c) }
+        seen.map { (cc, items) -> cc to items }
+    } else emptyList()
     // Smart Connect really measures: lowest live ping among the servers this user can join.
     val pool = if (premiumUser || freeEnabled.isEmpty()) enabled else freeEnabled
     val best = pool.minByOrNull { it.ping }
@@ -189,30 +203,71 @@ fun ServersScreen(
             ServerTabBtn(t.tabPremium, premEnabled.size, tab == "premium", Modifier.weight(1f)) { tab = "premium" }
         }
 
-        // smart connect — متن خلاصه + آیکون درشت‌تر
+        // smart connect — v2.7: پنل شیشه‌ای با رفلکس نورِ مورب (عین دکمهٔ تلگرام خانه)
+        val smartShine = rememberInfiniteTransition(label = "smartshine")
+        val smartShineX by smartShine.animateFloat(
+            initialValue = -1.8f,
+            targetValue = 2.8f,
+            animationSpec = infiniteRepeatable(
+                animation = androidx.compose.animation.core.keyframes {
+                    durationMillis = 5000
+                    2.8f at 1600
+                    2.8f at 5000
+                },
+                repeatMode = RepeatMode.Restart,
+            ),
+            label = "smartshinex",
+        )
         Row(
             Modifier
                 .fillMaxWidth()
                 .padding(top = 12.dp)
-                .clip(RoundedCornerShape(12.dp))
-                .background(mb.glow.copy(alpha = 0.1f))
-                .border(1.dp, mb.glow.copy(alpha = 0.3f), RoundedCornerShape(12.dp))
+                .clip(RoundedCornerShape(14.dp))
+                .background(mb.glow.copy(alpha = 0.12f))
+                .border(1.dp, mb.glow.copy(alpha = 0.45f), RoundedCornerShape(14.dp))
+                .drawWithContent {
+                    drawContent()
+                    // باند نور مورب — شیشه‌ای که هر ۵ ثانیه نور از رویش می‌گذرد
+                    val w = size.width
+                    val h = size.height
+                    val x = smartShineX * w
+                    drawRect(
+                        brush = androidx.compose.ui.graphics.Brush.linearGradient(
+                            colors = listOf(
+                                androidx.compose.ui.graphics.Color.Transparent,
+                                androidx.compose.ui.graphics.Color.White.copy(alpha = 0.38f),
+                                androidx.compose.ui.graphics.Color.Transparent,
+                            ),
+                            start = Offset(x, 0f),
+                            end = Offset(x + w * 0.42f, h * 1.4f),
+                        ),
+                    )
+                }
                 .clickable { best?.let { onSelect(it.key) } }
-                .padding(horizontal = 16.dp, vertical = 12.dp),
+                .padding(horizontal = 16.dp, vertical = 14.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Icon(ic(R.drawable.ic_zap), null, tint = mb.glow, modifier = Modifier.size(26.dp))
+            Box(
+                Modifier
+                    .size(38.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(mb.glow.copy(alpha = 0.16f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(ic(R.drawable.ic_zap), null, tint = mb.glow, modifier = Modifier.size(22.dp))
+            }
             Spacer(Modifier.width(12.dp))
-            Text(
-                t.smart,
-                color = mb.ink,
-                fontSize = 14.sp,
-                fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.weight(1f),
-            )
-            if (best != null) {
-                Text("${best.ping} ms", color = mb.dim, fontSize = 13.sp)
-                Spacer(Modifier.width(10.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    t.smart,
+                    color = mb.ink,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Bold,
+                )
+                Text(
+                    if (best != null) "${t.tgFastest} · ${best.ping} ms" else t.noMatch,
+                    color = mb.dim, fontSize = 12.sp,
+                )
             }
             FwdChevron(rtl, Modifier.size(16.dp))
         }
@@ -228,6 +283,23 @@ fun ServersScreen(
             Spacer(Modifier.width(6.dp))
             Text(t.livePing, color = mb.dim, fontSize = 13.sp)
             Spacer(Modifier.width(10.dp))
+            // v2.7: دکمهٔ مرتب‌سازی — پینگ ↔ الفبا
+            Row(
+                Modifier
+                    .clip(RoundedCornerShape(50))
+                    .background(mb.panel)
+                    .border(1.dp, mb.panelEdge, RoundedCornerShape(50))
+                    .clickable { onToggleSort() }
+                    .padding(horizontal = 10.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    if (sortMode == "az") t.sortAz else t.sortPing,
+                    color = mb.dim, fontSize = 11.sp, fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                )
+            }
+            Spacer(Modifier.width(8.dp))
             SyncStatusText(lang, syncing, syncOk, lastSyncAt, Modifier.weight(1f))
         }
 
@@ -260,19 +332,51 @@ fun ServersScreen(
             )
         }
 
-        // list
+        // list — v2.7: یا لیست ساده یا گروه‌بندی کشوری با سرفصل
         LazyColumn(
             Modifier.fillMaxWidth().weight(1f).padding(top = 8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            items(list, key = { it.key }) { c ->
-                ServerRow(
-                    c = c, lang = lang, selected = c.key == selectedKey,
-                    locked = c.premium && !premiumUser, isBest = best?.key == c.key,
-                    fav = c.key in favorites,
-                    onToggleFav = onToggleFav,
-                    onClick = { if (c.premium && !premiumUser) onPremiumTap() else onSelect(c.key) },
-                )
+            if (groupCountry && groups.isNotEmpty()) {
+                groups.forEach { (cc, items) ->
+                    item(key = "hdr-$cc") {
+                        Row(
+                            Modifier.fillMaxWidth().padding(top = 6.dp, bottom = 2.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Flag(cc, 20.dp)
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                countryName(cc, lang),
+                                color = mb.ink, fontSize = 13.sp, fontWeight = FontWeight.Bold,
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                "${items.size}",
+                                color = mb.dim, fontSize = 11.sp,
+                            )
+                        }
+                    }
+                    items(items, key = { it.key }) { c ->
+                        ServerRow(
+                            c = c, lang = lang, selected = c.key == selectedKey,
+                            locked = c.premium && !premiumUser, isBest = best?.key == c.key,
+                            fav = c.key in favorites,
+                            onToggleFav = onToggleFav,
+                            onClick = { if (c.premium && !premiumUser) onPremiumTap() else onSelect(c.key) },
+                        )
+                    }
+                }
+            } else {
+                items(list, key = { it.key }) { c ->
+                    ServerRow(
+                        c = c, lang = lang, selected = c.key == selectedKey,
+                        locked = c.premium && !premiumUser, isBest = best?.key == c.key,
+                        fav = c.key in favorites,
+                        onToggleFav = onToggleFav,
+                        onClick = { if (c.premium && !premiumUser) onPremiumTap() else onSelect(c.key) },
+                    )
+                }
             }
             if (list.isEmpty()) {
                 item { EmptyHint(if (enabled.isEmpty()) t.noServers else t.noMatch) }

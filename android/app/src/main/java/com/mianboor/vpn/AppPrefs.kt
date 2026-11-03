@@ -98,6 +98,44 @@ object AppPrefs {
     fun deadServers(c: Context): Set<String> = stringSet(c, "dead_servers")
     fun setDeadServers(c: Context, v: Set<String>) { setStringSet(c, "dead_servers", v) }
 
+    // ── v2.7: موتور پیشرفته + گاردین + لیست سرورها ──
+
+    /** Multiplexer — چند استریم روی یک اتصال. */
+    fun mux(c: Context): Boolean = p(c).getBoolean("mux", false)
+    fun setMux(c: Context, v: Boolean) { ed(c).putBoolean("mux", v).apply() }
+
+    /** حالت پروکسی (بدون TUN) — فقط سوکس/HTTP لوکال. */
+    fun proxyMode(c: Context): Boolean = p(c).getBoolean("proxy_mode", false)
+    fun setProxyMode(c: Context, v: Boolean) { ed(c).putBoolean("proxy_mode", v).apply() }
+
+    /** اشتراک‌گذاری نقطه اتصال — سوکس روی همهٔ اینترفیس‌ها باز می‌شود. */
+    fun tetherOn(c: Context): Boolean = p(c).getBoolean("tether_on", false)
+    fun setTetherOn(c: Context, v: Boolean) { ed(c).putBoolean("tether_on", v).apply() }
+
+    /** پورت سوکس/HTTP لوکال. */
+    fun socksPort(c: Context): Int = p(c).getInt("socks_port", 10809)
+    fun setSocksPort(c: Context, v: Int) { ed(c).putInt("socks_port", v.coerceIn(1024, 65535)).apply() }
+
+    /** دسته‌بندی سرورها بر اساس کشور. */
+    fun groupCountry(c: Context): Boolean = p(c).getBoolean("group_country", false)
+    fun setGroupCountry(c: Context, v: Boolean) { ed(c).putBoolean("group_country", v).apply() }
+
+    /** مرتب‌سازی لیست سرورها: ping | az. */
+    fun sortMode(c: Context): String = p(c).getString("sort_mode", "ping") ?: "ping"
+    fun setSortMode(c: Context, v: String) { ed(c).putString("sort_mode", v).apply() }
+
+    /** دسته‌های فعال گاردین — پیش‌فرض: تبلیغات + ترکر + بزرگسال. */
+    fun guardian(c: Context): Set<String> {
+        val saved = stringSet(c, "guardian_cats")
+        if (saved.isNotEmpty()) return saved
+        return setOf("ads", "trackers", "adult")
+    }
+    fun setGuardian(c: Context, v: Set<String>) { setStringSet(c, "guardian_cats", v) }
+
+    /** مسدود کردن اتصالات .ir حین اتصال — دامنه‌های ایرانی بیرون تونل می‌مانند. */
+    fun blockIr(c: Context): Boolean = p(c).getBoolean("block_ir", false)
+    fun setBlockIr(c: Context, v: Boolean) { ed(c).putBoolean("block_ir", v).apply() }
+
     // ── split tunneling ───────────────────────────────────────────────
 
     fun splitMode(c: Context): String = p(c).getString("split_mode", "exclude") ?: "exclude"
