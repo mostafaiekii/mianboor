@@ -119,7 +119,7 @@ fun AccountScreen(
     val remainPct = when {
         premium -> 1f
         trialLocked -> 0f
-        else -> (1f - usedGb / FREE_QUOTA_GB).coerceIn(0f, 1f)
+        else -> (1f - (usedGb / FREE_QUOTA_GB).toFloat()).coerceIn(0f, 1f)
     }
     val vipDataGb = String.format(java.util.Locale.US, "%.1f", giftDays * 0.25)
     val creditDays = if (expiresAt > 0)
