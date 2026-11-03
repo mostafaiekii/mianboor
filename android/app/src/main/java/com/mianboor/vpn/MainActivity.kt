@@ -137,12 +137,55 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         handleRefDeepLink(intent)
+        handleInstallResult(intent)
         setContent { MbApp() }
     }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         handleRefDeepLink(intent)
+        handleInstallResult(intent)
+    }
+
+    /**
+     * v2.8.1 — ریشهٔ باگ «نصب هیچ اتفاقی نمی‌افتد»:
+     * از اندروید ۱۲ به بعد PackageInstaller دیالوگ تأیید را خودش باز نمی‌کند؛
+     * نتیجهٔ commit با STATUS_PENDING_USER_ACTION و یک Intent داخلی می‌آید که
+     * باید همین‌جا startActivity شود — وگرنه هیچ دیالوگی هرگز ظاهر نمی‌شود.
+     */
+    private fun handleInstallResult(intent: Intent?) {
+        if (intent?.action != "com.mianboor.vpn.INSTALL_RESULT") return
+        val pi = android.content.pm.PackageInstaller
+        val status = intent.getIntExtra(pi.EXTRA_STATUS, Int.MIN_VALUE)
+        val fa = AppPrefs.lang(this) == "fa"
+        when (status) {
+            pi.STATUS_PENDING_USER_ACTION -> {
+                val confirm: Intent? = if (Build.VERSION.SDK_INT >= 33)
+                    intent.getParcelableExtra(Intent.EXTRA_INTENT, Intent::class.java)
+                else
+                    @Suppress("DEPRECATION")
+                    intent.getParcelableExtra(Intent.EXTRA_INTENT)
+                if (confirm != null) runCatching {
+                    confirm.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    startActivity(confirm)
+                }
+            }
+            pi.STATUS_SUCCESS -> hostToast(if (fa) "نسخهٔ جدید نصب شد ✓" else "New version installed ✓")
+            Int.MIN_VALUE -> Unit // بدون وضعیت — بی‌خیال
+            else -> {
+                val detail = intent.getStringExtra(pi.EXTRA_STATUS_MESSAGE) ?: status.toString()
+                hostToast(
+                    if (fa) "نصب انجام نشد — دوباره تلاش کن ($detail)"
+                    else "Install failed — try again ($detail)"
+                )
+            }
+        }
+    }
+
+    private fun hostToast(msg: String) {
+        runCatching {
+            android.widget.Toast.makeText(this, msg, android.widget.Toast.LENGTH_LONG).show()
+        }
     }
 
     /** دیپ‌لینک دعوت دوستان — mianboor://ref/CODE از صفحهٔ فرود سایت. */
@@ -286,6 +329,8 @@ private fun MbAppInner(
     var favorites by remember { mutableStateOf(AppPrefs.favorites(context)) }
 
     // v2.7: وضعیت باتری بعد از برگشت از صفحهٔ سیستم تازه شود
+    // v2.8.1: وضعیت صفحهٔ نسخه هم بعد از برگشت از «اجازهٔ نصب» تازه شود —
+    // بدون این، کاربر اجازه می‌دهد ولی دکمه «اجازهٔ نصب» می‌ماند تا خروج/ورود کامل.
     val lifecycleOwner = androidx.compose.ui.platform.LocalLifecycleOwner.current
     androidx.compose.runtime.DisposableEffect(lifecycleOwner) {
         val obs = androidx.lifecycle.LifecycleEventObserver { _, e ->
@@ -294,6 +339,9 @@ private fun MbAppInner(
                     val pm = context.getSystemService(android.os.PowerManager::class.java)
                     pm != null && pm.isIgnoringBatteryOptimizations(context.packageName)
                 }.getOrDefault(batteryOff)
+                if (verState is VerState.PermNeeded && Updater.canInstall(context)) {
+                    verState = VerState.ReadyToInstall
+                }
             }
         }
         lifecycleOwner.lifecycle.addObserver(obs)
@@ -442,7 +490,11 @@ private fun MbAppInner(
 
     fun installUpdate() {
         val ok = Updater.installDownloaded(context)
-        if (!ok) verState = VerState.CheckFailed
+        if (!ok) {
+            // v2.8.1: در ReadyToInstall بمان تا کاربر دوباره تلاش کند — CheckFailed گمراه‌کننده بود
+            verState = VerState.ReadyToInstall
+            toast(if (lang == Lang.FA) "شروع نصب نشد — یک بار دیگر تلاش کن" else "Couldn’t start the install — try again")
+        }
     }
 
     fun requestInstallPerm() {

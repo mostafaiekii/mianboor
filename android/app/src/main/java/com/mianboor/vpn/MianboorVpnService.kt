@@ -248,21 +248,27 @@ class MianboorVpnService : VpnService() {
         }
         val tether = AppPrefs.tetherOn(this) && !proxyOnly
         val confFile = File(filesDir, "xray.json")
-        val confJson = XrayConfigBuilder.buildConfigJson(
-            server,
-            AppPrefs.blockQuic(this),
-            AppPrefs.stealth(this),
-            AppPrefs.dnsMode(this),
-            AppPrefs.dnsCustom(this),
-            tgSocks,
-            mp != null || socks != null,
-            mux = AppPrefs.mux(this),
-            guardian = AppPrefs.guardian(this),
-            blockIr = AppPrefs.blockIr(this),
-            socksPort = socksPort,
-            listenAll = tether,
-            withHttpInbound = tether,
-        )
+        // v2.8.1: ساخت کانفیگ هم گارد دارد — هر خطای غیرمنتظره پیام مرحله‌دار می‌گیرد
+        // تا دیگر هرگز «اتصال برقرار نشد» عمومی برای کاربر نیاید
+        val confJson = try {
+            XrayConfigBuilder.buildConfigJson(
+                server,
+                AppPrefs.blockQuic(this),
+                AppPrefs.stealth(this),
+                AppPrefs.dnsMode(this),
+                AppPrefs.dnsCustom(this),
+                tgSocks,
+                mp != null || socks != null,
+                mux = AppPrefs.mux(this),
+                guardian = AppPrefs.guardian(this),
+                blockIr = AppPrefs.blockIr(this),
+                socksPort = socksPort,
+                listenAll = tether,
+                withHttpInbound = tether,
+            )
+        } catch (t: Throwable) {
+            throw ConnectFail("ساخت پیکربندی هسته شکست خورد", t.javaClass.simpleName)
+        }
         try {
             confFile.writeText(confJson)
         } catch (t: Throwable) {
