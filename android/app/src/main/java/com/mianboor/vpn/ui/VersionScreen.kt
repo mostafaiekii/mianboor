@@ -270,6 +270,7 @@ fun VersionScreen(
                 ) { onCheck() }
             }
             VerState.UpToDate -> {} // دمو: دکمه ندارد
+            VerState.Checking -> {} // در حال بررسی — بدون دکمه
             is VerState.Available -> {
                 PillButton(t.verDownloadBtn, mb.gold, mb.night, Modifier.padding(top = 16.dp)) { onDownload() }
             }
