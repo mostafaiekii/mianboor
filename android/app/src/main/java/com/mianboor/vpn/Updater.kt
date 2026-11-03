@@ -240,17 +240,21 @@ object Updater {
         }.getOrDefault(false)
 
     /**
-     * نصب APK دانلودشده — دو مسیر پشت سر هم:
-     *
-     *   ۱) PackageInstaller session — از اندروید ۱۲ به بعد دیالوگ تأیید را خودِ اپِ
-     *      نصب‌کننده باید باز کند: نتیجهٔ commit با STATUS_PENDING_USER_ACTION به
-     *      MainActivity برمی‌گردد و MainActivity باید startActivity بزند (v2.8.1).
-     *   ۲) اگر مسیر ۱ به هر دلیل (ROM خاص، SecurityException، …) شروع نشد —
-     *      فال‌بک: نصب‌کنندهٔ سیستم با FileProvider. همان دیالوگ تأیید، بدون مرورگر.
-     *
-     * خروجی true فقط یعنی «فرایند نصب شروع شد» — نتیجهٔ نهایی از INSTALL_RESULT می‌آید.
+     * نسخهٔ داخل APK دانلودشده — برای نمایش «در حال نصب نسخهٔ …» و کشف
+     * APK کهنه (نسخهٔ قبلی/همان نسخهٔ فعلی) که باید دوباره دانلود شود.
      */
-    fun installDownloaded(c: Context): Boolean = installViaSession(c) || installViaIntent(c)
+    fun apkVersion(c: Context): String? = runCatching {
+        val apk = apkFile(c)
+        if (!apk.exists()) return@runCatching null
+        val pi = c.packageManager.getPackageArchiveInfo(apk.absolutePath, 0) ?: return@runCatching null
+        pi.versionName
+    }.getOrNull()
+
+    /** نسخهٔ APK قدیمی یا همان نسخهٔ فعلی است؟ → باید دوباره دانلود شود. */
+    fun apkIsStale(c: Context): Boolean {
+        val v = apkVersion(c) ?: return true
+        return parseVersion(v) <= parseVersion(com.mianboor.vpn.BuildConfig.VERSION_NAME)
+    }
 
     /** APK سالم؟ — وجود + حجم واقعی + امضای ZIP («PK») تا فایل خراب هرگز به نصب نرسد. */
     private fun validApk(f: File): Boolean =
@@ -262,7 +266,39 @@ object Updater {
             }
         }.getOrDefault(false)
 
-    /** مسیر ۱ — PackageInstaller session (نتیجه به MainActivity/INSTALL_RESULT). */
+    /**
+     * نصب APK دانلودشده — v2.9 دو مسیر پشت سر هم:
+     *
+     *   ۱) مسیر اصلی — نصب‌کنندهٔ سیستم با FileProvider (ACTION_INSTALL_PACKAGE):
+     *      بلافاصله دیالوگ سیستم باز می‌شود («نصب» → تمام). این مسیر در همهٔ
+     *      دستگاه‌ها و همهٔ اندرویدها دیالوگ را نمایش می‌دهد و به PendingIntent
+     *      و رفتار رام‌ها وابسته نیست — ریشهٔ باگ «هیچ اتفاقی نمی‌افتد» همین بود.
+     *   ۲) فال‌بک — PackageInstaller session با BroadcastReceiver (در مانیفست ثبت
+     *      شده؛ حتی اگر اپ بسته باشد هم STATUS_PENDING_USER_ACTION را می‌گیرد و
+     *      دیالوگ تأیید را باز می‌کند).
+     *
+     * خروجی true فقط یعنی «فرایند نصب شروع شد».
+     */
+    fun installDownloaded(c: Context): Boolean = installViaIntent(c) || installViaSession(c)
+
+    /** مسیر ۱ — نصب‌کنندهٔ سیستم با FileProvider (دیالوگ فوری؛ بدون مرورگر، بدون گیت‌هاب). */
+    private fun installViaIntent(c: Context): Boolean = runCatching {
+        val apk = apkFile(c)
+        if (!validApk(apk)) return@runCatching false
+        val uri = androidx.core.content.FileProvider.getUriForFile(
+            c, c.packageName + ".fileprovider", apk,
+        )
+        val i = Intent(Intent.ACTION_INSTALL_PACKAGE)
+            .setDataAndType(uri, "application/vnd.android.package-archive")
+            .addFlags(
+                Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                    Intent.FLAG_ACTIVITY_NEW_TASK
+            )
+        c.startActivity(i)
+        true
+    }.getOrElse { false }
+
+    /** مسیر ۲ — PackageInstaller session (نتیجه به InstallStatusReceiver). */
     private fun installViaSession(c: Context): Boolean = runCatching {
         val apk = apkFile(c)
         if (!validApk(apk)) return@runCatching false
@@ -279,33 +315,15 @@ object Updater {
                     s.fsync(out)
                 }
             }
-            val intent = Intent(c, MainActivity::class.java)
+            val intent = Intent(c, InstallStatusReceiver::class.java)
                 .setAction("com.mianboor.vpn.INSTALL_RESULT")
             val piFlags = if (Build.VERSION.SDK_INT >= 31)
                 android.app.PendingIntent.FLAG_MUTABLE or android.app.PendingIntent.FLAG_UPDATE_CURRENT
             else
                 android.app.PendingIntent.FLAG_UPDATE_CURRENT
-            val status = android.app.PendingIntent.getActivity(c, sid, intent, piFlags)
+            val status = android.app.PendingIntent.getBroadcast(c, sid, intent, piFlags)
             s.commit(status.intentSender)
         }
-        true
-    }.getOrElse { false }
-
-    /** مسیر ۲ — نصب‌کنندهٔ سیستم با FileProvider (فال‌بک امن؛ بدون مرورگر، بدون گیت‌هاب). */
-    private fun installViaIntent(c: Context): Boolean = runCatching {
-        val apk = apkFile(c)
-        if (!validApk(apk)) return@runCatching false
-        val uri = androidx.core.content.FileProvider.getUriForFile(
-            c, c.packageName + ".fileprovider", apk,
-        )
-        c.startActivity(
-            Intent(Intent.ACTION_INSTALL_PACKAGE)
-                .setDataAndType(uri, "application/vnd.android.package-archive")
-                .addFlags(
-                    Intent.FLAG_GRANT_READ_URI_PERMISSION or
-                        Intent.FLAG_ACTIVITY_NEW_TASK
-                )
-        )
         true
     }.getOrElse { false }
 }

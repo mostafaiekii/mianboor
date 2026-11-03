@@ -372,7 +372,14 @@ object XrayConfigBuilder {
         socksPort: Int = SOCKS_PORT,
         listenAll: Boolean = false,
         withHttpInbound: Boolean = false,
+        minimal: Boolean = false,
     ): String {
+        // v2.9 — حالت minimal (خودترمیم): اگر هسته با کانفیگ کامل بالا نیامد،
+        // همهٔ قابلیت‌های اختیاری حذف می‌شوند تا هسته «حتماً» بالا بیاید.
+        val effBlockQuic = if (minimal) false else blockQuic
+        val effStealth = if (minimal) "normal" else stealth
+        val effMux = if (minimal) false else mux
+        val effGuardian = if (minimal) emptySet() else guardian
         val listenAddr = if (listenAll) "0.0.0.0" else "127.0.0.1"
         val socksIn = JSONObject()
             .put("tag", "socks-in")
@@ -404,12 +411,14 @@ object XrayConfigBuilder {
             // بهینه‌سازی سرعت: حذف Nagle (tcpNoDelay) و TCP Fast Open در صورت پشتیبانی سرور —
             // دست‌دادن (handshake) سریع‌تر و تأخیر کمتر برای وب‌سوکت/CDN
             val stream = proxy.optJSONObject("streamSettings") ?: JSONObject()
-            stream.put(
-                "sockopt",
-                JSONObject().put("tcpFastOpen", true).put("tcpNoDelay", true)
-            )
+            if (!minimal) {
+                stream.put(
+                    "sockopt",
+                    JSONObject().put("tcpFastOpen", true).put("tcpNoDelay", true)
+                )
+            }
             // حالت سخت‌گیر ضد-فیلترینگ: تیکه‌تیکه‌کردن TLS ClientHello
-            if (stealth == "strict") {
+            if (effStealth == "strict") {
                 val sec = stream.optString("security")
                 if (sec == "tls" || sec == "reality") {
                     stream.put(
@@ -423,7 +432,7 @@ object XrayConfigBuilder {
             }
             proxy.put("streamSettings", stream)
             // v2.7: Multiplexer — چند استریم روی یک اتصال، بار handshake کمتر
-            if (mux) {
+            if (effMux) {
                 proxy.put(
                     "mux",
                     JSONObject().put("enabled", true).put("concurrency", 8)
@@ -468,7 +477,7 @@ object XrayConfigBuilder {
                     .put("port", 53).put("network", "udp")
                     .put("outboundTag", "dns-out")
             )
-        if (blockQuic) {
+        if (effBlockQuic) {
             // ۲) بستن QUIC (UDP/443): مرورگر بلافاصله روی HTTP/2-TCP ادامه می‌دهد
             rules.put(
                 JSONObject().put("type", "field")
@@ -477,7 +486,7 @@ object XrayConfigBuilder {
             )
         }
         // v2.7: گاردین — مسدودسازی محتوا بر اساس دسته‌های انتخابی کاربر
-        val guardianDomains = guardianRuleDomains(guardian)
+        val guardianDomains = guardianRuleDomains(effGuardian)
         if (guardianDomains.isNotEmpty()) {
             rules.put(
                 JSONObject().put("type", "field")
@@ -485,16 +494,12 @@ object XrayConfigBuilder {
                     .put("outboundTag", "block")
             )
         }
-        if (blockIr && !tgOnly) {
-            // v2.7: دامنه‌های ایرانی از تونل خارج می‌مانند (مستقیم)
+        if (blockIr && !tgOnly && !minimal) {
+            // v2.9: فقط دامنه‌های ایرانی از تونل خارج می‌مانند — قانون geoip:ir
+            // حذف شد چون geoip.dat روی اندروید موجود نیست و xray را CRASH می‌کرد.
             rules.put(
                 JSONObject().put("type", "field")
-                    .put("domain", JSONArray(listOf("domain:ir")))
-                    .put("outboundTag", "direct")
-            )
-            rules.put(
-                JSONObject().put("type", "field")
-                    .put("ip", JSONArray(listOf("geoip:ir")))
+                    .put("domain", JSONArray(listOf("domain:ir", "domain:xn--mgba3a4f16a.ir", "domain:xn--mgba3a4fra.ir")))
                     .put("outboundTag", "direct")
             )
         }
@@ -538,23 +543,67 @@ object XrayConfigBuilder {
     }
 
     /**
-     * v2.7: دامنه‌های گاردین — فقط دسته‌های واقعی و بدون وابستگی به geosite‌های
-     * ناشناخته (اگر geosite ناموجود در کانفیگ باشد، xray بالا نمی‌آید!)
+     * v2.9 — ریشهٔ باگ «هیچ کانفیگی وصل نمی‌شه»:
+     * باینری Xray اندروید فایل geosite.dat ندارد و اگر قانونی مثل
+     * geosite:category-ads-all در کانفیگ باشد، هسته در همان ابتدا CRASH می‌کند
+     * (failed to load geosite > geosite.dat: no such file) — پس هر اتصالی شکست
+     * می‌خورد. حالا همهٔ دسته‌های گاردین با لیست دامنهٔ INLINE ساخته می‌شوند؛
+     * هیچ وابستگی به geosite/geoip دیگر در کل کانفیگ وجود ندارد.
      */
     private fun guardianRuleDomains(cats: Set<String>): List<String> {
         val out = mutableListOf<String>()
-        if ("ads" in cats) out.add("geosite:category-ads-all")
+        if ("ads" in cats) out.addAll(
+            listOf(
+                "domain:doubleclick.net", "domain:googlesyndication.com",
+                "domain:googleadservices.com", "domain:adservice.google.com",
+                "domain:admob.com", "domain:ads.yahoo.com", "domain:advertising.com",
+                "domain:adnxs.com", "domain:adsrvr.org", "domain:pubmatic.com",
+                "domain:rubiconproject.com", "domain:openx.net", "domain:criteo.com",
+                "domain:criteo.net", "domain:taboola.com", "domain:outbrain.com",
+                "domain:casalemedia.com", "domain:bidswitch.net", "domain:sharethrough.com",
+                "domain:smartadserver.com", "domain:teads.tv", "domain:yieldmo.com",
+                "domain:33across.com", "domain:moatads.com", "domain:amazon-adsystem.com",
+                "domain:adcolony.com", "domain:applovin.com", "domain:mopub.com",
+                "domain:ironsrc.com", "domain:chartboost.com", "domain:vungle.com",
+                "domain:startapp.com", "domain:inmobi.com", "domain:unityads.unity3d.com",
+                "domain:appsflyer.com", "domain:adjust.com", "domain:kochava.com",
+                "domain:branch.io", "domain:zedo.com", "domain:ads-twitter.com",
+                "domain:analytics.tiktok.com", "domain:ads.linkedin.com",
+            )
+        )
         if ("trackers" in cats) out.addAll(
             listOf(
                 "domain:google-analytics.com", "domain:googletagmanager.com",
-                "domain:doubleclick.net", "domain:googlesyndication.com",
+                "domain:analytics.google.com", "domain:doubleclick.net",
                 "domain:hotjar.com", "domain:mixpanel.com", "domain:scorecardresearch.com",
-                "domain:segment.io", "domain:amplitude.com",
+                "domain:quantserve.com", "domain:segment.io", "domain:segment.com",
+                "domain:amplitude.com", "domain:fullstory.com", "domain:clarity.ms",
+                "domain:crashlytics.com", "domain:matomo.cloud", "domain:mouseflow.com",
+                "domain:luckyorange.com", "domain:crazyegg.com",
             )
         )
-        if ("adult" in cats) out.add("geosite:category-porn")
+        if ("adult" in cats) out.addAll(
+            listOf(
+                "domain:pornhub.com", "domain:xvideos.com", "domain:xnxx.com",
+                "domain:xhamster.com", "domain:redtube.com", "domain:youporn.com",
+                "domain:tube8.com", "domain:spankbang.com", "domain:youjizz.com",
+                "domain:chaturbate.com", "domain:livejasmin.com", "domain:bongacams.com",
+                "domain:stripchat.com", "domain:camsoda.com", "domain:onlyfans.com",
+                "domain:brazzers.com", "domain:cam4.com", "domain:camfrog.com",
+                "domain:hclips.com", "domain:hdzog.com", "domain:hotmovs.com",
+                "domain:txxx.com", "domain:upornia.com", "domain:vjav.com",
+            )
+        )
         if ("yt" in cats) out.addAll(listOf("domain:youtube.com", "domain:ytimg.com", "domain:youtu.be", "domain:googlevideo.com"))
-        if ("gambling" in cats) out.add("geosite:category-gambling")
+        if ("gambling" in cats) out.addAll(
+            listOf(
+                "domain:bet365.com", "domain:betfair.com", "domain:williamhill.com",
+                "domain:betway.com", "domain:1xbet.com", "domain:pokerstars.com",
+                "domain:partypoker.com", "domain:888.com", "domain:casino.com",
+                "domain:unibet.com", "domain:bwin.com", "domain:parimatch.com",
+                "domain:leonbets.com", "domain:melbet.com", "domain:pin-up.casino",
+            )
+        )
         if ("gov" in cats) out.addAll(listOf("domain:gov.ir", "domain:dolat.ir", "domain:president.ir"))
         if ("pay" in cats) out.addAll(listOf("domain:paypal.com", "domain:stripe.com", "domain:coinbase.com"))
         if ("social" in cats) out.addAll(
@@ -563,7 +612,14 @@ object XrayConfigBuilder {
                 "domain:x.com", "domain:tiktok.com", "domain:snapchat.com",
             )
         )
-        if ("crypto" in cats) out.add("geosite:category-cryptocurrency")
+        if ("crypto" in cats) out.addAll(
+            listOf(
+                "domain:binance.com", "domain:coinbase.com", "domain:kraken.com",
+                "domain:kucoin.com", "domain:okx.com", "domain:bybit.com",
+                "domain:bitfinex.com", "domain:bithumb.com", "domain:coinex.com",
+                "domain:nobitex.ir", "domain:wallex.ir", "domain:tabdeal.org",
+            )
+        )
         if ("fake" in cats) out.addAll(listOf("domain:infowars.com", "domain:brighteon.com"))
         return out
     }

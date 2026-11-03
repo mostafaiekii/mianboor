@@ -407,11 +407,15 @@ interface Strings {
     val verReady: String
     val verChecking: String
     val verNewAvailable: (String) -> String
+    val verNewSub: String
     val verDownloadBtn: String
     val verDownloading: (Int) -> String
+    val verReadyInstall: String
     val verInstallBtn: String
     val verPermNeeded: String
     val verCheckFail: String
+    val verStaleRe: String
+    val verInAppNote: String
     val favSection: String
     val blockIr: String
     val blockIrSub: String
@@ -838,13 +842,17 @@ object EnStrings : Strings {
     override val versionRow = "Version"
     override val verUpToDate = "Perfect! Mianboor is up to date"
     override val verReady = "You are ready for a fast and stable connection!"
-    override val verChecking = "Checking for updates…"
-    override val verNewAvailable = { v: String -> "Version $v is available — install it right inside the app" }
-    override val verDownloadBtn = "Download & install"
+    override val verChecking = "Checking for a new version…"
+    override val verNewAvailable = { v: String -> "New version v$v is ready" }
+    override val verNewSub = "Download & install happen fully inside the app"
+    override val verDownloadBtn = "Download update"
     override val verDownloading = { p: Int -> if (p in 0..100) "Downloading… $p%" else "Downloading…" }
+    override val verReadyInstall = "Download complete — tap to install"
     override val verInstallBtn = "Install now"
     override val verPermNeeded = "Allow installing once — then updates happen fully inside the app"
     override val verCheckFail = "Could not check for updates — try again"
+    override val verStaleRe = "The downloaded file was outdated — downloading the new version again…"
+    override val verInAppNote = "Checking, downloading and installing updates all happen inside Mianboor — no browser, no GitHub."
     override val favSection = "Added"
     override val blockIr = "Block .ir connections"
     override val blockIrSub = "While on VPN, Iranian domains stay out of the tunnel"
@@ -1270,12 +1278,16 @@ object FaStrings : Strings {
     override val verUpToDate = "عالی! میانبر شما به‌روز است"
     override val verReady = "آمادهٔ اتصال سریع و پایدار هستید!"
     override val verChecking = "در حال بررسی نسخهٔ جدید…"
-    override val verNewAvailable = { v: String -> "نسخهٔ $v آماده‌ست — مستقیم داخل اپ نصب کن" }
-    override val verDownloadBtn = "دانلود و نصب"
+    override val verNewAvailable = { v: String -> "نسخهٔ جدید v$v آماده‌ست" }
+    override val verNewSub = "دانلود و نصب کاملاً داخل خود اپ انجام می‌شه"
+    override val verDownloadBtn = "دانلود آپدیت"
     override val verDownloading = { p: Int -> if (p in 0..100) "در حال دانلود… $p٪" else "در حال دانلود…" }
-    override val verInstallBtn = "همین حالا نصب کن"
+    override val verReadyInstall = "دانلود کامل شد — برای نصب بزن"
+    override val verInstallBtn = "نصب کن"
     override val verPermNeeded = "فقط یک بار اجازهٔ نصب بده — بعدش به‌روزرسانی کاملاً داخل خود اپ انجام می‌شه"
     override val verCheckFail = "بررسی نسخه انجام نشد — دوباره تلاش کن"
+    override val verStaleRe = "فایل دانلودشده قدیمی بود — نسخهٔ جدید دوباره دانلود می‌شود…"
+    override val verInAppNote = "بررسی، دانلود و نصب آپدیت همه داخل خود میانبر انجام می‌شه — بدون مرورگر و بدون گیت‌هاب."
     override val favSection = "اضافه‌شده"
     override val blockIr = "مسدود کردن اتصالات .ir"
     override val blockIrSub = "حین اتصال، دامنه‌های ایرانی از تونل خارج می‌مونن"

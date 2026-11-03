@@ -97,6 +97,15 @@
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
             </intent-filter>
         </receiver>
+
+        <!-- v2.9: نتیجهٔ نصب PackageInstaller — گیرندهٔ همیشه-فعال به‌جای Activity -->
+        <receiver
+            android:name=".InstallStatusReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.mianboor.vpn.INSTALL_RESULT" />
+            </intent-filter>
+        </receiver>
     </application>
 
 </manifest>

@@ -248,65 +248,68 @@ class MianboorVpnService : VpnService() {
         }
         val tether = AppPrefs.tetherOn(this) && !proxyOnly
         val confFile = File(filesDir, "xray.json")
-        // v2.8.1: ساخت کانفیگ هم گارد دارد — هر خطای غیرمنتظره پیام مرحله‌دار می‌گیرد
-        // تا دیگر هرگز «اتصال برقرار نشد» عمومی برای کاربر نیاید
-        val confJson = try {
-            XrayConfigBuilder.buildConfigJson(
-                server,
-                AppPrefs.blockQuic(this),
-                AppPrefs.stealth(this),
-                AppPrefs.dnsMode(this),
-                AppPrefs.dnsCustom(this),
-                tgSocks,
-                mp != null || socks != null,
-                mux = AppPrefs.mux(this),
-                guardian = AppPrefs.guardian(this),
-                blockIr = AppPrefs.blockIr(this),
-                socksPort = socksPort,
-                listenAll = tether,
-                withHttpInbound = tether,
-            )
-        } catch (t: Throwable) {
-            throw ConnectFail("ساخت پیکربندی هسته شکست خورد", t.javaClass.simpleName)
-        }
-        try {
-            confFile.writeText(confJson)
-        } catch (t: Throwable) {
-            throw ConnectFail("تنظیمات هسته ذخیره نشد", t.javaClass.simpleName)
-        }
         val bin = File(applicationInfo.nativeLibraryDir, "libxray.so")
         if (!bin.exists()) {
             throw ConnectFail("هستهٔ VPN روی این دستگاه نصب نشده")
         }
-        runCatching { xray?.destroy() }
-        // v2.8: خروجی هسته در فایل لاگ ذخیره می‌شود — خطای واقعی xray به پیام خطا می‌چسبد
         val logFile = File(filesDir, "xray.log")
-        runCatching { logFile.writeText("") }
-        val proc = try {
-            ProcessBuilder(bin.absolutePath, "run", "-c", confFile.absolutePath)
-                .redirectErrorStream(true)
-                .start()
-        } catch (t: Throwable) {
-            throw ConnectFail("هستهٔ VPN اجرا نشد (${t.javaClass.simpleName})")
-        }
-        xray = proc
-        // Drain output so the process never blocks on a full pipe — هم به لاگ فایل، هم مصرف‌نشده
-        Thread {
-            runCatching {
-                proc.inputStream.bufferedReader().forEachLine { line ->
-                    runCatching { logFile.appendText(line + "\n") }
-                }
-            }
-        }.start()
 
-        // 4) Wait for the local SOCKS port to come up
-        if (!waitForSocks(socksPort, timeoutMs = 6000)) {
+        /**
+         * v2.9 — راه‌اندازی هسته. خروجی false یعنی هسته بالا نیامد (برای خودترمیم).
+         * خروجی هسته همیشه به فایل لاگ چسبانده می‌شود تا خطای واقعی در پیام خطا بیاید.
+         */
+        fun bootCore(minimal: Boolean): Boolean {
+            // v2.8.1: ساخت کانفیگ هم گارد دارد — هر خطای غیرمنتظره پیام مرحله‌دار می‌گیرد
+            val confJson = try {
+                XrayConfigBuilder.buildConfigJson(
+                    server,
+                    AppPrefs.blockQuic(this),
+                    AppPrefs.stealth(this),
+                    AppPrefs.dnsMode(this),
+                    AppPrefs.dnsCustom(this),
+                    tgSocks,
+                    mp != null || socks != null,
+                    mux = AppPrefs.mux(this),
+                    guardian = AppPrefs.guardian(this),
+                    blockIr = AppPrefs.blockIr(this),
+                    socksPort = socksPort,
+                    listenAll = tether,
+                    withHttpInbound = tether,
+                    minimal = minimal,
+                )
+            } catch (t: Throwable) {
+                if (minimal) return false
+                throw ConnectFail("ساخت پیکربندی هسته شکست خورد", t.javaClass.simpleName)
+            }
+            return runCatching {
+                confFile.writeText(confJson)
+                runCatching { xray?.destroy() }
+                runCatching { logFile.writeText("") }
+                val proc = ProcessBuilder(bin.absolutePath, "run", "-c", confFile.absolutePath)
+                    .redirectErrorStream(true)
+                    .start()
+                xray = proc
+                // Drain output so the process never blocks on a full pipe — هم به لاگ فایل، هم مصرف‌نشده
+                Thread {
+                    runCatching {
+                        proc.inputStream.bufferedReader().forEachLine { line ->
+                            runCatching { logFile.appendText(line + "\n") }
+                        }
+                    }
+                }.start()
+                waitForSocks(socksPort, timeoutMs = 6000)
+            }.getOrDefault(false)
+        }
+
+        // ۳) راه‌اندازی با کانفیگ کامل؛ اگر هسته راه نیفتاد، یک بار با کانفیگ
+        //    حداقلی (بدون قابلیت‌های اختیاری) دوباره تلاش می‌شود — v2.9 خودترمیم:
+        //    اتصال دیگر هیچ‌وقت به‌خاطر تنظیمات جانبی شکست نمی‌خورد.
+        if (!bootCore(minimal = false) && !bootCore(minimal = true)) {
             val dead = xray?.isAlive != true
-            val hint = xrayTail()
             throw ConnectFail(
                 if (dead) "هستهٔ اتصال راه نیفتاد"
                 else "هستهٔ اتصال دیر جواب داد",
-                hint,
+                xrayTail(),
             )
         }
 

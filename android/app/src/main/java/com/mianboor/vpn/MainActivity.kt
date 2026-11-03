@@ -344,7 +344,8 @@ private fun MbAppInner(
                     pm != null && pm.isIgnoringBatteryOptimizations(context.packageName)
                 }.getOrDefault(batteryOff)
                 if (verState is VerState.PermNeeded && Updater.canInstall(context)) {
-                    verState = VerState.ReadyToInstall
+                    val v = (verState as VerState.PermNeeded).version
+                    verState = VerState.ReadyToInstall(v)
                 }
             }
         }
@@ -463,7 +464,7 @@ private fun MbAppInner(
             withContext(Dispatchers.Main) {
                 verState = when {
                     rel == null -> VerState.CheckFailed
-                    Updater.isNewer(rel.version, BuildConfig.VERSION_NAME) -> VerState.Available(rel.version)
+                    Updater.isNewer(rel.version, BuildConfig.VERSION_NAME) -> VerState.Available(rel.version, rel.sizeBytes)
                     else -> VerState.UpToDate
                 }
                 if (rel != null) AppPrefs.setLatestUpdateUrl(context, rel.apkUrl)
@@ -474,17 +475,23 @@ private fun MbAppInner(
     fun downloadUpdate() {
         val url = AppPrefs.latestUpdateUrl(context)
         if (url.isBlank()) { verState = VerState.CheckFailed; return }
-        verState = VerState.Downloading(0)
+        // v2.9: نسخهٔ جدید و حجم فایل را از وضعیت فعلی می‌گیریم تا UI همان را نشان دهد
+        val av = verState as? VerState.Available
+        val ver = av?.version ?: Updater.latestVersionHint ?: BuildConfig.VERSION_NAME
+        val size = av?.sizeBytes ?: -1L
+        verState = VerState.Downloading(0, ver, size, 0)
         scope.launch(Dispatchers.IO) {
             runCatching {
-                Updater.download(context, url, AppPrefs.serverUrl(context)) { pct, _, _ ->
+                Updater.download(context, url, AppPrefs.serverUrl(context)) { pct, done, total ->
                     scope.launch(Dispatchers.Main) {
-                        if (verState is VerState.Downloading) verState = VerState.Downloading(pct)
+                        if (verState is VerState.Downloading) {
+                            verState = VerState.Downloading(pct, ver, if (total > 0) total else size, done)
+                        }
                     }
                 }
             }.onSuccess {
                 withContext(Dispatchers.Main) {
-                    verState = if (Updater.canInstall(context)) VerState.ReadyToInstall else VerState.PermNeeded
+                    verState = if (Updater.canInstall(context)) VerState.ReadyToInstall(ver) else VerState.PermNeeded(ver)
                 }
             }.onFailure {
                 withContext(Dispatchers.Main) { verState = VerState.CheckFailed }
@@ -509,12 +516,30 @@ private fun MbAppInner(
 
     // v2.8.1: بعد از تعریف toast — توابع محلی ترتیبی‌اند
     fun installUpdate() {
+        // v2.9: اگر APK روی گوشی کهنه باشد (نسخهٔ قبلی/همان فعلی — دقیقاً چیزی که
+        // کاربر به‌عنوان «نسخهٔ قبلی» گزارش کرد)، اول دوباره دانلود می‌شود تا حتماً
+        // نسخهٔ جدید نصب شود؛ نمایش شمارهٔ نسخهٔ درست هم در صفحهٔ نسخه انجام می‌شود.
+        if (Updater.apkIsStale(context)) {
+            toast(t.verStaleRe)
+            downloadUpdate()
+            return
+        }
         val ok = Updater.installDownloaded(context)
         if (!ok) {
             // در ReadyToInstall بمان تا کاربر دوباره تلاش کند — CheckFailed گمراه‌کننده بود
-            verState = VerState.ReadyToInstall
+            if (verState !is VerState.ReadyToInstall) {
+                verState = VerState.ReadyToInstall(
+                    (verState as? VerState.ReadyToInstall)?.version
+                        ?: Updater.latestVersionHint ?: BuildConfig.VERSION_NAME,
+                )
+            }
             toast(if (lang == Lang.FA) "شروع نصب نشد — یک بار دیگر تلاش کن" else "Couldn’t start the install — try again")
         }
+    }
+
+    // v2.9: ورود به صفحهٔ نسخه = بررسی خودکار (مثل دمو)
+    LaunchedEffect(screen) {
+        if (screen == Screen.VERSION && verState is VerState.Idle) checkForUpdate()
     }
 
     LaunchedEffect(toastKey) {
