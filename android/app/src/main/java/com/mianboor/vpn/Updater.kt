@@ -2,9 +2,9 @@ package com.mianboor.vpn
 
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageInstaller
 import android.net.Uri
 import android.os.Build
-import android.os.PackageInstaller
 import android.os.ParcelFileDescriptor
 import org.json.JSONObject
 import java.io.File
@@ -169,15 +169,17 @@ object Updater {
                 apk.inputStream().use { ins ->
                     s.openWrite("mianboor_apk", 0, apk.length()).use { out ->
                         ins.copyTo(out, 64 * 1024)
-                        out.fsync()
+                        out.flush()
+                        s.fsync(out)
                     }
                 }
                 val intent = Intent(c, MainActivity::class.java)
                     .setAction("com.mianboor.vpn.INSTALL_RESULT")
-                val status = android.app.PendingIntent.getActivity(
-                    c, sid, intent,
-                    android.app.PendingIntent.FLAG_MUTABLE or android.app.PendingIntent.FLAG_UPDATE_CURRENT,
-                )
+                val piFlags = if (Build.VERSION.SDK_INT >= 31)
+                    android.app.PendingIntent.FLAG_MUTABLE or android.app.PendingIntent.FLAG_UPDATE_CURRENT
+                else
+                    android.app.PendingIntent.FLAG_UPDATE_CURRENT
+                val status = android.app.PendingIntent.getActivity(c, sid, intent, piFlags)
                 s.commit(status.intentSender)
             }
             true

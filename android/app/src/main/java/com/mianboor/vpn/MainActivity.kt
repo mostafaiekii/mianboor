@@ -1888,7 +1888,7 @@ private fun MbAppInner(
                             runCatching {
                                 context.startActivity(
                                     Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS)
-                                        .setData(android.net.Uri.parse("package:$packageName"))
+                                        .setData(android.net.Uri.parse("package:${context.packageName}"))
                                 )
                             }
                         },

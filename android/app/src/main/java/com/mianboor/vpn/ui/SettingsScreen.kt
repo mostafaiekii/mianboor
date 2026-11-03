@@ -530,7 +530,7 @@ fun SettingsScreen(
                         Column(Modifier.weight(1f)) {
                             Text(t.tetherPort, color = mb.dim, fontSize = 11.sp)
                             Text(
-                                "$port (SOCKS) · ${port + 1} (HTTP)",
+                                "$socksPort (SOCKS) · ${socksPort + 1} (HTTP)",
                                 color = mb.ink, fontSize = 13.sp, fontWeight = FontWeight.Bold,
                             )
                         }
@@ -545,7 +545,7 @@ fun SettingsScreen(
                             .padding(top = 14.dp)
                             .clip(RoundedCornerShape(14.dp))
                             .background(if (tetherOn) mb.panelEdge else mb.glow)
-                            .clickable { if (tetherOn) onDisable() else onEnable() }
+                            .clickable { if (tetherOn) onToggleTether(false) else onToggleTether(true) }
                             .padding(vertical = 13.dp),
                         contentAlignment = Alignment.Center,
                     ) {
@@ -565,9 +565,10 @@ fun SettingsScreen(
 
 /** اولین IPv4 غیر-لوکال (معمولاً آی‌پی هات‌اسپوت/وای‌فای گوشی). */
 internal fun wlanIpv4(): String? = runCatching {
-    java.net.NetworkInterface.getNetworkInterfaces().asSequence()
+    val nis = java.net.NetworkInterface.getNetworkInterfaces().toList()
+    nis.asSequence()
         .filter { it.isUp && !it.isLoopback }
-        .flatMap { it.inetAddresses.asSequence() }
+        .flatMap { it.inetAddresses.toList().asSequence() }
         .filterIsInstance<java.net.Inet4Address>()
         .filter { !it.isLoopbackAddress }
         .map { it.hostAddress }
