@@ -155,11 +155,12 @@ class MainActivity : ComponentActivity() {
      */
     private fun handleInstallResult(intent: Intent?) {
         if (intent?.action != "com.mianboor.vpn.INSTALL_RESULT") return
-        val pi = android.content.pm.PackageInstaller
-        val status = intent.getIntExtra(pi.EXTRA_STATUS, Int.MIN_VALUE)
+        val status = intent.getIntExtra(
+            android.content.pm.PackageInstaller.EXTRA_STATUS, Int.MIN_VALUE,
+        )
         val fa = AppPrefs.lang(this) == "fa"
         when (status) {
-            pi.STATUS_PENDING_USER_ACTION -> {
+            android.content.pm.PackageInstaller.STATUS_PENDING_USER_ACTION -> {
                 val confirm: Intent? = if (Build.VERSION.SDK_INT >= 33)
                     intent.getParcelableExtra(Intent.EXTRA_INTENT, Intent::class.java)
                 else
@@ -170,10 +171,13 @@ class MainActivity : ComponentActivity() {
                     startActivity(confirm)
                 }
             }
-            pi.STATUS_SUCCESS -> hostToast(if (fa) "نسخهٔ جدید نصب شد ✓" else "New version installed ✓")
+            android.content.pm.PackageInstaller.STATUS_SUCCESS ->
+                hostToast(if (fa) "نسخهٔ جدید نصب شد ✓" else "New version installed ✓")
             Int.MIN_VALUE -> Unit // بدون وضعیت — بی‌خیال
             else -> {
-                val detail = intent.getStringExtra(pi.EXTRA_STATUS_MESSAGE) ?: status.toString()
+                val detail = intent.getStringExtra(
+                    android.content.pm.PackageInstaller.EXTRA_STATUS_MESSAGE,
+                ) ?: status.toString()
                 hostToast(
                     if (fa) "نصب انجام نشد — دوباره تلاش کن ($detail)"
                     else "Install failed — try again ($detail)"
@@ -488,15 +492,6 @@ private fun MbAppInner(
         }
     }
 
-    fun installUpdate() {
-        val ok = Updater.installDownloaded(context)
-        if (!ok) {
-            // v2.8.1: در ReadyToInstall بمان تا کاربر دوباره تلاش کند — CheckFailed گمراه‌کننده بود
-            verState = VerState.ReadyToInstall
-            toast(if (lang == Lang.FA) "شروع نصب نشد — یک بار دیگر تلاش کن" else "Couldn’t start the install — try again")
-        }
-    }
-
     fun requestInstallPerm() {
         Updater.requestInstallPermission(context)
     }
@@ -510,6 +505,16 @@ private fun MbAppInner(
     fun toast(msg: String) {
         toastMsg = msg
         toastKey = System.currentTimeMillis()
+    }
+
+    // v2.8.1: بعد از تعریف toast — توابع محلی ترتیبی‌اند
+    fun installUpdate() {
+        val ok = Updater.installDownloaded(context)
+        if (!ok) {
+            // در ReadyToInstall بمان تا کاربر دوباره تلاش کند — CheckFailed گمراه‌کننده بود
+            verState = VerState.ReadyToInstall
+            toast(if (lang == Lang.FA) "شروع نصب نشد — یک بار دیگر تلاش کن" else "Couldn’t start the install — try again")
+        }
     }
 
     LaunchedEffect(toastKey) {
