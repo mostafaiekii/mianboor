@@ -399,13 +399,15 @@ private fun MbAppInner(
     }
 
     /**
-     * v2.7: به‌روزرسانی کاملاً داخل اپ — بدون مرورگر و بدون لینک بیرونی.
-     * چرخه: check → Available → download (با درصد) → ReadyToInstall → نصب session.
+     * v2.8: به‌روزرسانی کاملاً داخل اپ — بدون مرورگر و بدون لینک بیرونی.
+     * چرخه: check (اول سرور خودمان، بعد گیت‌هاب) → Available → download (با درصد،
+     * اول از سرور خودمان چون گیت‌هاب در ایران فیلتر است) → ReadyToInstall → نصب session.
      */
     fun checkForUpdate() {
         verState = VerState.Checking
         scope.launch(Dispatchers.IO) {
-            val rel = Updater.checkLatest(AppPrefs.latestUpdateUrl(context))
+            val rel = Updater.checkLatest(AppPrefs.serverUrl(context), AppPrefs.latestUpdateUrl(context))
+            if (rel != null) Updater.latestVersionHint = rel.version
             withContext(Dispatchers.Main) {
                 verState = when {
                     rel == null -> VerState.CheckFailed
@@ -423,7 +425,7 @@ private fun MbAppInner(
         verState = VerState.Downloading(0)
         scope.launch(Dispatchers.IO) {
             runCatching {
-                Updater.download(context, url) { pct, _, _ ->
+                Updater.download(context, url, AppPrefs.serverUrl(context)) { pct, _, _ ->
                     scope.launch(Dispatchers.Main) {
                         if (verState is VerState.Downloading) verState = VerState.Downloading(pct)
                     }
@@ -1752,9 +1754,11 @@ private fun MbAppInner(
                         splitMode = splitMode,
                         deviceId = deviceId,
                         killSwitch = killSwitch,
-                        autoConnect = autoConnect,
                         onKillSwitch = { v -> killSwitch = v; AppPrefs.setKillSwitch(context, v) },
-                        onAutoConnect = { v -> autoConnect = v; AppPrefs.setAutoConnect(context, v) },
+                        failover = failover,
+                        onFailover = { v -> failover = v; AppPrefs.setFailover(context, v) },
+                        autoReconnect = autoReconn,
+                        onAutoReconnect = { v -> autoReconn = v; AppPrefs.setAutoReconnect(context, v) },
                         onOpenSplit = { screen = Screen.SPLIT },
                         onUpgrade = { plansReason = "renew" },
                         onSupport = { openTelegram() },
@@ -1765,6 +1769,21 @@ private fun MbAppInner(
                             screen = Screen.WALLET
                         },
                         onOpenPrivacy = { screen = Screen.PRIVACY },
+                        onOpenInbox = { screen = Screen.INBOX },
+                        unreadCount = notices.count { !it.read },
+                        serverName = selectedConfig?.name ?: "",
+                        serverHost = selectedConfig?.host ?: "",
+                        vpnOn = phase == Phase.CONNECTED,
+                        onOpenServers = { screen = Screen.SERVERS },
+                        onDeleteAcc = {
+                            AppPrefs.wipeAll(context)
+                            toast(t.deleteAccDone)
+                            context.startActivity(
+                                Intent(context, MainActivity::class.java)
+                                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK),
+                            )
+                            (context as? android.app.Activity)?.finish()
+                        },
                         giftDays = refInfo?.giftDays ?: 0,
                         toast = { toast(it) },
                     )

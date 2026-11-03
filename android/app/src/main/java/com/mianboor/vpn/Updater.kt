@@ -13,14 +13,18 @@ import java.net.URL
 import androidx.core.content.FileProvider
 
 /**
- * به‌روزرسانی کامل داخل اپ (v2.7) — «کاربر فقط یک بار اپ را نصب می‌کند»:
+ * به‌روزرسانی کامل داخل اپ (v2.8) — «کاربر فقط یک بار اپ را نصب می‌کند»:
  *
- *   1. check():  GitHub Releases API → نسخه/لینک APK
- *   2. download(): دانلود با نوار پیشرفت به files/ota/update.apk
- *   3. install(): PackageInstaller session → نصب بی‌صدا با تأیید سیستم؛
- *                 اگر «منابع ناشناس» روشن نباشد، یک‌بار همان صفحهٔ سیستم باز می‌شود.
+ *   1. check():    اول سرور خودمان (mianboor.vercel.app — همیشه در دسترس، بدون فیلتر)؛
+ *                  فال‌بک: GitHub API. هیچ‌جا مرورگر یا صفحهٔ گیت‌هاب باز نمی‌شود.
+ *   2. download(): دانلود با نوار پیشرفت (درصد) به files/ota/update.apk —
+ *                  اول از سرور خودمان (پروکسی استریم؛ گیت‌هاب در ایران فیلتر است)،
+ *                  فال‌بک: لینک مستقیم GitHub (وقتی VPN روشن است کار می‌کند).
+ *   3. install():  PackageInstaller session → نصب با تأیید سیستم؛
+ *                  اگر «منابع ناشناس» روشن نباشد، یک‌بار همان صفحهٔ سیستم باز می‌شود.
  *
- * هیچ لینک بیرونی (مرورگر/گیت‌هاب) در مسیر به‌روزرسانی باز نمی‌شود.
+ * هیچ لینک بیرونی (مرورگر/گیت‌هاب) در مسیر به‌روزرسانی به کاربر نشان داده نمی‌شود —
+ * گیت‌هاب فقط پشت‌صحنهٔ سرور خودمان است.
  */
 object Updater {
 
@@ -47,15 +51,32 @@ object Updater {
         return false
     }
 
-    /** آخرین ریلیز از GitHub — با فال‌بک به لینک اعلامی سرور. */
-    fun checkLatest(serverFallbackUrl: String = ""): Release? {
-        // اول fallback اعلامی از پنل (اگر APK مستقیم داد)
+    private fun cleanVer(v: String): String = v.trim().removePrefix("v").removePrefix("V")
+
+    // ── بررسی نسخهٔ جدید ─────────────────────────────────────────────
+
+    /**
+     * آخرین نسخه — اولویت:
+     *   1. سرور خودمان  /api/client/update/check  (در ایران هم بدون VPN کار می‌کند)
+     *   2. GitHub API مستقیم (وقتی VPN روشن است / سرور جواب نداد)
+     *   3. لینک اعلامی سرور (فیلد latest_url پنل) اگر APK مستقیم داد
+     */
+    fun checkLatest(serverUrl: String = "", fallbackUrl: String = ""): Release? {
+        // ۱) سرور خودمان — نقطهٔ اصلی برای کاربر ایرانی
+        val base = serverUrl.trim().trimEnd('/')
+        if (base.startsWith("http")) {
+            checkViaServer(base)?.let { return it }
+        }
+
+        // ۲) فال‌بک اعلامی از پنل (اگر APK مستقیم داد)
         runCatching {
-            if (serverFallbackUrl.endsWith(".apk")) {
-                val v = Regex("""Mianboor-v([\d.]+)\.apk""").find(serverFallbackUrl)?.groupValues?.get(1)
-                if (v != null) return Release(v, serverFallbackUrl, -1L, "")
+            if (fallbackUrl.endsWith(".apk")) {
+                val v = Regex("""Mianboor-v([\d.]+)\.apk""").find(fallbackUrl)?.groupValues?.get(1)
+                if (v != null) return Release(v, fallbackUrl, -1L, "")
             }
         }
+
+        // ۳) GitHub API مستقیم — وقتی شبکه اجازه می‌دهد
         return runCatching {
             val conn = URL(API).openConnection() as HttpURLConnection
             conn.connectTimeout = 8000
@@ -81,19 +102,84 @@ object Updater {
                     }
                 }
                 if (tag.isBlank() || url.isBlank()) null
-                else Release(tag, url, size, j.optString("body", "").take(400))
+                else Release(cleanVer(tag), url, size, j.optString("body", "").take(400))
             } finally {
                 conn.disconnect()
             }
         }.getOrNull()
     }
 
+    /** GET /api/client/update/check روی سرور خودمان. */
+    private fun checkViaServer(base: String): Release? = runCatching {
+        val conn = URL("$base/api/client/update/check").openConnection() as HttpURLConnection
+        conn.connectTimeout = 7000
+        conn.readTimeout = 12000
+        try {
+            if (conn.responseCode != 200) return@runCatching null
+            val body = conn.inputStream.bufferedReader().use { it.readText() }
+            val j = JSONObject(body)
+            if (!j.optBoolean("ok", false)) return@runCatching null
+            val ver = j.optString("latestVersion", "").trim()
+            if (ver.isBlank()) return@runCatching null
+            var url = j.optString("apkUrl", "").trim()
+            // مسیر نسبی سرور → مطلق
+            if (url.startsWith("/")) url = base + url
+            Release(
+                cleanVer(ver), url,
+                j.optLong("sizeBytes", -1L),
+                j.optString("notes", "").take(400),
+            )
+        } finally {
+            conn.disconnect()
+        }
+    }.getOrNull()
+
     // ── دانلود با پیشرفت ─────────────────────────────────────────────
 
     fun apkFile(c: Context): File = File(File(c.filesDir, "ota").apply { mkdirs() }, "update.apk")
 
-    /** دانلود مستقیم APK — onProgress(pct, downloadedBytes, totalBytes). */
-    fun download(c: Context, url: String, onProgress: (Int, Long, Long) -> Unit): File {
+    /**
+     * دانلود مستقیم APK — onProgress(pct, downloadedBytes, totalBytes).
+     * v2.8: اول از سرور خودمان (پروکسی استریم — در ایران هم کار می‌کند)،
+     * فال‌بک خودکار به لینک مستقیم GitHub.
+     */
+    fun download(
+        c: Context,
+        url: String,
+        serverUrl: String = "",
+        onProgress: (Int, Long, Long) -> Unit,
+    ): File {
+        val base = serverUrl.trim().trimEnd('/')
+        val proxyUrl = buildProxyUrl(base, url)
+        // ۱) سرور خودمان
+        if (proxyUrl != null) {
+            try {
+                return downloadTo(c, proxyUrl, onProgress)
+            } catch (t: Throwable) {
+                // مسیر بعدی: مستقیم
+            }
+        }
+        // ۲) لینک مستقیم (گیت‌هاب — فقط وقتی شبکه اجازه دهد)
+        return downloadTo(c, url, onProgress)
+    }
+
+    /** نسخهٔ پروکسی سرور خودمان برای این فایل APK — از روی نام/نسخه استخراج می‌شود. */
+    private fun buildProxyUrl(base: String, url: String): String? {
+        if (!base.startsWith("http")) return null
+        // از لینک گیت‌هاب: …/releases/download/v2.8.0/Mianboor-v2.8.0.apk
+        val m = Regex("""Mianboor-v?([\d.]+)\.apk""").find(url)
+        val ver = m?.groupValues?.get(1)?.let { cleanVer(it) }
+            ?: latestVersionHint?.let { cleanVer(it) }
+            ?: return null
+        if (!Regex("""^\d{1,3}(\.\d{1,3}){1,2}$""").matches(ver)) return null
+        return "$base/api/client/update/download?v=$ver"
+    }
+
+    /** آخرین نسخه‌ای که checkLatest دید — برای ساخت مسیر پروکسی اگر لینک گیت‌هاب نسخه را ندهد. */
+    var latestVersionHint: String? = null
+
+    /** دانلود به فایل — هر خطایی بالا می‌آید تا caller فال‌بک را انجام دهد. */
+    private fun downloadTo(c: Context, url: String, onProgress: (Int, Long, Long) -> Unit): File {
         val out = apkFile(c)
         val tmp = File(out.absolutePath + ".part")
         val conn = URL(url).openConnection() as HttpURLConnection
@@ -127,6 +213,7 @@ object Updater {
         } finally {
             conn.disconnect()
         }
+        if (out.exists()) out.delete()
         if (!tmp.renameTo(out)) {
             tmp.copyTo(out, overwrite = true)
             tmp.delete()

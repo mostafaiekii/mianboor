@@ -77,7 +77,7 @@ fun ServersScreen(
     val mb = LocalMb.current
     val rtl = lang == Lang.FA
     var q by remember { mutableStateOf("") }
-    var tab by remember { mutableStateOf("free") }   // "free" | "premium"
+    var tab by remember { mutableStateOf("all") }   // "all" | "free" | "premium" — مثل دمو
 
     val enabled = configs.filter { it.enabled }
     val freeEnabled = enabled.filter { !it.premium }
@@ -86,7 +86,11 @@ fun ServersScreen(
     val sorter: (List<ConfigItem>) -> List<ConfigItem> = { arr ->
         if (sortMode == "az") arr.sortedBy { it.name.lowercase() } else arr.sortedBy { it.ping }
     }
-    val base = (if (tab == "free") freeEnabled else premEnabled)
+    val base = (when (tab) {
+        "free" -> freeEnabled
+        "premium" -> premEnabled
+        else -> enabled
+    })
         .filter { it.name.lowercase().contains(q.lowercase()) }
     val list = sorter(base.filter { it.key in favorites }) +
         sorter(base.filter { it.key !in favorites })
@@ -190,7 +194,7 @@ fun ServersScreen(
             )
         }
 
-        // ── تب رایگان / پرمیوم — دو تب کنار هم ──
+        // ── تب همه / رایگان / پرمیوم — سه تب کنار هم (مثل دمو) ──
         Row(
             Modifier
                 .fillMaxWidth()
@@ -199,6 +203,7 @@ fun ServersScreen(
                 .background(mb.panel)
                 .border(1.dp, mb.panelEdge, RoundedCornerShape(12.dp)),
         ) {
+            ServerTabBtn(t.tabAll, enabled.size, tab == "all", Modifier.weight(1f)) { tab = "all" }
             ServerTabBtn(t.tabFree, freeEnabled.size, tab == "free", Modifier.weight(1f)) { tab = "free" }
             ServerTabBtn(t.tabPremium, premEnabled.size, tab == "premium", Modifier.weight(1f)) { tab = "premium" }
         }
@@ -495,7 +500,7 @@ fun PingDot() {
     )
 }
 
-/** دکمهٔ تب رایگان/پرمیوم — نیمهٔ سگمنت کنار هم. */
+/** دکمهٔ تب همه/رایگان/پرمیوم — یک سگمنت از سه‌تایی کنار هم. */
 @Composable
 private fun ServerTabBtn(
     title: String,

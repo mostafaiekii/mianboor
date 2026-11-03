@@ -182,7 +182,7 @@ fun HomeScreen(
             Modifier.fillMaxWidth().padding(top = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Icon(ic(R.drawable.ic_shield_check), null, tint = mb.glow, modifier = Modifier.size(26.dp))
+            Icon(ic(R.drawable.ic_shield_check), null, tint = mb.glow, modifier = Modifier.size(34.dp))
             Spacer(Modifier.width(10.dp))
             Brand(lang)
             Spacer(Modifier.weight(1f))

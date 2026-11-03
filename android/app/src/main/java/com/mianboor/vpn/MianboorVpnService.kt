@@ -178,7 +178,7 @@ class MianboorVpnService : VpnService() {
         val server = when {
             mp != null -> {
                 if (!MtProxyBridge.isRunning() && !MtProxyBridge.start(mp)) {
-                    throw IllegalStateException("پل پروکسی تلگرام راه نیفتاد")
+                    throw ConnectFail("پل پروکسی تلگرام راه نیفتاد")
                 }
                 ParsedServer(
                     name, country, "mtproto", mp.host, mp.port, "",
@@ -190,7 +190,7 @@ class MianboorVpnService : VpnService() {
                 XrayConfigBuilder.socksUpstreamOutbound(socks),
             )
             else -> XrayConfigBuilder.parseLink(link, name, country)
-                ?: throw IllegalStateException("این نوع کانفیگ هنوز پشتیبانی نمی‌شود")
+                ?: throw ConnectFail("این نوع کانفیگ هنوز پشتیبانی نمی‌شود")
         }
 
         // 2) Bring up the TUN interface first (independent of xray boot — saves
@@ -224,44 +224,84 @@ class MianboorVpnService : VpnService() {
                 // the VPN, otherwise the tunneled traffic loops forever.
                 if (!isIncludeMode()) builder.addDisallowedApplication(packageName)
             }
-            val fd = builder.establish() ?: throw IllegalStateException("اجازه اتصال داده نشد")
+            // v2.8: هر خطای establish هم پیام مرحله‌دار می‌گیرد — دیگر هیچ‌وقت خطای عمومی نمی‌بینیم
+            val fd = try {
+                builder.establish()
+            } catch (t: Throwable) {
+                throw ConnectFail(
+                    "اجازه اتصال VPN داده نشد",
+                    "${t.javaClass.simpleName}: ${t.message?.take(70) ?: "—"}",
+                )
+            } ?: throw ConnectFail(
+                "اجازه اتصال VPN داده نشد",
+                "establish=null — اگر VPN همیشه-روشن دیگری فعال است خاموشش کن",
+            )
             tun = fd
         }
 
         // 3) Launch the bundled xray core — با تنظیمات v2 (استلث + DNS انتخابی)
         //    v2.7: mux + گاردین + blockIr + پورت سوکس انتخابی + تترینگ (هرترفیس‌شنوی)
-        val socksPort = AppPrefs.socksPort(this)
+        //    v2.8: اگر پورت قبلی هنوز اشغال باشد (بازماندهٔ xray قبلی)، پورت آزاد بعدی انتخاب می‌شود
+        var socksPort = AppPrefs.socksPort(this)
+        if (isPortBusy(socksPort)) {
+            socksPort = freeSocksPort(socksPort)
+        }
         val tether = AppPrefs.tetherOn(this) && !proxyOnly
         val confFile = File(filesDir, "xray.json")
-        confFile.writeText(
-            XrayConfigBuilder.buildConfigJson(
-                server,
-                AppPrefs.blockQuic(this),
-                AppPrefs.stealth(this),
-                AppPrefs.dnsMode(this),
-                AppPrefs.dnsCustom(this),
-                tgSocks,
-                mp != null || socks != null,
-                mux = AppPrefs.mux(this),
-                guardian = AppPrefs.guardian(this),
-                blockIr = AppPrefs.blockIr(this),
-                socksPort = socksPort,
-                listenAll = tether,
-                withHttpInbound = tether,
-            )
+        val confJson = XrayConfigBuilder.buildConfigJson(
+            server,
+            AppPrefs.blockQuic(this),
+            AppPrefs.stealth(this),
+            AppPrefs.dnsMode(this),
+            AppPrefs.dnsCustom(this),
+            tgSocks,
+            mp != null || socks != null,
+            mux = AppPrefs.mux(this),
+            guardian = AppPrefs.guardian(this),
+            blockIr = AppPrefs.blockIr(this),
+            socksPort = socksPort,
+            listenAll = tether,
+            withHttpInbound = tether,
         )
+        try {
+            confFile.writeText(confJson)
+        } catch (t: Throwable) {
+            throw ConnectFail("تنظیمات هسته ذخیره نشد", t.javaClass.simpleName)
+        }
         val bin = File(applicationInfo.nativeLibraryDir, "libxray.so")
+        if (!bin.exists()) {
+            throw ConnectFail("هستهٔ VPN روی این دستگاه نصب نشده")
+        }
         runCatching { xray?.destroy() }
-        val proc = ProcessBuilder(bin.absolutePath, "run", "-c", confFile.absolutePath)
-            .redirectErrorStream(true)
-            .start()
+        // v2.8: خروجی هسته در فایل لاگ ذخیره می‌شود — خطای واقعی xray به پیام خطا می‌چسبد
+        val logFile = File(filesDir, "xray.log")
+        runCatching { logFile.writeText("") }
+        val proc = try {
+            ProcessBuilder(bin.absolutePath, "run", "-c", confFile.absolutePath)
+                .redirectErrorStream(true)
+                .start()
+        } catch (t: Throwable) {
+            throw ConnectFail("هستهٔ VPN اجرا نشد (${t.javaClass.simpleName})")
+        }
         xray = proc
-        // Drain output so the process never blocks on a full pipe
-        Thread { runCatching { proc.inputStream.bufferedReader().forEachLine { } } }.start()
+        // Drain output so the process never blocks on a full pipe — هم به لاگ فایل، هم مصرف‌نشده
+        Thread {
+            runCatching {
+                proc.inputStream.bufferedReader().forEachLine { line ->
+                    runCatching { logFile.appendText(line + "\n") }
+                }
+            }
+        }.start()
 
         // 4) Wait for the local SOCKS port to come up
         if (!waitForSocks(socksPort, timeoutMs = 6000)) {
-            throw IllegalStateException("هسته اتصال راه نیفتاد")
+            val dead = xray?.isAlive != true
+            val hint = xrayTail()
+            throw ConnectFail(
+                if (dead) "هستهٔ اتصال راه نیفتاد"
+                else "هستهٔ اتصال دیر جواب داد",
+                hint,
+            )
         }
 
         // v2.7: حالت پروکسی — بدون TUN؛ اتصال یعنی سوکس لوکال بالاست
@@ -277,17 +317,21 @@ class MianboorVpnService : VpnService() {
 
         // 5) Start the socks5 tunnel (TUN -> xray)
         val tunConf = File(filesDir, "tunnel.yaml")
-        tunConf.writeText(tunnelYaml(socksPort))
+        try {
+            tunConf.writeText(tunnelYaml(socksPort))
+        } catch (t: Throwable) {
+            throw ConnectFail("تنظیمات تونل ذخیره نشد", t.javaClass.simpleName)
+        }
         runCatching { TProxyService.stop() }
         val started = TProxyService.start(tunConf.absolutePath, tun!!.fd)
-        if (!started) throw IllegalStateException("تونل امن راه نیفتاد")
+        if (!started) throw ConnectFail("تونل امن راه نیفتاد")
 
         var waited = 0
         while (!TProxyService.isRunning() && waited < 2500) {
             delay(60)
             waited += 60
         }
-        if (!TProxyService.isRunning()) throw IllegalStateException("تونل امن راه نیفتاد")
+        if (!TProxyService.isRunning()) throw ConnectFail("تونل امن راه نیفتاد")
 
         // 6) Connected — remember for boot auto-connect, then start the stats loop
         //    (حالت پروکسی تلگرام لینک ندارد — برای auto-connect بوت ذخیره نمی‌شود)
@@ -491,19 +535,29 @@ class MianboorVpnService : VpnService() {
 
     private fun promoteToForeground() {
         val nm = getSystemService(NotificationManager::class.java)
-        nm.createNotificationChannel(
-            NotificationChannel(CHANNEL_ID, "وضعیت میانبر", NotificationManager.IMPORTANCE_LOW)
-        )
+        runCatching {
+            nm.createNotificationChannel(
+                NotificationChannel(CHANNEL_ID, "وضعیت میانبر", NotificationManager.IMPORTANCE_LOW)
+            )
+        }
         val pi = PendingIntent.getActivity(
             this, 0,
             Intent(this, MainActivity::class.java),
             PendingIntent.FLAG_IMMUTABLE
         )
-        val notif = baseNotification(pi)
-        if (Build.VERSION.SDK_INT >= 34) {
-            startForeground(NOTIF_ID, notif, ServiceInfo.FOREGROUND_SERVICE_TYPE_SYSTEM_EXEMPTED)
-        } else {
-            startForeground(NOTIF_ID, notif)
+        // v2.8: اگر ساختن نوتیف به هر دلیل شکست خورد، سرویس نباید بمیرد — نوتیف خالی
+        val notif = runCatching { baseNotification(pi) }.getOrNull() ?: Notification()
+        // v2.8: نوتیفیکیشن هرگز نباید اتصال را بکشد — بعضی رام‌ها نوع systemExempted
+        // را رد می‌کنند؛ اول با نوع، بعد بدون نوع، و اگر نشد بی‌صدا ادامه می‌دهیم.
+        val typed = runCatching {
+            if (Build.VERSION.SDK_INT >= 34) {
+                startForeground(NOTIF_ID, notif, ServiceInfo.FOREGROUND_SERVICE_TYPE_SYSTEM_EXEMPTED)
+            } else {
+                startForeground(NOTIF_ID, notif)
+            }
+        }
+        if (typed.isFailure) {
+            runCatching { startForeground(NOTIF_ID, notif) }
         }
     }
 
@@ -538,11 +592,45 @@ class MianboorVpnService : VpnService() {
         }
     }
 
-    private fun friendlyError(t: Throwable): String = when {
-        t is IllegalStateException && t.message?.contains("اجازه") == true ->
-            "اجازه اتصال VPN داده نشد"
-        t is IllegalStateException && t.message?.contains("پشتیبانی") == true ->
-            "این نوع کانفیگ هنوز پشتیبانی نمی‌شود"
+    /**
+     * v2.8: خطای مرحله‌دار اتصال — هر مرحله پیام روشن خودش را دارد و جزئیات فنی
+     * (آخرین خط لاگ xray) در صورت وجود به پیام می‌چسبد تا عیب‌یابی از راه دور ممکن شود.
+     */
+    private class ConnectFail(val userMsg: String, val tech: String? = null) : RuntimeException(userMsg)
+
+    /** آخرین خط مهم از لاگ xray — برای چسباندن به پیام خطا (حداکثر ~۹۰ نویسه، تک‌خطی). */
+    private fun xrayTail(): String? {
+        val f = File(filesDir, "xray.log")
+        val raw = runCatching { f.readText() }.getOrNull() ?: return null
+        val line = raw.lines()
+            .filter { it.isNotBlank() }
+            .lastOrNull { l ->
+                val low = l.lowercase()
+                low.contains("error") || low.contains("failed") || low.contains("fatal") ||
+                    low.contains("address already in use") || low.contains("bind")
+            } ?: return null
+        val oneLine = line.replace("\t", " ").replace("\\s+".toRegex(), " ").trim()
+        return if (oneLine.length > 90) oneLine.take(90) + "…" else oneLine
+    }
+
+    /** آیا پورت لوکال اشغال است؟ (بازماندهٔ xray قبلی یا سرویس دیگر) */
+    private fun isPortBusy(port: Int): Boolean = try {
+        Socket().use { it.connect(InetSocketAddress("127.0.0.1", port), 250) }
+        true
+    } catch (t: Throwable) {
+        false
+    }
+
+    /** اولین پورت آزاد از [start] به بعد — حداکثر ۵۰ پورت جلوتر می‌رود. */
+    private fun freeSocksPort(start: Int): Int {
+        for (p in start until start + 50) {
+            if (!isPortBusy(p)) return p
+        }
+        return start
+    }
+
+    private fun friendlyError(t: Throwable): String = when (t) {
+        is ConnectFail -> if (t.tech.isNullOrBlank()) t.userMsg else "${t.userMsg} — ${t.tech}"
         else -> "اتصال برقرار نشد؛ یک بار دیگه امتحان کن"
     }
 

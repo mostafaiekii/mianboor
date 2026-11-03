@@ -136,6 +136,15 @@ object AppPrefs {
     fun blockIr(c: Context): Boolean = p(c).getBoolean("block_ir", false)
     fun setBlockIr(c: Context, v: Boolean) { ed(c).putBoolean("block_ir", v).apply() }
 
+    // ── v2.8: گذرواژهٔ قفل اپ + حذف حساب (پنل حساب) ───────────────────
+
+    /** گذرواژهٔ محافظت حساب — خالی یعنی بدون قفل. */
+    fun appPass(c: Context): String = p(c).getString("app_pass", "") ?: ""
+    fun setAppPass(c: Context, v: String) { ed(c).putString("app_pass", v.trim()).apply() }
+
+    /** حذف حساب: پاک‌کردن کامل داده‌های محلی (توکن، سرورها، تنظیمات). */
+    fun wipeAll(c: Context) { p(c).edit().clear().commit() }
+
     // ── split tunneling ───────────────────────────────────────────────
 
     fun splitMode(c: Context): String = p(c).getString("split_mode", "exclude") ?: "exclude"

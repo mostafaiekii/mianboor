@@ -48,19 +48,18 @@ import com.mianboor.vpn.R
 @Composable
 fun ic(res: Int): ImageVector = ImageVector.vectorResource(res)
 
-/** Bilingual brand: big word in the active language + the other one underneath. */
+/** Bilingual brand: big word in the active language + the other one underneath —
+ *  v2.8: درشت‌تر شد تا مثل دمو به چشم بیاید. */
 @Composable
 fun Brand(lang: Lang) {
     val mb = LocalMb.current
     Column {
         if (lang == Lang.EN) {
-            Text("MIANBOOR", color = mb.ink, fontSize = 20.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 0.2.sp)
-            Spacer(Modifier.height(3.dp))
-            Text("میانبر", color = mb.dim, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+            Text("MIANBOOR", color = mb.ink, fontSize = 27.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.2.sp)
+            Text("میانبر", color = mb.dim, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 1.dp))
         } else {
-            Text("میانبر", color = mb.ink, fontSize = 20.sp, fontWeight = FontWeight.ExtraBold)
-            Spacer(Modifier.height(3.dp))
-            Text("Mianboor", color = mb.dim, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+            Text("میانبر", color = mb.ink, fontSize = 27.sp, fontWeight = FontWeight.ExtraBold)
+            Text("Mianboor", color = mb.dim, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 1.sp, modifier = Modifier.padding(top = 1.dp))
         }
     }
 }

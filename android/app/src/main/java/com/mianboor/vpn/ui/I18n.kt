@@ -17,8 +17,31 @@ interface Strings {
     val tapProtect: String
     val download: String
     val upload: String
+    val tabAll: String
     val tabFree: String
     val tabPremium: String
+    // v2.8: پنل حساب — مطابق دمو
+    val verified: String
+    val setPass: String
+    val passPlaceholder: String
+    val passSaved: String
+    val deleteAcc: String
+    val deleteAccAsk: String
+    val deleteAccWarn: String
+    val deleteAccYes: String
+    val deleteAccDone: String
+    val svCurrent: String
+    val allServices: String
+    val moreOptions: String
+    val lessOptions: String
+    val vipData: String
+    val usersOnline: String
+    val credit: String
+    val days: String
+    val autoReconnect: String
+    val autoReconnectSub: String
+    val cancel: String
+    val inboxRowSub: String
     val selectLocation: String
     val search: String
     val smart: String
@@ -406,8 +429,30 @@ object EnStrings : Strings {
     override val tapProtect = "Tap to protect your connection"
     override val download = "Download"
     override val upload = "Upload"
+    override val tabAll = "All"
     override val tabFree = "Free"
     override val tabPremium = "Premium"
+    override val verified = "Verified"
+    override val setPass = "Set password"
+    override val passPlaceholder = "New password (4+ characters)"
+    override val passSaved = "Password saved"
+    override val deleteAcc = "Delete account"
+    override val deleteAccAsk = "Delete account?"
+    override val deleteAccWarn = "Your plan and data will be wiped from this device. This cannot be undone."
+    override val deleteAccYes = "Yes, delete"
+    override val deleteAccDone = "Account data wiped from this device"
+    override val svCurrent = "Current server"
+    override val allServices = "Show all services"
+    override val moreOptions = "More options"
+    override val lessOptions = "Show less"
+    override val vipData = "VIP data (gift)"
+    override val usersOnline = "Connected users"
+    override val credit = "Credit"
+    override val days = "days"
+    override val autoReconnect = "Auto reconnect"
+    override val autoReconnectSub = "Rejoin after Wi-Fi / data changes"
+    override val cancel = "Cancel"
+    override val inboxRowSub = "Announcements & news"
     override val selectLocation = "Select Location"
     override val search = "Search countries…"
     override val smart = "Smart Connect"
@@ -817,8 +862,30 @@ object FaStrings : Strings {
     override val tapProtect = "برای امن شدن اتصالت لمس کن"
     override val download = "دانلود"
     override val upload = "آپلود"
+    override val tabAll = "همه"
     override val tabFree = "رایگان"
     override val tabPremium = "پرمیوم"
+    override val verified = "تایید شده"
+    override val setPass = "تعیین گذرواژه"
+    override val passPlaceholder = "گذرواژهٔ جدید (۴+ نویسه)"
+    override val passSaved = "گذرواژه ذخیره شد"
+    override val deleteAcc = "حذف حساب کاربری"
+    override val deleteAccAsk = "حذف حساب کاربری؟"
+    override val deleteAccWarn = "پلن و داده‌های شما از این دستگاه پاک می‌شه؛ این کار برگشت‌پذیر نیست."
+    override val deleteAccYes = "بله، حذف کن"
+    override val deleteAccDone = "داده‌های حساب از این دستگاه پاک شد"
+    override val svCurrent = "سرور فعلی"
+    override val allServices = "نمایش همه سرویس‌ها"
+    override val moreOptions = "گزینه‌های بیشتر"
+    override val lessOptions = "نمایش کمتر"
+    override val vipData = "داده VIP (هدیه)"
+    override val usersOnline = "کاربران متصل"
+    override val credit = "اعتبار"
+    override val days = "روز"
+    override val autoReconnect = "اتصال مجدد خودکار"
+    override val autoReconnectSub = "بعد از تغییر وای‌فای/دیتا دوباره وصل می‌شه"
+    override val cancel = "بی‌خیال"
+    override val inboxRowSub = "اطلاع‌رسانی‌ها و اخبار"
     override val selectLocation = "انتخاب سرور"
     override val search = "جستجوی کشور…"
     override val smart = "اتصال هوشمند"
