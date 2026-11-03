@@ -136,7 +136,7 @@ fun VersionScreen(
                     .border(
                         2.dp,
                         when (state) {
-                            is VerState.Available, VerState.PermNeeded -> mb.gold.copy(alpha = 0.8f)
+                            is VerState.Available, is VerState.PermNeeded -> mb.gold.copy(alpha = 0.8f)
                             VerState.UpToDate, is VerState.ReadyToInstall -> mb.glow.copy(alpha = 0.8f)
                             else -> mb.ink.copy(alpha = 0.14f)
                         },
@@ -243,12 +243,12 @@ fun VersionScreen(
                         )
                     }
                 }
-                VerState.ReadyToInstall -> Text(
+                is VerState.ReadyToInstall -> Text(
                     t.verReadyInstall,
                     color = mb.ink, fontSize = 18.sp, fontWeight = FontWeight.Bold,
                     textAlign = TextAlign.Center,
                 )
-                VerState.PermNeeded -> Text(
+                is VerState.PermNeeded -> Text(
                     t.verPermNeeded,
                     color = mb.gold, fontSize = 14.sp, textAlign = TextAlign.Center,
                     lineHeight = 20.sp,
@@ -273,13 +273,13 @@ fun VersionScreen(
             is VerState.Available -> {
                 PillButton(t.verDownloadBtn, mb.gold, mb.night, Modifier.padding(top = 16.dp)) { onDownload() }
             }
-            VerState.PermNeeded -> {
+            is VerState.PermNeeded -> {
                 PillButton(
                     if (lang == Lang.FA) "اجازهٔ نصب" else "Allow install",
                     mb.gold, mb.night, Modifier.padding(top = 16.dp),
                 ) { onPerm() }
             }
-            VerState.ReadyToInstall -> {
+            is VerState.ReadyToInstall -> {
                 PillButton(t.verInstallBtn, mb.glow, mb.night, Modifier.padding(top = 16.dp)) { onInstall() }
             }
             is VerState.Downloading -> {}

@@ -253,7 +253,7 @@ object Updater {
     /** نسخهٔ APK قدیمی یا همان نسخهٔ فعلی است؟ → باید دوباره دانلود شود. */
     fun apkIsStale(c: Context): Boolean {
         val v = apkVersion(c) ?: return true
-        return parseVersion(v) <= parseVersion(com.mianboor.vpn.BuildConfig.VERSION_NAME)
+        return !isNewer(v, com.mianboor.vpn.BuildConfig.VERSION_NAME)
     }
 
     /** APK سالم؟ — وجود + حجم واقعی + امضای ZIP («PK») تا فایل خراب هرگز به نصب نرسد. */
