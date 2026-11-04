@@ -9,6 +9,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -36,6 +37,8 @@ import androidx.compose.ui.composed
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.vectorResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -48,18 +51,29 @@ import com.mianboor.vpn.R
 @Composable
 fun ic(res: Int): ImageVector = ImageVector.vectorResource(res)
 
-/** Bilingual brand: big word in the active language + the other one underneath —
- *  v2.8: درشت‌تر شد تا مثل دمو به چشم بیاید. */
+/** Bilingual brand: mini app logo + big word in the active language + the other one underneath —
+ *  v2.9.1: لوگوی کوچک اپ کنار اسم میانبر (همان آیکون اصلی برنامه). */
 @Composable
 fun Brand(lang: Lang) {
     val mb = LocalMb.current
-    Column {
-        if (lang == Lang.EN) {
-            Text("MIANBOOR", color = mb.ink, fontSize = 27.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.2.sp)
-            Text("میانبر", color = mb.dim, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 1.dp))
-        } else {
-            Text("میانبر", color = mb.ink, fontSize = 27.sp, fontWeight = FontWeight.ExtraBold)
-            Text("Mianboor", color = mb.dim, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 1.sp, modifier = Modifier.padding(top = 1.dp))
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Image(
+            painter = painterResource(R.drawable.brand_logo),
+            contentDescription = "Mianboor logo",
+            contentScale = ContentScale.Crop,
+            modifier = Modifier
+                .size(44.dp)
+                .clip(RoundedCornerShape(12.dp)),
+        )
+        Spacer(Modifier.width(11.dp))
+        Column {
+            if (lang == Lang.EN) {
+                Text("MIANBOOR", color = mb.ink, fontSize = 27.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.2.sp)
+                Text("میانبر", color = mb.dim, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 1.dp))
+            } else {
+                Text("میانبر", color = mb.ink, fontSize = 27.sp, fontWeight = FontWeight.ExtraBold)
+                Text("Mianboor", color = mb.dim, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 1.sp, modifier = Modifier.padding(top = 1.dp))
+            }
         }
     }
 }

@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useEffect, useState } from "react";
 import {
   ArrowDown,
@@ -85,25 +86,35 @@ function fmt(sec: number): string {
   return `${h}:${m}:${s}`;
 }
 
-/** Bilingual brand: big word + the other language underneath — v2.8: bigger & bolder. */
+/** Bilingual brand: mini app logo + big word + the other language underneath — v2.9.1 logo jadid. */
 export function Brand({ lang }: { lang: Lang }) {
   return (
-    <span className="flex flex-col leading-none">
-      {lang === "en" ? (
-        <>
-          <span dir="ltr" className="font-display text-3xl font-extrabold tracking-wide text-ink">
-            MIANBOOR
-          </span>
-          <span className="mt-1.5 text-sm font-bold text-dim">میانبر</span>
-        </>
-      ) : (
-        <>
-          <span className="text-3xl font-extrabold text-ink">میانبر</span>
-          <span dir="ltr" className="mt-1.5 font-display text-sm font-bold tracking-wide text-dim">
-            Mianboor
-          </span>
-        </>
-      )}
+    <span className="flex items-center gap-2.5">
+      <Image
+        src="/logo-512.png"
+        alt="Mianboor logo"
+        width={40}
+        height={40}
+        priority
+        className="size-10 shrink-0 rounded-xl shadow-[0_0_16px_-4px_var(--mb-glow)]"
+      />
+      <span className="flex flex-col leading-none">
+        {lang === "en" ? (
+          <>
+            <span dir="ltr" className="font-display text-3xl font-extrabold tracking-wide text-ink">
+              MIANBOOR
+            </span>
+            <span className="mt-1.5 text-sm font-bold text-dim">میانبر</span>
+          </>
+        ) : (
+          <>
+            <span className="text-3xl font-extrabold text-ink">میانبر</span>
+            <span dir="ltr" className="mt-1.5 font-display text-sm font-bold tracking-wide text-dim">
+              Mianboor
+            </span>
+          </>
+        )}
+      </span>
     </span>
   );
 }
@@ -296,8 +307,7 @@ export function HomeScreen({
         </div>
       )}
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <ShieldCheck className="size-7 shrink-0 text-glow" />
+        <div className="flex items-center">
           <Brand lang={lang} />
         </div>
         <div className="flex items-center gap-1">

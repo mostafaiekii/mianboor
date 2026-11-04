@@ -182,8 +182,7 @@ fun HomeScreen(
             Modifier.fillMaxWidth().padding(top = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Icon(ic(R.drawable.ic_shield_check), null, tint = mb.glow, modifier = Modifier.size(34.dp))
-            Spacer(Modifier.width(10.dp))
+            // v2.9.1: لوگوی مینی‌اپ داخل Brand() هست — شیلد قدیمی حذف شد
             Brand(lang)
             Spacer(Modifier.weight(1f))
             Box {
