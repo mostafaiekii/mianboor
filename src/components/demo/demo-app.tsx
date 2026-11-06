@@ -27,6 +27,7 @@ import { HomeScreen, ServersScreen, AccountScreen, UsageSheet, type UsageRow } f
 import { SettingsScreen } from "@/components/demo/settings-screen";
 import { SplitScreen } from "@/components/demo/split-screen";
 import { GuardianScreen, SIM_LATEST_VERSION, TetherSheet, VersionScreen } from "@/components/demo/guardian-screen";
+import { EmergencyScreen } from "@/components/demo/emergency-screen";
 import { PlansSheet } from "@/components/demo/plans-sheet";
 import { ReferralScreen, type RefFriend, REF_CODE, REF_LINK } from "@/components/demo/referral-screen";
 import { SupportChatScreen } from "@/components/demo/support-chat";
@@ -1357,6 +1358,7 @@ export default function DemoApp() {
                     }}
                     onOpenTether={() => setTetherOpen(true)}
                     onOpenGuardian={() => setScreen("guardian")}
+                    onOpenEmergency={() => setScreen("emergency")}
                     onBack={() => setScreen("home")}
                   />
                 )}
@@ -1365,6 +1367,18 @@ export default function DemoApp() {
                 )}
                 {screen === "guardian" && (
                   <GuardianScreen lang={lang} guardian={guardian} setGuardian={setGuardian} onBack={() => setScreen("settings")} />
+                )}
+                {screen === "emergency" && (
+                  <EmergencyScreen
+                    lang={lang}
+                    onBack={() => setScreen("settings")}
+                    onConnect={(name) => {
+                      setScreen("home");
+                      setVpn("connecting");
+                      setTimeout(() => setVpn((v) => (v === "connecting" ? "on" : v)), 1400);
+                      showToast(lang === "fa" ? `اتصال اضطراری به ${name} برقرار شد` : `Emergency link ${name} connected`);
+                    }}
+                  />
                 )}
                 {screen === "version" && (
                   <VersionScreen

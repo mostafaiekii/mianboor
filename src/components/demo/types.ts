@@ -67,6 +67,7 @@ export type Screen =
   | "wallet"
   | "privacy"
   | "guardian"
+  | "emergency"
   | "version";
 
 export interface ConfigItem {

@@ -9,7 +9,7 @@
  */
 
 import { useEffect, useState } from "react";
-import { Activity, BatteryCharging, ChevronLeft, ChevronRight, Cpu, FlaskConical, Fingerprint, Globe, Info, Network, Palette, Send, ShieldCheck, Wifi } from "lucide-react";
+import { Activity, BatteryCharging, ChevronLeft, ChevronRight, Cpu, FlaskConical, Fingerprint, Globe, Info, Network, Palette, Send, ShieldAlert, ShieldCheck, Wifi } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { TG_SUPPORT, tr, type Lang } from "./i18n";
 import { THEMES, THEME_ORDER, type ThemeName } from "./themes";
@@ -60,6 +60,7 @@ export function SettingsScreen({
   onOpenVersion,
   onOpenTether,
   onOpenGuardian,
+  onOpenEmergency,
   onBack,
 }: {
   lang: Lang;
@@ -108,6 +109,8 @@ export function SettingsScreen({
   onOpenVersion: () => void;
   onOpenTether: () => void;
   onOpenGuardian: () => void;
+  /** بخش اضطراری — کاملاً مستقل */
+  onOpenEmergency: () => void;
   onBack: () => void;
 }) {
   const t = tr(lang);
@@ -318,6 +321,22 @@ export function SettingsScreen({
         <span className="flex-1">
           <span className="block text-sm font-semibold text-ink">{t.guardian}</span>
           <span className="block text-sm leading-5 text-dim">{t.guardianSub}</span>
+        </span>
+        {rtl ? <ChevronLeft className="size-5 shrink-0 text-dim" /> : <ChevronRight className="size-5 shrink-0 text-dim" />}
+      </button>
+
+      {/* ── ۵¾. وضعیت اضطراری — کشف خودکار راه زنده (بخش مستقل) ── */}
+      <button
+        type="button"
+        onClick={onOpenEmergency}
+        className="mt-3 flex items-center gap-3 rounded-2xl border border-gold/30 bg-gold/5 p-4 text-start transition-colors hover:border-gold/60"
+      >
+        <ShieldAlert className="size-5 shrink-0 text-gold" />
+        <span className="flex-1">
+          <span className="block text-sm font-semibold text-ink">{rtl ? "وضعیت اضطراری" : "Emergency mode"}</span>
+          <span className="block text-sm leading-5 text-dim">
+            {rtl ? "کشف خودکار راه زنده وقتی فیلترینگ شدید می‌شود" : "Auto-discover a live route when filtering goes hard"}
+          </span>
         </span>
         {rtl ? <ChevronLeft className="size-5 shrink-0 text-dim" /> : <ChevronRight className="size-5 shrink-0 text-dim" />}
       </button>
