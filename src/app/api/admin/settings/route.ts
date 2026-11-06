@@ -61,4 +61,26 @@ export async function PUT(req: Request) {
     await db.appSetting.upsert({ where: { key }, create: { key, value }, update: { value } });
   }
 
+  // کانفیگ‌های اضطراری — استخرِ بخش اضطراری اپ (فقط وقتی فیلد ارسال شده باشد)
+  if (body.emergencyLinks !== undefined) {
+    const emg = String(body.emergencyLinks ?? "")
+      .split(/[\n\r]+/).map((s) => s.trim()).filter(Boolean)
+      .filter((s) => /^(vless|vmess|trojan|ss):\/\//.test(s))
+      .join("\n")
+      .slice(0, 20_000);
+    await db.appSetting.upsert({ where: { key: "emergency_links" }, create: { key: "emergency_links", value: emg }, update: { value: emg } });
+  }
+
+  // اعلام نسخهٔ جدید (فقط وقتی فیلدها ارسال شده باشند — تا PUT پرداخت، نسخه را پاک نکند)
+  if (body.latestVersion !== undefined || body.latestCode !== undefined || body.latestUrl !== undefined) {
+    const ver = String(body.latestVersion ?? "").trim().slice(0, 20);
+    const code = Math.max(0, Math.min(1_000_000, Number(body.latestCode) || 0));
+    const url = String(body.latestUrl ?? "").trim().slice(0, 300);
+    await db.appSetting.upsert({ where: { key: "latest_name" }, create: { key: "latest_name", value: ver }, update: { value: ver } });
+    await db.appSetting.upsert({ where: { key: "latest_code" }, create: { key: "latest_code", value: String(code) }, update: { value: String(code) } });
+    await db.appSetting.upsert({ where: { key: "latest_url" }, create: { key: "latest_url", value: url }, update: { value: url } });
+  }
+  return NextResponse.json({ ok: true });
+}
+
   // اعلام نسخهٔ جدید (فقط وقتی فیلدها ارسال شده باشند — تا PUT پرداخت، نسخه را پاک نکند)

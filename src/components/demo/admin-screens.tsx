@@ -24,6 +24,7 @@ import {
   Search,
   Send,
   Server,
+  ShieldAlert,
   ShieldCheck,
   Trash2,
   Users,
@@ -885,6 +886,51 @@ function OtaTab({
   const [mods, setMods] = useState<OtaModule[]>(["servers"]);
   const [err, setErr] = useState("");
   const [toast, setToast] = useState("");
+  /* ── کانفیگ‌های اضطراری — استخرِ بخش اضطراری اپ (v2.9.3) ── */
+  const [emg, setEmg] = useState("");
+  const [emgState, setEmgState] = useState<"idle" | "busy" | "ok" | "err">("idle");
+  const [emgMsg, setEmgMsg] = useState("");
+
+  /* مقدار فعلی را یک بار از سرور بخوان */
+  useEffect(() => {
+    let dead = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/admin/settings");
+        const j = res.ok ? await res.json().catch(() => null) : null;
+        if (!dead && j && j.ok === true && typeof j.emergencyLinks === "string") setEmg(j.emergencyLinks);
+      } catch {
+        /* بدون دیتابیس — فقط ورودی خالی */
+      }
+    })();
+    return () => {
+      dead = true;
+    };
+  }, []);
+
+  async function saveEmg() {
+    setEmgState("busy");
+    setEmgMsg("");
+    try {
+      const res = await fetch("/api/admin/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ emergencyLinks: emg }),
+      });
+      const j = res.ok ? await res.json().catch(() => null) : null;
+      if (j && j.ok === true) {
+        setEmgState("ok");
+        setEmgMsg("Saved — the app's emergency pool now serves these.");
+        setTimeout(() => setEmgState("idle"), 1800);
+      } else {
+        setEmgState("err");
+        setEmgMsg(j && j.error ? String(j.error) : "Unauthorized — log in as admin first.");
+      }
+    } catch {
+      setEmgState("err");
+      setEmgMsg("Network error — try again.");
+    }
+  }
 
   useEffect(() => {
     if (!toast) return;
@@ -999,6 +1045,44 @@ function OtaTab({
         >
           <Rocket className="size-4" /> Publish update
         </button>
+      </div>
+
+      {/* ── کانفیگ‌های اضطراری — استخرِ بخش اضطراری (v2.9.3) ── */}
+      <div className="rounded-xl border border-gold/30 bg-gold/5 p-4">
+        <div className="flex items-center gap-2 text-sm font-semibold text-ink">
+          <ShieldAlert className="size-4 text-gold" /> Emergency configs — pool
+        </div>
+        <p className="mt-1 text-xs leading-5 text-dim">
+          One config per line (vless://…). Published here, they reach every user&apos;s emergency screen — even when every
+          domain is blocked (the app pulls them from the CDN seeds). Paste disposable/backup configs only.
+        </p>
+        <textarea
+          aria-label="Emergency configs"
+          dir="ltr"
+          value={emg}
+          onChange={(e) => {
+            setEmg(e.target.value);
+            setEmgState("idle");
+            setEmgMsg("");
+          }}
+          rows={4}
+          placeholder={"vless://…\nvless://…"}
+          className="mt-2.5 w-full resize-none rounded-lg border border-panel-edge bg-night px-3 py-2.5 font-mono text-xs leading-5 text-ink outline-none placeholder:text-dim focus:border-gold/60"
+        />
+        <div className="mt-2 flex items-center gap-2">
+          <button
+            type="button"
+            onClick={saveEmg}
+            disabled={emgState === "busy"}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-gold px-4 py-2 text-sm font-bold text-night transition-opacity hover:opacity-90 disabled:opacity-60"
+          >
+            {emgState === "busy" ? <Loader2 className="size-4 animate-spin" /> : <Check className="size-4" strokeWidth={3} />}
+            Save pool
+          </button>
+          {emgMsg && (
+            <span className={`text-xs leading-5 ${emgState === "err" ? "text-danger" : "text-glow"}`}>{emgMsg}</span>
+          )}
+        </div>
       </div>
 
       {toast && (

@@ -6,18 +6,23 @@
  * این فایل «کاملاً مستقل» است: همهٔ متن‌ها، منطق کشف دامنه و UI داخل همین فایل
  * است؛ حذفش هیچ چیز دیگری در اپ نمی‌شکند (همان اصل «بخش جدید برای بخش جدید»).
  *
- * همان جریان اپ اندروید (EmergencyGate.kt):
- *   ۱) کشف دامنه‌ها از روی CDN (jsDelivr) + فال‌بک raw.githubusercontent
+ * همان جریان اپ اندروید (EmergencyGate.kt) — ولی «مفید»، نه فقط آنالیز:
+ *   ۱) کشف دامنه‌ها از CDN (jsDelivr) + فال‌بک raw.githubusercontent
  *   ۲) کاوش زنده‌بودن هر دامنه (هر پاسخ HTTP حتی 401 یعنی مسیر باز است)
- *   ۳) دریافت استخر کانفیگ‌های اضطراری از اولین دامنهٔ زنده
- *   ۴) نمایش لیست + دکمهٔ وصل‌شدن
+ *   ۳) دریافت کانفیگ‌های واقعی از اولین دامنهٔ زنده:
+ *        - با توکن (اگر NEXT_PUBLIC_CLIENT_TOKEN تنظیم باشد) → لینک‌های خام
+ *        - همیشه → seeds عمومی (base64) که سرور بدون توکن سرو می‌کند
+ *   ۴) هر کانفیگ: دکمهٔ کپی (پیست در هر کلاینت: v2rayNG/Hiddify/NekoBox)
+ *      و دکمهٔ هم‌رسانی — یعنی خروجی صفحه «قابل استفاده» است، نه فقط گزارش.
+ *   ۵) دامنه‌های زنده به‌صورت چیپ قابل‌کلیک — کاربر می‌تواند سایت را باز کند
+ *      یا لینکش را برای دوستانش بفرستد.
  *
- * اگر توکن عمومی کلاینت (NEXT_PUBLIC_CLIENT_TOKEN) تنظیم نباشد، یک استخر
- * نمونهٔ دمو نمایش داده می‌شود تا جریان همیشه قابل دیدن باشد.
+ * هیچ لینک الکی‌ای وجود ندارد؛ اگر هیچی پیدا نشد، راهنمای صادقانه نشان داده
+ * می‌شود (بازکردن دامنهٔ زنده / نصب اپ).
  */
 
 import { useState } from "react";
-import { ChevronLeft, ChevronRight, Loader2, ShieldAlert } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, Copy, Download, ExternalLink, Loader2, Share2, ShieldAlert } from "lucide-react";
 import type { Lang } from "./i18n";
 
 /* ── متن‌ها — داخلی تا i18n.ts دست نخورد ── */
@@ -30,25 +35,20 @@ const S = {
   start: { fa: "جست‌وجوی راه زنده", en: "Find a live route" },
   searching: { fa: "در حال جست‌وجو…", en: "Searching…" },
   logTitle: { fa: "گزارش", en: "Log" },
-  poolTitle: { fa: "کانفیگ‌های اضطراری — یکی را وصل کن", en: "Emergency configs — connect to one" },
-  connect: { fa: "وصل شو", en: "Connect" },
-  connectedNote: {
-    fa: "اتصال اضطراری با حالت سخت‌گیر (تیکه‌تکه‌کردن TLS) برقرار می‌شود.",
-    en: "Emergency connections always use strict stealth (TLS fragmenting).",
+  poolTitle: { fa: "کانفیگ‌های اضطراری — کپی کن و در هر کلاینت وصل شو", en: "Emergency configs — copy into any client" },
+  connect: { fa: "در اپ وصل شو", en: "Connect in app" },
+  copy: { fa: "کپی", en: "Copy" },
+  copied: { fa: "کپی شد", en: "Copied" },
+  share: { fa: "هم‌رسانی", en: "Share" },
+  mirrorsTitle: { fa: "دامنه‌های زنده — باز کن یا برای دوستات بفرست", en: "Live mirrors — open or share with friends" },
+  cacheNote: {
+    fa: "اتصال اضطراری در اپ با حالت سخت‌گیر (تیکه‌تکه‌کردن TLS) برقرار می‌شود.",
+    en: "Emergency connections in the app always use strict stealth (TLS fragmenting).",
   },
   empty: {
-    fa: "هیچ راهی پیدا نشد — دوباره امتحان کن؛ هر بار دامنه‌های تازه بررسی می‌شوند.",
-    en: "No route found — try again; fresh mirrors are checked each time.",
+    fa: "هیچ کانفیگی منتشر نشده — ولی دامنه‌های زنده بالا کار می‌کنند: یکی را باز کن؛ در اپ میانبر هم همین جست‌وجو خودکار انجام می‌شود.",
+    en: "No emergency config published yet — but the live mirrors above work: open one. The Mianboor app runs this search automatically.",
   },
-  discover: { fa: "— کشف دامنه‌های ممکن…", en: "— discovering candidate domains…" },
-  candidates: { fa: "دامنهٔ کاندید؛ کاوش…", en: "candidate domains; probing…" },
-  cdnOk: { fa: "CDN jsDelivr", en: "CDN jsDelivr" },
-  rawOk: { fa: "GitHub raw", en: "GitHub raw" },
-  alive: { fa: "زنده:", en: "alive:" },
-  dead: { fa: "مرده:", en: "dead:" },
-  configs: { fa: "کانفیگ اضطراری", en: "emergency configs" },
-  noRoute: { fa: "— هیچ راهی پیدا نشد", en: "— no route found" },
-  demoPool: { fa: "— استخر نمونهٔ دمو بارگذاری شد", en: "— demo pool loaded" },
   back: "back",
 } as const;
 
@@ -59,29 +59,10 @@ type ELink = { link: string; name: string; country: string };
 
 /* ── نقشهٔ دامنه‌ها — همان فایل عمومیِ بدون راز که اپ اندروید می‌خواند ── */
 const CDN_MAPS = [
-  { url: "https://cdn.jsdelivr.net/gh/mostafaiekii/mianboor@main/emergency/pool.json", where: "cdnOk" as const },
-  { url: "https://raw.githubusercontent.com/mostafaiekii/mianboor/main/emergency/pool.json", where: "rawOk" as const },
+  { url: "https://cdn.jsdelivr.net/gh/mostafaiekii/mianboor@main/emergency/pool.json", where: "CDN jsDelivr" },
+  { url: "https://raw.githubusercontent.com/mostafaiekii/mianboor/main/emergency/pool.json", where: "GitHub raw" },
 ];
 const POOL_PATH = "/api/emergency/pool";
-
-/* ── فال‌بک دمو — وقتی توکن عمومی تنظیم نیست، جریان UI همچنان قابل دیدن است ── */
-const DEMO_POOL: ELink[] = [
-  {
-    link: "vless://00000000-0000-0000-0000-000000000000@cdn.example-edge.net:443?encryption=none&security=tls&type=ws&host=emergency.mianboor.example&sni=emergency.mianboor.example&path=%2Femg",
-    name: "EMG-01",
-    country: "🆘",
-  },
-  {
-    link: "vless://00000000-0000-0000-0000-000000000000@cdn2.example-edge.net:443?encryption=none&security=tls&type=ws&host=emergency2.mianboor.example&sni=emergency2.mianboor.example&path=%2Femg",
-    name: "EMG-02",
-    country: "🆘",
-  },
-  {
-    link: "trojan://0000000000000000@cdn3.example-edge.net:443?security=tls&type=ws&sni=emergency3.mianboor.example",
-    name: "EMG-03",
-    country: "🆘",
-  },
-];
 
 /* ── پارس نمایشی لینک (فقط برای لیست UI) ── */
 function protoOf(link: string): string {
@@ -99,7 +80,7 @@ function hostOf(link: string): string {
     }
     const afterAuth = link.split("://")[1] ?? "";
     const hostPart = afterAuth.split("@")[1] ?? "";
-    return (hostPart.split("/")[0].split("?")[0].split(":")[0] || "—");
+    return hostPart.split("/")[0].split("?")[0].split(":")[0] || "—";
   } catch {
     return "—";
   }
@@ -113,8 +94,7 @@ function portOf(link: string): number {
     }
     const afterAuth = link.split("://")[1] ?? "";
     const hostPart = afterAuth.split("@")[1] ?? "";
-    const hostPort = hostPart.split("/")[0].split("?")[0];
-    const p = Number(hostPort.split(":")[1]);
+    const p = Number(hostPart.split("/")[0].split("?")[0].split(":")[1]);
     return p > 0 ? p : 443;
   } catch {
     return 443;
@@ -132,6 +112,23 @@ async function fetchT(url: string, ms: number, noCors = false): Promise<Response
   }
 }
 
+function b64decode(s: string): string {
+  try {
+    return decodeURIComponent(
+      atob(s.replace(/-/g, "+").replace(/_/g, "/"))
+        .split("")
+        .map((c) => "%" + c.charCodeAt(0).toString(16).padStart(2, "0"))
+        .join(""),
+    );
+  } catch {
+    try {
+      return atob(s);
+    } catch {
+      return "";
+    }
+  }
+}
+
 export function EmergencyScreen({
   lang,
   onBack,
@@ -139,7 +136,7 @@ export function EmergencyScreen({
 }: {
   lang: Lang;
   onBack: () => void;
-  /** کاربر روی «وصل شو» زد — name نام کانفیگ انتخابی است */
+  /** کاربر روی «در اپ وصل شو» زد — name نام کانفیگ انتخابی است */
   onConnect: (name: string) => void;
 }) {
   const rtl = fa(lang);
@@ -149,6 +146,8 @@ export function EmergencyScreen({
   const [busy, setBusy] = useState(false);
   const [searched, setSearched] = useState(false);
   const [pool, setPool] = useState<ELink[]>([]);
+  const [mirrors, setMirrors] = useState<string[]>([]);
+  const [copiedIdx, setCopiedIdx] = useState<number | null>(null);
 
   const ts = () => new Date().toLocaleTimeString("en-GB", { hour12: false });
   const log = (s: string) => setLogs((p) => [...p.slice(-119), `[${ts()}] ${s}`]);
@@ -158,18 +157,27 @@ export function EmergencyScreen({
     setBusy(true);
     setSearched(true);
     setPool([]);
+    setMirrors([]);
     setLogs([]);
 
     try {
-      log(L(lang, "discover"));
+      log(rtl ? "— کشف دامنه‌های ممکن…" : "— discovering candidate domains…");
 
-      /* ── ۱) کشف دامنه‌ها ── */
+      /* ── ۱) کشف دامنه‌ها ──
+         خودِ همین صفحه هم یک mirror زندهٔ same-origin است — اگر کاربر این را
+         می‌بیند، یعنی این دامنه از موقعیت او باز می‌شود. */
       const found = new Set<string>();
+      try {
+        if (window.location.origin.startsWith("http")) {
+          found.add(window.location.origin);
+          log(`✓ ${rtl ? "همین دامنه" : "this origin"} — 1`);
+        }
+      } catch { /* noop */ }
       for (const m of CDN_MAPS) {
         try {
           const res = await fetchT(m.url, 6000);
           if (!res.ok) {
-            log(`✗ ${L(lang, m.where)} — ${res.status}`);
+            log(`✗ ${m.where} — ${res.status}`);
             continue;
           }
           const j = (await res.json()) as { mirrors?: unknown };
@@ -181,16 +189,17 @@ export function EmergencyScreen({
               n++;
             }
           }
-          log(`✓ ${L(lang, m.where)} — ${n}`);
+          log(`✓ ${m.where} — ${n}`);
         } catch {
-          log(`✗ ${L(lang, m.where)}`);
+          log(`✗ ${m.where}`);
         }
       }
 
       /* ── ۲) کاوش زنده‌بودن ── */
       const candidates = [...found];
-      log(`— ${candidates.length} ${L(lang, "candidates")}`);
-      let links: ELink[] | null = null;
+      log(`— ${candidates.length} ${rtl ? "دامنهٔ کاندید؛ کاوش…" : "candidates; probing…"}`);
+      const aliveMirrors: string[] = [];
+      let links: ELink[] = [];
 
       const tk = (process.env.NEXT_PUBLIC_CLIENT_TOKEN ?? "").trim();
       for (const base of candidates) {
@@ -201,48 +210,77 @@ export function EmergencyScreen({
         } catch {
           alive = false;
         }
-        log(`${alive ? "✓" : "✗"} ${alive ? L(lang, "alive") : L(lang, "dead")} ${base}`);
+        log(`${alive ? "✓" : "✗"} ${alive ? (rtl ? "زنده:" : "alive:") : rtl ? "مرده:" : "dead:"} ${base}`);
         if (!alive) continue;
+        aliveMirrors.push(base);
+        setMirrors([...aliveMirrors]);
+        if (links.length > 0) continue; /* اولین استخرِ موفق کافی است */
 
-        /* ── ۳) استخر اضطراری ── */
+        /* ── ۳) کانفیگ‌ها: اول لینک خام با توکن، بعد seeds عمومی ── */
         if (tk) {
           try {
             const res = await fetchT(`${base}${POOL_PATH}?token=${encodeURIComponent(tk)}`, 8000);
             if (res.ok) {
               const j = (await res.json()) as { ok?: boolean; links?: unknown };
-              const parsed: ELink[] = [];
               for (const o of Array.isArray(j.links) ? j.links : []) {
                 const e = o as { link?: string; name?: string; country?: string };
                 const lk = String(e.link ?? "");
                 if (/^(vless|vmess|trojan|ss):\/\//.test(lk)) {
-                  parsed.push({ link: lk, name: String(e.name ?? "EMG"), country: String(e.country ?? "🆘") });
+                  links.push({ link: lk, name: String(e.name ?? "EMG"), country: String(e.country ?? "🆘") });
                 }
               }
-              if (parsed.length > 0) {
-                log(`✓ ${base} — ${parsed.length} ${L(lang, "configs")}`);
-                links = parsed;
-                break;
-              }
-              log(`✗ ${base} — 0`);
-            } else {
-              log(`✗ ${base} — ${res.status}`);
+              if (links.length > 0) log(`✓ ${base} — ${links.length} ${rtl ? "کانفیگ خام" : "raw configs"}`);
             }
           } catch {
-            log(`✗ ${base} — CORS`);
+            /* توکن از این دامنه نگذشت — seeds را امتحان می‌کنیم */
           }
         }
+
+        if (links.length === 0) {
+          try {
+            const res = await fetchT(base + POOL_PATH, 8000); /* seeds عمومی — بدون توکن */
+            if (res.ok) {
+              const j = (await res.json()) as { seeds?: unknown };
+              let n = 0;
+              for (const s of Array.isArray(j.seeds) ? j.seeds : []) {
+                const lk = b64decode(String(s));
+                if (/^(vless|vmess|trojan|ss):\/\//.test(lk)) {
+                  links.push({ link: lk, name: `EMG-${String(links.length + 1).padStart(2, "0")}`, country: "🆘" });
+                  n++;
+                }
+              }
+              if (n > 0) log(`✓ ${base} — ${n} ${rtl ? "کانفیگ از seeds عمومی" : "configs from public seeds"}`);
+            }
+          } catch {
+            log(`✗ ${base} — ${rtl ? "seeds" : "seeds"}`);
+          }
+        }
+        setPool([...links]);
       }
 
-      /* ── ۴) فال‌بک دمو ── */
-      if (!links && !tk) {
-        links = DEMO_POOL;
-        log(L(lang, "demoPool"));
-      }
-
-      if (links) setPool(links);
-      else log(L(lang, "noRoute"));
+      setMirrors(aliveMirrors);
+      if (links.length === 0) log(rtl ? "— هیچ کانفیگی منتشر نشده" : "— no config published yet");
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function copyCfg(i: number, link: string) {
+    try {
+      await navigator.clipboard.writeText(link);
+      setCopiedIdx(i);
+      setTimeout(() => setCopiedIdx((p) => (p === i ? null : p)), 1800);
+    } catch {
+      /* clipboard بسته شد — بی‌خیال */
+    }
+  }
+
+  async function shareCfg(link: string, name: string) {
+    const nav = navigator as Navigator & { share?: (d: { title: string; text: string }) => Promise<void> };
+    if (nav.share) {
+      await nav.share({ title: "Mianboor Emergency", text: `${name}\n${link}` }).catch(() => {});
+    } else {
+      await copyCfg(-1, link);
     }
   }
 
@@ -274,11 +312,33 @@ export function EmergencyScreen({
         {busy ? L(lang, "searching") : L(lang, "start")}
       </button>
 
+      {/* دامنه‌های زنده — قابل‌کلیک و قابل‌هم‌رسانی */}
+      {mirrors.length > 0 && (
+        <>
+          <p className="mt-4 text-xs font-semibold text-dim">{L(lang, "mirrorsTitle")}</p>
+          <div className="mt-1.5 flex flex-wrap gap-1.5">
+            {mirrors.map((m) => (
+              <a
+                key={m}
+                href={m}
+                target="_blank"
+                rel="noreferrer"
+                dir="ltr"
+                className="inline-flex items-center gap-1.5 rounded-full border border-glow/30 bg-glow/10 px-3 py-1.5 font-mono text-[11px] text-glow transition-colors hover:bg-glow/20"
+              >
+                <ExternalLink className="size-3" />
+                {m.replace(/^https?:\/\//, "")}
+              </a>
+            ))}
+          </div>
+        </>
+      )}
+
       {/* گزارش زنده */}
       {logs.length > 0 && (
         <>
           <p className="mt-4 text-xs text-dim">{L(lang, "logTitle")}</p>
-          <div className="mt-1.5 scroll-hide max-h-44 overflow-y-auto rounded-xl bg-night p-2.5">
+          <div className="scroll-hide mt-1.5 max-h-36 overflow-y-auto rounded-xl bg-night p-2.5">
             {logs.slice(-14).map((line, i) => (
               <p
                 key={i}
@@ -293,37 +353,70 @@ export function EmergencyScreen({
         </>
       )}
 
-      {/* استخر اضطراری */}
+      {/* استخر اضطراری — با کپی/هم‌رسانی واقعی */}
       {pool.length > 0 && (
         <>
           <p className="mt-4 text-sm font-semibold text-ink">{L(lang, "poolTitle")}</p>
           <div className="scroll-hide mt-2 flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto pb-3">
             {pool.map((e, i) => (
-              <div
-                key={i}
-                className="flex items-center gap-3 rounded-xl bg-night p-3"
-              >
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-semibold text-ink">{e.name || `EMG-${i + 1}`}</p>
-                  <p className="truncate text-[11px] text-dim">
-                    {protoOf(e.link)} · {hostOf(e.link)}:{portOf(e.link)}
+              <div key={i} className="rounded-xl bg-night p-3">
+                <div className="flex items-center gap-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-semibold text-ink">
+                      {e.country} {e.name || `EMG-${i + 1}`}
+                    </p>
+                    <p dir="ltr" className="truncate text-start text-[11px] text-dim">
+                      {protoOf(e.link)} · {hostOf(e.link)}:{portOf(e.link)}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => onConnect(e.name || `EMG-${i + 1}`)}
+                    className="shrink-0 rounded-lg bg-gold/15 px-3 py-2 text-[12px] font-bold text-gold transition-colors hover:bg-gold/25"
+                  >
+                    {L(lang, "connect")}
+                  </button>
+                </div>
+                <div className="mt-2 flex items-center gap-2 border-t border-panel-edge/60 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => copyCfg(i, e.link)}
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-panel px-2.5 py-1.5 text-[11px] font-semibold text-ink transition-colors hover:bg-panel-edge"
+                  >
+                    {copiedIdx === i ? <Check className="size-3.5 text-glow" /> : <Copy className="size-3.5" />}
+                    {copiedIdx === i ? L(lang, "copied") : L(lang, "copy")}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => shareCfg(e.link, e.name)}
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-panel px-2.5 py-1.5 text-[11px] font-semibold text-ink transition-colors hover:bg-panel-edge"
+                  >
+                    <Share2 className="size-3.5" />
+                    {L(lang, "share")}
+                  </button>
+                  <p dir="ltr" className="min-w-0 flex-1 truncate font-mono text-[10px] text-dim">
+                    {e.link.slice(0, 42)}…
                   </p>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => onConnect(e.name || `EMG-${i + 1}`)}
-                  className="shrink-0 rounded-lg bg-gold/15 px-3 py-2 text-[13px] font-bold text-gold transition-colors hover:bg-gold/25"
-                >
-                  {L(lang, "connect")}
-                </button>
               </div>
             ))}
           </div>
-          <p className="pb-3 text-[11px] leading-[15px] text-dim">{L(lang, "connectedNote")}</p>
+          <p className="pb-3 text-[11px] leading-[15px] text-dim">{L(lang, "cacheNote")}</p>
         </>
       )}
       {pool.length === 0 && searched && !busy && (
-        <p className="mt-3.5 text-xs leading-[17px] text-dim">{L(lang, "empty")}</p>
+        <div className="mt-3.5 rounded-xl border border-panel-edge bg-panel p-3.5">
+          <p className="text-xs leading-[17px] text-dim">{L(lang, "empty")}</p>
+          <a
+            href="https://github.com/mostafaiekii/mianboor/releases/latest"
+            target="_blank"
+            rel="noreferrer"
+            className="mt-2.5 inline-flex items-center gap-1.5 rounded-lg bg-gold/15 px-3 py-2 text-xs font-bold text-gold transition-colors hover:bg-gold/25"
+          >
+            <Download className="size-3.5" />
+            {rtl ? "دانلود اپ میانبر" : "Get the Mianboor app"}
+          </a>
+        </div>
       )}
     </div>
   );

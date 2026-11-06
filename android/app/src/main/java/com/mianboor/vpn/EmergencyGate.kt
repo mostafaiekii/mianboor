@@ -1,5 +1,7 @@
 package com.mianboor.vpn
 
+import android.content.Context
+import org.json.JSONArray
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URI
@@ -7,14 +9,19 @@ import java.net.URL
 import java.net.URLDecoder
 
 /**
- * ── بخش اضطراری (v2.9.2) — فایل کاملاً مستقل ──
+ * ── بخش اضطراری (v2.9.3) — فایل کاملاً مستقل ──
  *
  * وقتی فیلترینگ شدید می‌شود، این کلاس «هر راه زندهٔ ممکن» را پیدا می‌کند:
  *
  *   1. کشف دامنه‌ها: نقشهٔ mirrors از روی CDN (jsDelivr — سخت بسته می‌شود)
  *      + فال‌بک raw.githubusercontent + خودِ سرور اپ.
  *   2. کاوش زنده بودن: هر دامنه با تایم‌اوت کوتاه ping می‌شود.
- *   3. دریافت استخرِ کانفیگ‌های اضطراری از اولین دامنهٔ زنده.
+ *   3. دریافت استخرِ اضطراری از اولین دامنهٔ زنده:
+ *        a) لینک‌های خام با توکن
+ *        b) اگر توکن نگذشت → seeds عمومی (base64 — بدون توکن سرو می‌شود)
+ *   4. کش اضطراری: هر دریافت موفق ذخیره می‌شود؛ اگر همه‌جا قطع بود،
+ *      آخرین کانفیگ‌های سالم از حافظه برمی‌گردند (همان «پیش‌توزیع» —
+ *      کاربر هر بار که آنلاین است، مهماتِ لحظهٔ قطعی را ذخیره می‌کند).
  *
  * هیچ وابستگی به MianboorApi/Updater/سرویس‌های دیگر ندارد — حذفش بی‌خطر است.
  */
@@ -25,8 +32,19 @@ object EmergencyGate {
     private const val RAW_MAP = "https://raw.githubusercontent.com/mostafaiekii/mianboor/main/emergency/pool.json"
     private const val POOL_PATH = "/api/emergency/pool"
 
+    private const val CACHE_PREFS = "emergency_cache"
+    private const val CACHE_LINKS = "links_json"
+    private const val CACHE_MIRRORS = "mirrors_json"
+    private const val CACHE_AT = "saved_at"
+
     data class ELink(val link: String, val name: String, val country: String)
-    data class Pool(val base: String, val mirrors: List<String>, val links: List<ELink>)
+    data class Pool(
+        val base: String,
+        val mirrors: List<String>,
+        val links: List<ELink>,
+        val fromCache: Boolean = false,
+        val savedAtText: String = "",
+    )
 
     // ── ۱) کشف دامنه‌ها ─────────────────────────────────────────────
 
@@ -69,34 +87,66 @@ object EmergencyGate {
 
     // ── ۳) استخر اضطراری ────────────────────────────────────────────
 
-    /** از یک دامنهٔ زنده، کانفیگ‌های اضطراری را می‌گیرد. */
+    /** از یک دامنهٔ زنده: اول لینک خام با توکن، اگر نگذشت seeds عمومی (base64). */
     fun fetchPool(base: String, token: String, log: (String) -> Unit): Pool? = runCatching {
-        val url = "$base$POOL_PATH?token=${java.net.URLEncoder.encode(token, "UTF-8")}"
-        val body = httpGet(url, timeoutMs = 8000)
-        if (body == null) { log("✗ $base — بدون پاسخ"); return@runCatching null }
-        val j = JSONObject(body)
-        if (!j.optBoolean("ok", false)) { log("✗ $base — رد شد (${j.optInt("status", 401)})"); return@runCatching null }
+        val b = base.trimEnd('/')
+        var links = mutableListOf<ELink>()
         val mirrors = mutableListOf<String>()
-        j.optJSONArray("mirrors")?.let { arr ->
-            for (i in 0 until arr.length()) mirrors.add(arr.optString(i, "").trim().trimEnd('/'))
-        }
-        val links = mutableListOf<ELink>()
-        j.optJSONArray("links")?.let { arr ->
-            for (i in 0 until arr.length()) {
-                val o = arr.optJSONObject(i) ?: continue
-                val l = o.optString("link", "").trim()
-                if (l.startsWith("vless://") || l.startsWith("vmess://") ||
-                    l.startsWith("trojan://") || l.startsWith("ss://")
-                ) links.add(ELink(l, o.optString("name", "EMG-${i + 1}"), o.optString("country", "🆘")))
+
+        // ۳-الف) لینک‌های خام با توکن
+        if (token.isNotBlank()) {
+            val url = "$b$POOL_PATH?token=${java.net.URLEncoder.encode(token, "UTF-8")}"
+            val body = httpGet(url, timeoutMs = 8000)
+            if (body != null) {
+                val j = JSONObject(body)
+                if (j.optBoolean("ok", false)) {
+                    j.optJSONArray("mirrors")?.let { arr ->
+                        for (i in 0 until arr.length()) mirrors.add(arr.optString(i, "").trim().trimEnd('/'))
+                    }
+                    j.optJSONArray("links")?.let { arr ->
+                        for (i in 0 until arr.length()) {
+                            val o = arr.optJSONObject(i) ?: continue
+                            val l = o.optString("link", "").trim()
+                            if (isCfg(l)) links.add(ELink(l, o.optString("name", "EMG-${i + 1}"), o.optString("country", "🆘")))
+                        }
+                    }
+                    if (links.isNotEmpty()) log("✓ $b — ${links.size} کانفیگ اضطراری")
+                } else {
+                    log("✗ $b — توکن رد شد (${j.optInt("status", 401)})؛ seeds…")
+                }
+            } else {
+                log("✗ $b — بدون پاسخ")
             }
         }
-        if (links.isEmpty()) { log("✗ $base — استخر خالی"); return@runCatching null }
-        log("✓ $base — ${links.size} کانفیگ اضطراری")
-        Pool(base, mirrors, links)
+
+        // ۳-ب) seeds عمومی — بدون توکن؛ حتی اگر توکن عوض شده باشد کار می‌کند
+        if (links.isEmpty()) {
+            val body = httpGet("$b$POOL_PATH", timeoutMs = 8000)
+            if (body != null) {
+                val j = JSONObject(body)
+                if (mirrors.isEmpty()) {
+                    j.optJSONArray("mirrors")?.let { arr ->
+                        for (i in 0 until arr.length()) mirrors.add(arr.optString(i, "").trim().trimEnd('/'))
+                    }
+                }
+                j.optJSONArray("seeds")?.let { arr ->
+                    for (i in 0 until arr.length()) {
+                        val l = decodeBase64(arr.optString(i, "")).trim()
+                        if (isCfg(l)) links.add(ELink(l, "EMG-${String.format("%02d", links.size + 1)}", "🆘"))
+                    }
+                }
+                if (links.isNotEmpty()) log("✓ $b — ${links.size} کانفیگ از seeds عمومی")
+                else log("✗ $b — استخر خالی")
+            } else {
+                log("✗ $b — بدون پاسخ (seeds)")
+            }
+        }
+
+        if (links.isEmpty()) null else Pool(b, mirrors, links)
     }.getOrNull()
 
-    /** کل جریان: کشف → کاوش → دریافت. اولین استخرِ موفق برمی‌گردد. */
-    fun rescue(serverUrl: String, token: String, log: (String) -> Unit): Pool? {
+    /** کل جریان: کشف → کاوش → دریافت → (شکست؟) حافظهٔ اضطراری. */
+    fun rescue(ctx: Context?, serverUrl: String, token: String, log: (String) -> Unit): Pool? {
         log("— کشف دامنه‌های ممکن…")
         val candidates = discover(serverUrl, log)
         log("— ${candidates.size} دامنهٔ کاندید؛ کاوش…")
@@ -104,12 +154,63 @@ object EmergencyGate {
             val alive = probe(base)
             log(if (alive) "✓ زنده: $base" else "✗ مرده: $base")
             if (!alive) continue
-            fetchPool(base, token, log)?.let { return it }
+            fetchPool(base, token, log)?.let {
+                cachePut(ctx, it)
+                return it
+            }
+        }
+        // ── همه‌جا قطع بود؟ آخرین مهمات سالم از حافظهٔ اضطراری ──
+        cacheGet(ctx)?.let { cached ->
+            log("— شبکه قطع بود؛ ${cached.links.size} کانفیگ از حافظهٔ اضطراری")
+            return cached
         }
         return null
     }
 
-    // ── ۴) پارسِ نمایشی لینک (فقط برای لیست UI؛ وصل‌شدن با خود لینک است) ──
+    // ── ۴) کش اضطراری — پیش‌توزیع خودکار ────────────────────────────
+
+    private fun cachePut(ctx: Context?, pool: Pool) {
+        if (ctx == null || pool.links.isEmpty()) return
+        runCatching {
+            val arr = JSONArray()
+            pool.links.forEach { e ->
+                arr.put(JSONObject().put("link", e.link).put("name", e.name).put("country", e.country))
+            }
+            val marr = JSONArray(); pool.mirrors.forEach { marr.put(it) }
+            ctx.getSharedPreferences(CACHE_PREFS, Context.MODE_PRIVATE).edit()
+                .putString(CACHE_LINKS, arr.toString())
+                .putString(CACHE_MIRRORS, marr.toString())
+                .putLong(CACHE_AT, System.currentTimeMillis())
+                .apply()
+        }
+    }
+
+    fun cacheGet(ctx: Context?): Pool? {
+        if (ctx == null) return null
+        return runCatching {
+            val p = ctx.getSharedPreferences(CACHE_PREFS, Context.MODE_PRIVATE)
+            val raw = p.getString(CACHE_LINKS, null) ?: return@runCatching null
+            val arr = JSONArray(raw)
+            val links = mutableListOf<ELink>()
+            for (i in 0 until arr.length()) {
+                val o = arr.optJSONObject(i) ?: continue
+                val l = o.optString("link", "")
+                if (isCfg(l)) links.add(ELink(l, o.optString("name", "EMG-${i + 1}"), o.optString("country", "🆘")))
+            }
+            if (links.isEmpty()) return@runCatching null
+            val marr = runCatching { JSONArray(p.getString(CACHE_MIRRORS, "[]")) }.getOrDefault(JSONArray())
+            val mirrors = mutableListOf<String>()
+            for (i in 0 until marr.length()) mirrors.add(marr.optString(i, ""))
+            val at = p.getLong(CACHE_AT, 0L)
+            val whenTxt = if (at > 0) java.text.SimpleDateFormat("MM/dd HH:mm", java.util.Locale.US).format(java.util.Date(at)) else "—"
+            Pool("cache", mirrors, links, fromCache = true, savedAtText = whenTxt)
+        }.getOrNull()
+    }
+
+    // ── ۵) پارسِ نمایشی لینک (فقط برای لیست UI؛ وصل‌شدن با خود لینک است) ──
+
+    fun isCfg(l: String): Boolean = l.startsWith("vless://") || l.startsWith("vmess://") ||
+        l.startsWith("trojan://") || l.startsWith("ss://")
 
     fun protoOf(link: String): String = when {
         link.startsWith("vless://") -> "VLESS"
@@ -145,6 +246,12 @@ object EmergencyGate {
             else -> URI(link).port.takeIf { it > 0 } ?: 443
         }
     }.getOrDefault(443)
+
+    // ── ۶) ابزار ────────────────────────────────────────────────────
+
+    private fun decodeBase64(s: String): String = runCatching {
+        String(android.util.Base64.decode(s.trim(), android.util.Base64.DEFAULT))
+    }.getOrDefault("")
 
     // ── HTTP ساده ───────────────────────────────────────────────────
 

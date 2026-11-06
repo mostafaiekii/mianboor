@@ -1,7 +1,15 @@
 package com.mianboor.vpn.ui
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import android.os.Handler
+import android.os.Looper
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -27,6 +35,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -34,19 +43,18 @@ import androidx.compose.ui.unit.sp
 import com.mianboor.vpn.ConfigItem
 import com.mianboor.vpn.EmergencyGate
 import com.mianboor.vpn.R
-import android.os.Handler
-import android.os.Looper
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
- * ── بخش اضطراری (v2.9.2) — صفحهٔ کاملاً مستقل ──
+ * ── بخش اضطراری (v2.9.3) — صفحهٔ کاملاً مستقل ──
  *
  * برای لحظه‌هایی که فیلترینگ شدید می‌شود یا اینترنت عملاً قطع است:
  *   ۱) دامنه‌های زنده را از روی CDN پیدا می‌کند
- *   ۲) استخرِ کانفیگ‌های اضطراری را می‌گیرد
- *   ۳) اتصال با حالت سخت‌گیر (fragment) انجام می‌شود
+ *   ۲) استخرِ کانفیگ‌های اضطراری را می‌گیرد (توکن → seeds عمومی → حافظه)
+ *   ۳) هر کانفیگ «کپی» و «هم‌رسانی» دارد — کاربر می‌تواند برای بقیه بفرستد
+ *   ۴) اتصال با حالت سخت‌گیر (fragment) انجام می‌شود
  *
  * همهٔ متن‌ها داخل همین فایل است تا حذف این بخش، هیچ اثری روی بقیهٔ اپ نگذارد.
  */
@@ -63,14 +71,19 @@ private class EmgStrings(lang: Lang) {
     val logTitle = if (rtl) "گزارش" else "Log"
     val poolTitle = if (rtl) "کانفیگ‌های اضطراری — یکی را وصل کن" else "Emergency configs — connect to one"
     val connect = if (rtl) "وصل شو" else "Connect"
+    val copy = if (rtl) "کپی" else "Copy"
+    val copied = if (rtl) "کپی شد ✓" else "Copied ✓"
+    val share = if (rtl) "هم‌رسانی" else "Share"
+    val mirrorsTitle = if (rtl) "دامنه‌های زنده — باز کن یا برای دوستات بفرست" else "Live mirrors — open or share with friends"
+    val cacheNote = if (rtl) "از حافظهٔ اضطراری (آخرین دریافت موفق: %s)" else "From emergency cache (last success: %s)"
     val connectedNote = if (rtl)
         "اتصال اضطراری با حالت سخت‌گیر (تیکه‌تکه‌کردن TLS) برقرار می‌شود."
     else
         "Emergency connections always use strict stealth (TLS fragmenting)."
     val empty = if (rtl)
-        "هیچ راهی پیدا نشد — دوباره امتحان کن؛ هر بار دامنه‌های تازه بررسی می‌شوند."
+        "هیچ راهی پیدا نشد — دوباره امتحان کن؛ هر بار دامنه‌های تازه بررسی می‌شوند. وقتی آنلاین شوی، همین صفحه مهمات را برای لحظهٔ قطعی ذخیره می‌کند."
     else
-        "No route found — try again; fresh mirrors are checked each time."
+        "No route found — try again; fresh mirrors are checked each time. Whenever you get online, this page stores supplies for the next blackout."
     val back = "back"
 }
 
@@ -85,11 +98,16 @@ fun EmergencyScreen(
     val mb = LocalMb.current
     val t = EmgStrings(lang)
     val scope = rememberCoroutineScope()
+    val ctx = LocalContext.current
 
     val logs = remember { mutableStateListOf<String>() }
     var busy by remember { mutableStateOf(false) }
     var searched by remember { mutableStateOf(false) }
+    var fromCache by remember { mutableStateOf(false) }
+    var cacheWhen by remember { mutableStateOf("") }
     val pool = remember { mutableStateListOf<EmergencyGate.ELink>() }
+    val mirrors = remember { mutableStateListOf<String>() }
+    var copiedIdx by remember { mutableStateOf(-1) }
 
     // callback از ترد IO می‌آید — به‌روزرسانی UI همیشه روی ترد اصلی
     val main = remember { Handler(Looper.getMainLooper()) }
@@ -101,19 +119,48 @@ fun EmergencyScreen(
         if (logs.size > 120) logs.removeAt(0)
     }
 
+    fun copyCfg(i: Int, link: String) {
+        runCatching {
+            val cm = ctx.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+            cm.setPrimaryClip(ClipData.newPlainText("Mianboor", link))
+            copiedIdx = i
+        }
+    }
+
+    fun shareCfg(link: String, name: String) {
+        runCatching {
+            val intent = Intent(Intent.ACTION_SEND).apply {
+                type = "text/plain"
+                putExtra(Intent.EXTRA_SUBJECT, "Mianboor Emergency")
+                putExtra(Intent.EXTRA_TEXT, "$name\n$link")
+            }
+            ctx.startActivity(Intent.createChooser(intent, t.share))
+        }
+    }
+
+    fun openMirror(url: String) {
+        runCatching { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
+    }
+
     fun runRescue() {
         if (busy) return
         busy = true
         searched = true
         pool.clear()
+        mirrors.clear()
+        fromCache = false
         scope.launch(Dispatchers.IO) {
             withContext(Dispatchers.Main) { logs.clear() }
-            val p = EmergencyGate.rescue(serverUrl, clientToken) { s ->
+            val p = EmergencyGate.rescue(ctx, serverUrl, clientToken) { s ->
                 main.post { log(s) }
             }
             withContext(Dispatchers.Main) {
                 pool.clear()
+                mirrors.clear()
+                fromCache = p?.fromCache == true
+                cacheWhen = p?.savedAtText ?: ""
                 p?.links?.let { pool.addAll(it) }
+                p?.mirrors?.let { ms -> ms.filter { it.startsWith("http") }.forEach { mirrors.add(it) } }
                 if (p == null) log(if (t.rtl) "— هیچ راهی پیدا نشد" else "— no route found")
                 busy = false
             }
@@ -172,6 +219,33 @@ fun EmergencyScreen(
             )
         }
 
+        // ── دامنه‌های زنده — بازکردنی/هم‌رسانی‌شدنی ──
+        if (mirrors.isNotEmpty()) {
+            Text(t.mirrorsTitle, color = mb.dim, fontSize = 12.sp, modifier = Modifier.padding(top = 16.dp))
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(top = 6.dp)
+                    .horizontalScroll(rememberScrollState()),
+            ) {
+                mirrors.forEach { m ->
+                    Box(
+                        Modifier
+                            .padding(end = 6.dp)
+                            .clip(RoundedCornerShape(50))
+                            .background(mb.glow.copy(alpha = 0.14f))
+                            .clickable { openMirror(m) }
+                            .padding(horizontal = 10.dp, vertical = 5.dp),
+                    ) {
+                        Text(
+                            m.replace(Regex("^https?://"), ""),
+                            color = mb.glow, fontSize = 11.sp, fontFamily = FontFamily.Monospace,
+                        )
+                    }
+                }
+            }
+        }
+
         // ── گزارش زنده ──
         if (logs.isNotEmpty()) {
             Text(t.logTitle, color = mb.dim, fontSize = 12.sp, modifier = Modifier.padding(top = 16.dp))
@@ -195,56 +269,98 @@ fun EmergencyScreen(
             }
         }
 
-        // ── استخر اضطراری ──
+        // ── اعلان حافظهٔ اضطراری ──
+        if (fromCache) {
+            Text(
+                t.cacheNote.format(cacheWhen),
+                color = mb.gold, fontSize = 11.sp, lineHeight = 15.sp,
+                modifier = Modifier.padding(top = 12.dp),
+            )
+        }
+
+        // ── استخر اضطراری — با کپی و هم‌رسانی واقعی ──
         if (pool.isNotEmpty()) {
             Text(
                 t.poolTitle, color = mb.ink, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.padding(top = 18.dp),
             )
             pool.forEachIndexed { i, e ->
-                Row(
+                Column(
                     Modifier
                         .fillMaxWidth()
                         .padding(top = 8.dp)
                         .clip(RoundedCornerShape(12.dp))
                         .background(mb.night)
                         .padding(12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Column(Modifier.weight(1f)) {
-                        Text(
-                            e.name.ifBlank { "EMG-${i + 1}" },
-                            color = mb.ink, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
-                        )
-                        Text(
-                            "${EmergencyGate.protoOf(e.link)} · ${EmergencyGate.hostOf(e.link)}:${EmergencyGate.portOf(e.link)}",
-                            color = mb.dim, fontSize = 11.sp,
-                        )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                "${e.country} ${e.name.ifBlank { "EMG-${i + 1}" }}",
+                                color = mb.ink, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
+                            )
+                            Text(
+                                "${EmergencyGate.protoOf(e.link)} · ${EmergencyGate.hostOf(e.link)}:${EmergencyGate.portOf(e.link)}",
+                                color = mb.dim, fontSize = 11.sp,
+                            )
+                        }
+                        Box(
+                            Modifier
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(mb.gold.copy(alpha = 0.18f))
+                                .clickable {
+                                    onConnect(
+                                        ConfigItem(
+                                            key = "emg:$i",
+                                            name = e.name.ifBlank { "EMG-${i + 1}" },
+                                            country = e.country,
+                                            protocol = EmergencyGate.protoOf(e.link),
+                                            host = EmergencyGate.hostOf(e.link),
+                                            port = EmergencyGate.portOf(e.link),
+                                            ping = 0,
+                                            premium = false,
+                                            enabled = true,
+                                            link = e.link,
+                                            local = false,
+                                        ),
+                                    )
+                                }
+                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                        ) {
+                            Text(t.connect, color = mb.gold, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                        }
                     }
-                    Box(
-                        Modifier
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(mb.gold.copy(alpha = 0.18f))
-                            .clickable {
-                                onConnect(
-                                    ConfigItem(
-                                        key = "emg:$i",
-                                        name = e.name.ifBlank { "EMG-${i + 1}" },
-                                        country = e.country,
-                                        protocol = EmergencyGate.protoOf(e.link),
-                                        host = EmergencyGate.hostOf(e.link),
-                                        port = EmergencyGate.portOf(e.link),
-                                        ping = 0,
-                                        premium = false,
-                                        enabled = true,
-                                        link = e.link,
-                                        local = false,
-                                    ),
-                                )
-                            }
-                            .padding(horizontal = 12.dp, vertical = 8.dp),
-                    ) {
-                        Text(t.connect, color = mb.gold, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                    // ── ردیف کپی/هم‌رسانی — خروجی صفحه «قابل استفاده» است ──
+                    Row(Modifier.padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(mb.panel)
+                                .clickable { copyCfg(i, e.link) }
+                                .padding(horizontal = 10.dp, vertical = 6.dp),
+                        ) {
+                            Text(
+                                if (copiedIdx == i) t.copied else t.copy,
+                                color = if (copiedIdx == i) mb.glow else mb.ink,
+                                fontSize = 11.sp, fontWeight = FontWeight.SemiBold,
+                            )
+                        }
+                        Spacer(Modifier.width(6.dp))
+                        Box(
+                            Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(mb.panel)
+                                .clickable { shareCfg(e.link, e.name.ifBlank { "EMG-${i + 1}" }) }
+                                .padding(horizontal = 10.dp, vertical = 6.dp),
+                        ) {
+                            Text(t.share, color = mb.ink, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                        }
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            e.link.take(38) + "…",
+                            color = mb.dim, fontSize = 10.sp, fontFamily = FontFamily.Monospace,
+                            maxLines = 1,
+                        )
                     }
                 }
             }
