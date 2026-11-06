@@ -420,6 +420,33 @@ interface Strings {
     val blockIr: String
     val blockIrSub: String
     val applyNextConn: String
+
+    // ── TgTunnel — وبگردی کامل (v2.2) ──
+    val ttTitle: String
+    val ttSub: String
+    val ttHint: String
+    val ttChipExample: String
+    val ttChipWiki: String
+    val ttVideoTitle: String
+    val ttVideoSub: String
+    val ttVideo360: String
+    val ttVideo480: String
+    val ttVideoLoading: String
+    val ttVideoFail: String
+    val ttVideoNote: String
+    val ttGo: String
+    val ttPhaseHs: String
+    val ttPhaseUp: String
+    val ttPhaseEgress: String
+    val ttPhaseDown: String
+    val ttPhaseRender: String
+    val ttSecured: String
+    val ttFailed: String
+    val ttOffline: String
+    val ttStatTime: String
+    val ttStatSize: String
+    val ttStatFrames: String
+    val ttNote: String
 }
 
 object EnStrings : Strings {
@@ -857,6 +884,33 @@ object EnStrings : Strings {
     override val blockIr = "Block .ir connections"
     override val blockIrSub = "While on VPN, Iranian domains stay out of the tunnel"
     override val applyNextConn = "Applied on the next connection"
+
+    // ── TgTunnel — Full browsing (v2.2) ──
+    override val ttTitle = "Full browsing"
+    override val ttSub = "The destination page loads through Mianboor's own encrypted bridge — no VPS, no browser."
+    override val ttHint = "https://example.com"
+    override val ttChipExample = "example.com"
+    override val ttChipWiki = "Wikipedia"
+    override val ttVideoTitle = "Demo clip"
+    override val ttVideoSub = "Streamed through the same encrypted frames"
+    override val ttVideo360 = "360p"
+    override val ttVideo480 = "480p"
+    override val ttVideoLoading = "Loading video…"
+    override val ttVideoFail = "Video playback failed"
+    override val ttVideoNote = "Video is fetched frame-by-frame through the tunnel — slower than direct playback."
+    override val ttGo = "GO"
+    override val ttPhaseHs = "Handshake"
+    override val ttPhaseUp = "Sending request"
+    override val ttPhaseEgress = "Bridge egress"
+    override val ttPhaseDown = "Receiving"
+    override val ttPhaseRender = "Rendering"
+    override val ttSecured = "Page secured through the tunnel"
+    override val ttFailed = "Load failed"
+    override val ttOffline = "Content is unreachable — the bridge or destination is down."
+    override val ttStatTime = "Time"
+    override val ttStatSize = "Size"
+    override val ttStatFrames = "Frames"
+    override val ttNote = "Only what you open goes through this bridge; the rest of the internet is untouched."
 }
 
 object FaStrings : Strings {
@@ -1292,6 +1346,33 @@ object FaStrings : Strings {
     override val blockIr = "مسدود کردن اتصالات .ir"
     override val blockIrSub = "حین اتصال، دامنه‌های ایرانی از تونل خارج می‌مونن"
     override val applyNextConn = "در اتصال بعدی اعمال می‌شود"
+
+    // ── TgTunnel — وبگردی کامل (v2.2) ──
+    override val ttTitle = "وبگردی کامل"
+    override val ttSub = "صفحهٔ مقصد از پُل رمزی خود میانبر می‌آید — بدون VPS و بدون مرورگر."
+    override val ttHint = "https://example.com"
+    override val ttChipExample = "example.com"
+    override val ttChipWiki = "ویکی‌پدیا"
+    override val ttVideoTitle = "کلیپ نمایشی"
+    override val ttVideoSub = "از همان فریم‌های رمزی پخش می‌شود"
+    override val ttVideo360 = "۳۶۰p"
+    override val ttVideo480 = "۴۸۰p"
+    override val ttVideoLoading = "در حال بارگذاری ویدیو…"
+    override val ttVideoFail = "پخش ویدیو شکست خورد"
+    override val ttVideoNote = "ویدیو فریم‌به‌فریم از دل تونل می‌آید — کندتر از پخش مستقیم است."
+    override val ttGo = "برو"
+    override val ttPhaseHs = "هندشیک"
+    override val ttPhaseUp = "ارسال درخواست"
+    override val ttPhaseEgress = "خروج از پُل"
+    override val ttPhaseDown = "دریافت"
+    override val ttPhaseRender = "نمایش"
+    override val ttSecured = "صفحه با موفقیت از دل تونل آمد"
+    override val ttFailed = "بارگذاری شکست خورد"
+    override val ttOffline = "محتوا در دسترس نیست — پُل یا مقصد پایین است."
+    override val ttStatTime = "زمان"
+    override val ttStatSize = "حجم"
+    override val ttStatFrames = "فریم‌ها"
+    override val ttNote = "فقط چیزی که باز می‌کنی از این پُل می‌رود؛ بقیهٔ اینترنت دست‌نخورده است."
 }
 
 fun stringsOf(lang: Lang): Strings = if (lang == Lang.FA) FaStrings else EnStrings

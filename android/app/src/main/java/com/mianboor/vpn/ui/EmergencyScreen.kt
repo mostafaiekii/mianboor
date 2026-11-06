@@ -33,8 +33,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.mianboor.vpn.ConfigItem
 import com.mianboor.vpn.EmergencyGate
-import com.mianboor.vpn.LocalMb
 import com.mianboor.vpn.R
+import android.os.Handler
+import android.os.Looper
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -90,6 +91,9 @@ fun EmergencyScreen(
     var searched by remember { mutableStateOf(false) }
     val pool = remember { mutableStateListOf<EmergencyGate.ELink>() }
 
+    // callback از ترد IO می‌آید — به‌روزرسانی UI همیشه روی ترد اصلی
+    val main = remember { Handler(Looper.getMainLooper()) }
+
     fun log(s: String) {
         val ts = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.US)
             .format(java.util.Date())
@@ -105,7 +109,7 @@ fun EmergencyScreen(
         scope.launch(Dispatchers.IO) {
             withContext(Dispatchers.Main) { logs.clear() }
             val p = EmergencyGate.rescue(serverUrl, clientToken) { s ->
-                withContext(Dispatchers.Main) { log(s) }
+                main.post { log(s) }
             }
             withContext(Dispatchers.Main) {
                 pool.clear()
