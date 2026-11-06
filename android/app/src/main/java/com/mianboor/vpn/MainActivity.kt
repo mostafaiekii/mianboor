@@ -125,7 +125,7 @@ import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.security.MessageDigest
 
-enum class Screen { HOME, SERVERS, ACCOUNT, SETTINGS, SPLIT, INBOX, REFERRAL, SUPPORT, WALLET, PRIVACY, LOGIN, ADMIN, GUARDIAN, VERSION }
+enum class Screen { HOME, SERVERS, ACCOUNT, SETTINGS, SPLIT, INBOX, REFERRAL, SUPPORT, WALLET, PRIVACY, LOGIN, ADMIN, GUARDIAN, VERSION, EMERGENCY }
 
 data class Entitlement(val plan: String, val expiresAt: Long)
 
@@ -1254,11 +1254,12 @@ private fun MbAppInner(
 
     // ── vpn start/stop ──
     var pendingTarget by remember { mutableStateOf<ConfigItem?>(null) }
+    var pendingEmergency by remember { mutableStateOf(false) }
     var pendingTgSocks by remember { mutableStateOf<com.mianboor.vpn.TgProxy?>(null) }
     /** v2.1: تونل فعلی در حالت پروکسی تلگرام (socks فقط-تلگرام) است — failover عادی نباید آن را بشکند. */
     var tgActive by remember { mutableStateOf(false) }
 
-    fun launchVpn(server: ConfigItem) {
+    fun launchVpn(server: ConfigItem, stealthOverride: String? = null) {
         tgActive = false // اتصال عادی — حالت پروکسی تلگرام پایان می‌یابد (سرویس هم tgSocks را پاک می‌کند)
         // v2.1: اگر جلسهٔ قبل «فقط-تلگرام» بود، وضعیت واقعی تونل‌گذاری کاربر برگردد
         val prevMode = AppPrefs.prevSplitMode(context)
@@ -1275,6 +1276,8 @@ private fun MbAppInner(
             .putExtra(MianboorVpnService.EXTRA_LINK, server.link)
             .putExtra(MianboorVpnService.EXTRA_NAME, server.name)
             .putExtra(MianboorVpnService.EXTRA_COUNTRY, server.country)
+        // v2.9.2: فقط بخش اضطراری می‌فرستد — حالت سخت‌گیر بدون تغییر تنظیمات کاربر
+        if (stealthOverride != null) intent.putExtra(MianboorVpnService.EXTRA_STEALTH, stealthOverride)
         VpnState.reset()
         VpnState.phase.value = Phase.CONNECTING
         ContextCompat.startForegroundService(context, intent)
@@ -1306,6 +1309,8 @@ private fun MbAppInner(
     ) { result ->
         val server = pendingTarget
         pendingTarget = null
+        val emg = pendingEmergency
+        pendingEmergency = false
         val tg = pendingTgSocks
         pendingTgSocks = null
         when {
@@ -1314,7 +1319,8 @@ private fun MbAppInner(
                 VpnState.errorMessage.value = t.errPermission
             }
             tg != null -> launchVpnTg(tg)
-            server != null -> launchVpn(server)
+            // v2.9.2: اتصال اضطراری همیشه با حالت سخت‌گیر
+            server != null -> launchVpn(server, if (emg) "strict" else null)
         }
     }
 
@@ -1419,6 +1425,22 @@ private fun MbAppInner(
             vpnPermission.launch(prepare)
         } else {
             launchVpn(chosen)
+        }
+    }
+
+    /**
+     * v2.9.2 — وصل‌شدن از بخش اضطراری: همان مسیر عادی (prepare → launchVpn) فقط
+     * با تحمیل حالت سخت‌گیر (fragment). تنظیمات کاربر دست نمی‌خورد.
+     */
+    fun emergencyConnect(server: ConfigItem) {
+        requestNotificationsIfNeeded()
+        val prepare = VpnService.prepare(context)
+        if (prepare != null) {
+            pendingTarget = server
+            pendingEmergency = true
+            vpnPermission.launch(prepare)
+        } else {
+            launchVpn(server, "strict")
         }
     }
 
@@ -1670,9 +1692,10 @@ private fun MbAppInner(
         if (screen == Screen.INBOX) refreshNotices()
         if (screen == Screen.REFERRAL) loadReferral()
     }
-    BackHandler(enabled = screen in setOf(Screen.SERVERS, Screen.SETTINGS, Screen.SPLIT, Screen.INBOX, Screen.REFERRAL, Screen.SUPPORT, Screen.LOGIN, Screen.ACCOUNT)) {
+    BackHandler(enabled = screen in setOf(Screen.SERVERS, Screen.SETTINGS, Screen.SPLIT, Screen.INBOX, Screen.REFERRAL, Screen.SUPPORT, Screen.LOGIN, Screen.ACCOUNT, Screen.EMERGENCY)) {
         screen = when (screen) {
             Screen.SERVERS, Screen.SETTINGS, Screen.INBOX -> Screen.HOME
+            Screen.EMERGENCY -> Screen.SETTINGS
             Screen.REFERRAL, Screen.SUPPORT -> Screen.ACCOUNT
             Screen.SPLIT -> Screen.ACCOUNT
             Screen.LOGIN -> Screen.ACCOUNT
@@ -2005,6 +2028,17 @@ private fun MbAppInner(
                             reconnectWithPrefs(t.applyNextConn)
                         },
                         onOpenVersion = { screen = Screen.VERSION },
+                        onEmergency = { screen = Screen.EMERGENCY },
+                    )
+                    Screen.EMERGENCY -> EmergencyScreen(
+                        lang = lang,
+                        serverUrl = AppPrefs.serverUrl(context),
+                        clientToken = AppPrefs.clientToken(context),
+                        onBack = { screen = Screen.SETTINGS },
+                        onConnect = { ci ->
+                            screen = Screen.HOME
+                            emergencyConnect(ci)
+                        },
                     )
                     Screen.GUARDIAN -> GuardianScreen(
                         lang = lang,

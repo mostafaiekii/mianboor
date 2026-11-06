@@ -83,6 +83,8 @@ fun SettingsScreen(
     onToggleTether: (Boolean) -> Unit = {},
     blockIr: Boolean = false,
     setBlockIr: (Boolean) -> Unit = {},
+    // ── v2.9.2: بخش اضطراری (مستقل — حذفش بی‌خطر است) ──
+    onEmergency: () -> Unit = {},
 ) {
     val t = stringsOf(lang)
     val mb = LocalMb.current
@@ -316,6 +318,26 @@ fun SettingsScreen(
                     fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
                 )
                 Spacer(Modifier.width(6.dp))
+                FwdChevron(rtl)
+            }
+        }
+
+        // ── ۵⅚. وضعیت اضطراری (v2.9.2) — بخش مستقل برای فیلترینگ شدید/قطعی ──
+        PanelCard(Modifier.padding(top = 12.dp), onClick = onEmergency) {
+            Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(ic(R.drawable.ic_shield_alert), null, tint = mb.gold, modifier = Modifier.size(20.dp))
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        if (rtl) "وضعیت اضطراری" else "Emergency mode",
+                        color = mb.gold, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
+                    )
+                    Text(
+                        if (rtl) "فیلترینگ شدید شد یا اینترنت قطع شد؟ میانبر خودش راه زنده را پیدا می‌کند."
+                        else "Hard filtering or a shutdown? Mianboor finds a live route by itself.",
+                        color = mb.dim, fontSize = 12.sp, lineHeight = 16.sp, maxLines = 2,
+                    )
+                }
                 FwdChevron(rtl)
             }
         }

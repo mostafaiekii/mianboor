@@ -51,6 +51,8 @@ class MianboorVpnService : VpnService() {
         const val EXTRA_TG_MTPROTO_HOST = "tg_mt_host"
         const val EXTRA_TG_MTPROTO_PORT = "tg_mt_port"
         const val EXTRA_TG_MTPROTO_SECRET = "tg_mt_secret"
+        // v2.9.2: فقط بخش اضطراری می‌فرستد — حالت سخت‌گیر را بدون دست‌زدن به تنظیمات کاربر تحمیل می‌کند
+        const val EXTRA_STEALTH = "stealth_override"
 
         private const val CHANNEL_ID = "mianboor_vpn"
         private const val NOTIF_ID = 1001
@@ -92,6 +94,9 @@ class MianboorVpnService : VpnService() {
     /** v2.3: پروکسی mtproto داخل اپ — پل MTProto به‌جای تلگرام. */
     private var tgMtproto: MtProxyBridge.Params? = null
 
+    /** v2.9.2: اورراید استلث (فقط از بخش اضطراری) — null یعنی از AppPrefs خوانده شود. */
+    private var stealthOverride: String? = null
+
     override fun onCreate() {
         super.onCreate()
         registerNetworkWatch()
@@ -111,6 +116,8 @@ class MianboorVpnService : VpnService() {
         val link = intent?.getStringExtra(EXTRA_LINK) ?: currentLink
         val name = intent?.getStringExtra(EXTRA_NAME) ?: currentName
         val country = intent?.getStringExtra(EXTRA_COUNTRY) ?: currentCountry
+        // v2.9.2: اورراید استلثِ بخش اضطراری (اختیاری — بقیهٔ اپ هرگز نمی‌فرستد)
+        if (intent?.hasExtra(EXTRA_STEALTH) == true) stealthOverride = intent.getStringExtra(EXTRA_STEALTH)
         // v2.1: آپ‌استریم socks تلگرام — اختیاری؛ وقتی هست، لینک می‌تواند خالی باشد
         val tgAddr = intent?.getStringExtra(EXTRA_TG_SOCKS_ADDR)
         // v2.3: پروکسی mtproto داخل اپ
@@ -264,7 +271,7 @@ class MianboorVpnService : VpnService() {
                 XrayConfigBuilder.buildConfigJson(
                     server,
                     AppPrefs.blockQuic(this),
-                    AppPrefs.stealth(this),
+                    stealthOverride ?: AppPrefs.stealth(this),
                     AppPrefs.dnsMode(this),
                     AppPrefs.dnsCustom(this),
                     tgSocks,
