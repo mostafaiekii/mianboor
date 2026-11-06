@@ -8,8 +8,9 @@ import { isAdminReq } from "@/lib/admin-auth";
  * هنگام خرید نمایش داده می‌شود. از سمت مدیریت ویرایش می‌شود.
  * + latestVersion/latestCode/latestUrl: اعلام نسخهٔ جدید برای نوتیف درون‌برنامه‌ای
  *   (CI بعد از هر release این‌ها را ست می‌کند).
+ * + emergencyLinks: کانفیگ‌های اضطراری (هر خط یک لینک) — استخرِ بخش اضطراری اپ.
  *
- * PUT /api/admin/settings  { payCard, payHolder, payNote, latestVersion?, latestCode?, latestUrl? }
+ * PUT /api/admin/settings  { payCard, payHolder, payNote, latestVersion?, latestCode?, latestUrl?, emergencyLinks? }
  * GET  /api/admin/settings → خواندن مقادیر فعلی
  */
 const KEYS = ["pay_card", "pay_holder", "pay_note"] as const;
@@ -20,7 +21,7 @@ export async function GET(req: Request) {
     return NextResponse.json({ ok: false, error: "دسترسی غیرمجاز" }, { status: 401 });
   }
   await ensureDb();
-  const rows = await db.appSetting.findMany({ where: { key: { in: [...KEYS, ...OTA_KEYS] } } });
+  const rows = await db.appSetting.findMany({ where: { key: { in: [...KEYS, ...OTA_KEYS, "emergency_links"] } } });
   const get = (k: string) => rows.find((r) => r.key === k)?.value ?? "";
   return NextResponse.json({
     ok: true,
@@ -30,6 +31,7 @@ export async function GET(req: Request) {
     latestVersion: get("latest_name"),
     latestCode: Number(get("latest_code")) || 0,
     latestUrl: get("latest_url"),
+    emergencyLinks: get("emergency_links"),
   });
 }
 
@@ -40,6 +42,7 @@ export async function PUT(req: Request) {
   let body: {
     payCard?: string; payHolder?: string; payNote?: string;
     latestVersion?: string; latestCode?: number; latestUrl?: string;
+    emergencyLinks?: string;
   };
   try {
     body = await req.json();
@@ -59,13 +62,3 @@ export async function PUT(req: Request) {
   }
 
   // اعلام نسخهٔ جدید (فقط وقتی فیلدها ارسال شده باشند — تا PUT پرداخت، نسخه را پاک نکند)
-  if (body.latestVersion !== undefined || body.latestCode !== undefined || body.latestUrl !== undefined) {
-    const ver = String(body.latestVersion ?? "").trim().slice(0, 20);
-    const code = Math.max(0, Math.min(1_000_000, Number(body.latestCode) || 0));
-    const url = String(body.latestUrl ?? "").trim().slice(0, 300);
-    await db.appSetting.upsert({ where: { key: "latest_name" }, create: { key: "latest_name", value: ver }, update: { value: ver } });
-    await db.appSetting.upsert({ where: { key: "latest_code" }, create: { key: "latest_code", value: String(code) }, update: { value: String(code) } });
-    await db.appSetting.upsert({ where: { key: "latest_url" }, create: { key: "latest_url", value: url }, update: { value: url } });
-  }
-  return NextResponse.json({ ok: true });
-}
