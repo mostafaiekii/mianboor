@@ -88,6 +88,7 @@ import com.mianboor.vpn.ui.AccountScreen
 import com.mianboor.vpn.ui.AdminLogin
 import com.mianboor.vpn.ui.AdminPanel
 import com.mianboor.vpn.ui.FREE_QUOTA_GB
+import com.mianboor.vpn.ui.EmergencyScreen
 import com.mianboor.vpn.ui.HomeScreen
 import com.mianboor.vpn.ui.InboxScreen
 import com.mianboor.vpn.ui.InstalledApp
