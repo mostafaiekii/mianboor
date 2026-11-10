@@ -1,7 +1,6 @@
 package com.mianboor.vpn
 
 import android.content.Context
-import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.net.HttpURLConnection
@@ -16,31 +15,39 @@ import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
 /**
- * ── پینگِ واقعی (v2.9.3) — همان «Real Delay» ویتوری/v2rayNG ──
+ * ── پینگِ واقعی (v2.9.6) — همان «Real Delay» ویتوری/v2rayNG ──
  *
  * تفاوت با ServerTester (TCP):
  *   ServerTester  → فقط می‌گوید پورت سرور باز است (TCP handshake) — سرور ممکن است
  *                   روشن باشد ولی تونل اصلاً کار نکند (فیلتر DPI، هندشیک شکسته…)
- *   RealPing      → برای هر کانفیگ یک هستهٔ Xray موقت روی پورت سوکس آزاد بالا
+ *   RealPing      → برای هر کانفیگ یک هستهٔ Xray موقت روی پورت سوکسِ آزاد بالا
  *                   می‌آید، یک درخواست HTTPS واقعی از «داخل تونل» به
  *                   generate_204 می‌فرستد و زمان پاسخ = تاخیر واقعی.
  *                   اگر کانفیگ واقعاً اینترنت رد نکند → null (مرده).
+ *
+ * نکتهٔ مهم (درس v2.9.5): کانفیگ هستهٔ موقت باید از همان سازندهٔ کانفیگ سرویس
+ * اصلی (buildConfigJson) ساخته شود — با ماژول DNS و sniffing — وگرنه روی
+ * اندروید resolve شدنِ دامنهٔ خود سرور شکست می‌خورد و کانفیگی که در ویتوری
+ * جواب می‌دهد، اینجا بی‌دلیل «مرده» اعلام می‌شود.
  *
  * کاملاً مستقل است: هیچ وابستگی به سرویس VPN/ServerTester ندارد.
  * با اتصال فعال هم تداخل ندارد (پورت تصادفی + هستهٔ جدا).
  */
 object RealPing {
 
-    // آدرس تست — cp.cloudflare.com (بررسی captive-portal کلادفلر؛ در ایران فیلتر نیست، 204)
-    // + گالری فال‌بک گوگل. اولی جواب نداد دومی سنجیده می‌شود.
+    // آدرس‌های تست — به‌ترتیب امتحان می‌شوند:
+    //  ۱) cp.cloudflare (بررسی captive-portal کلادفلر؛ در ایران فیلتر/پویسنی نمی‌شود)
+    //  ۲) همان با HTTP ساده — بدون دست‌دادن TLS، سریع‌ترین سنجهٔ عبور ترافیک
+    //  ۳) گالری گوگل (فال‌بک نهایی؛ همان پیش‌فرض ویتوری)
     private val TEST_URLS = listOf(
         "https://cp.cloudflare.com/generate_204",
+        "http://cp.cloudflare.com/generate_204",
         "https://www.gstatic.com/generate_204",
     )
 
-    private const val BOOT_TIMEOUT_MS = 5000L   // حداکثر بوت هستهٔ موقت
-    private const val HTTP_TIMEOUT_MS = 9000    // حداکثر انتظار برای پاسخ واقعی
-    private const val MAX_PARALLEL = 3          // همزمان حداکثر ۳ هستهٔ موقت — گوشی نفس بکشد
+    private const val BOOT_TIMEOUT_MS = 6000L    // حداکثر بوت هستهٔ موقت
+    private const val HTTP_TIMEOUT_MS = 12000    // حداکثر انتظار برای پاسخ واقعی
+    private const val MAX_PARALLEL = 3           // همزمان حداکثر ۳ هستهٔ موقت — گوشی نفس بکشد
 
     /** یک لینک کانفیگ → تاخیر واقعی (ms) یا null اگر تونل واقعاً کار نکرد. */
     fun test(ctx: Context, link: String): Long? {
@@ -52,7 +59,25 @@ object RealPing {
         val confFile = File(ctx.cacheDir, "realping_$port.json")
         var proc: Process? = null
         try {
-            confFile.writeText(minimalConfig(parsed.outbound, port))
+            // همان سازندهٔ کانفیگ سرویس اصلی — با ماژول DNS؛ فقط ساده و بدون تنظیمات جانبی
+            val confJson = runCatching {
+                XrayConfigBuilder.buildConfigJson(
+                    parsed,
+                    blockQuic = false,
+                    stealth = "normal",
+                    dnsMode = "auto",
+                    tgSocks = null,
+                    tgOnly = false,
+                    mux = false,
+                    guardian = emptySet(),
+                    blockIr = false,
+                    socksPort = port,
+                    listenAll = false,
+                    withHttpInbound = false,
+                    minimal = false,
+                )
+            }.getOrNull() ?: return null
+            confFile.writeText(confJson)
             proc = ProcessBuilder(bin.absolutePath, "run", "-c", confFile.absolutePath)
                 .redirectErrorStream(true)
                 .start()
@@ -61,10 +86,7 @@ object RealPing {
             Thread { runCatching { p.inputStream.bufferedReader().readText() } }
                 .apply { isDaemon = true; start() }
             if (!waitSocksUp(port, BOOT_TIMEOUT_MS)) return null
-            for (u in TEST_URLS) {
-                httpThroughSocks(port, u)?.let { return it }
-            }
-            return null
+            return probeThroughSocks(port)
         } catch (t: Throwable) {
             return null
         } finally {
@@ -87,7 +109,7 @@ object RealPing {
             }
             futures.forEach { f ->
                 try {
-                    val (i, ms) = f.get(40, TimeUnit.SECONDS)
+                    val (i, ms) = f.get(45, TimeUnit.SECONDS)
                     results[i] = ms
                 } catch (t: Throwable) {
                     // همان اندیس null می‌ماند = مرده
@@ -99,20 +121,16 @@ object RealPing {
         return results.toList()
     }
 
-    // ── کانفیگ حداقلی هستهٔ موقت: سوکس لوکال + همان outbound کانفیگ ──
-
-    private fun minimalConfig(outbound: JSONObject, socksPort: Int): String {
-        val inbound = JSONObject()
-            .put("listen", "127.0.0.1")
-            .put("port", socksPort)
-            .put("protocol", "socks")
-            .put("settings", JSONObject().put("udp", false))
-        val freedom = JSONObject().put("protocol", "freedom").put("tag", "direct")
-        val root = JSONObject()
-            .put("log", JSONObject().put("loglevel", "none"))
-            .put("inbounds", JSONArray().put(inbound))
-            .put("outbounds", JSONArray().put(outbound).put(freedom))
-        return root.toString()
+    /**
+     * یک درخواست واقعی از داخل تونلِ سوکسی که همین حالا روی این پورت بالاست.
+     * توسط خود سرویس هم استفاده می‌شود تا «وصل‌شدن» را واقعاً تأیید کند —
+     * عدد پینگ بدون عبور ترافیک بی‌معناست (همان قرارداد ویتوری).
+     */
+    fun probeThroughSocks(port: Int, timeoutMs: Int = HTTP_TIMEOUT_MS): Long? {
+        for (u in TEST_URLS) {
+            httpThroughSocks(port, u, timeoutMs)?.let { return it }
+        }
+        return null
     }
 
     private fun waitSocksUp(port: Int, timeoutMs: Long): Boolean {
@@ -131,11 +149,11 @@ object RealPing {
     }
 
     /** درخواست HTTPS واقعی از داخل تونل سوکس → ms یا null. */
-    private fun httpThroughSocks(port: Int, urlStr: String): Long? = runCatching {
+    private fun httpThroughSocks(port: Int, urlStr: String, timeoutMs: Int): Long? = runCatching {
         val proxy = Proxy(Proxy.Type.SOCKS, InetSocketAddress("127.0.0.1", port))
         val conn = URL(urlStr).openConnection(proxy) as HttpURLConnection
-        conn.connectTimeout = HTTP_TIMEOUT_MS
-        conn.readTimeout = HTTP_TIMEOUT_MS
+        conn.connectTimeout = timeoutMs
+        conn.readTimeout = timeoutMs
         conn.instanceFollowRedirects = true
         conn.useCaches = false
         conn.setRequestProperty("User-Agent", "Mianboor-RealPing")

@@ -320,6 +320,19 @@ class MianboorVpnService : VpnService() {
             )
         }
 
+        // v2.9.6 — تأیید واقعی تونل (قرارداد ویتوری): «پینگ داد» یعنی «وصل هم می‌شود».
+        // اگر هسته بالا آمد ولی ترافیک واقعی از تونل رد نشد، یک بار با کانفیگ حداقلی
+        // دوباره راه می‌افتد؛ باز هم رد شد → خطای صادقانه به‌جای «وصلِ دروغین».
+        // (فقط حالت عادی — حالت پروکسی تلگرام قرارداد خودش را دارد)
+        if (socks == null && RealPing.probeThroughSocks(socksPort, timeoutMs = 6500) == null) {
+            val healed = bootCore(minimal = true) &&
+                RealPing.probeThroughSocks(socksPort, timeoutMs = 6500) != null
+            if (!healed) throw ConnectFail(
+                "تونل بالا آمد ولی ترافیک رد نشد",
+                "سرور پورت باز دارد اما تونل واقعی کار نمی‌کند — " + xrayTail(),
+            )
+        }
+
         // v2.7: حالت پروکسی — بدون TUN؛ اتصال یعنی سوکس لوکال بالاست
         if (proxyOnly) {
             if (!link.isNullOrBlank()) AppPrefs.setLastServer(this, link, name, country)
