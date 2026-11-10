@@ -72,6 +72,10 @@ fun ServersScreen(
     groupCountry: Boolean = false,
     sortMode: String = "ping",
     onToggleSort: () -> Unit = {},
+    // ── v2.9.3: تست واقعی (Real Delay مثل ویتوری) ──
+    realPings: Map<String, Int> = emptyMap(),
+    realTesting: Boolean = false,
+    onRealTest: () -> Unit = {},
 ) {
     val t = stringsOf(lang)
     val mb = LocalMb.current
@@ -304,6 +308,24 @@ fun ServersScreen(
                     maxLines = 1,
                 )
             }
+            Spacer(Modifier.width(6.dp))
+            // ── v2.9.3: دکمهٔ «تست واقعی» — مثل Real Delay ویتوری؛ تونل واقعی سنجیده می‌شود ──
+            Row(
+                Modifier
+                    .clip(RoundedCornerShape(50))
+                    .background(if (realTesting) mb.glow.copy(alpha = 0.14f) else mb.panel)
+                    .border(1.dp, if (realTesting) mb.glow.copy(alpha = 0.45f) else mb.panelEdge, RoundedCornerShape(50))
+                    .clickable(enabled = !realTesting) { onRealTest() }
+                    .padding(horizontal = 10.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    if (realTesting) t.realTesting else t.realTest,
+                    color = if (realTesting) mb.glow else mb.dim,
+                    fontSize = 11.sp, fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                )
+            }
             Spacer(Modifier.width(8.dp))
             SyncStatusText(lang, syncing, syncOk, lastSyncAt, Modifier.weight(1f))
         }
@@ -367,6 +389,7 @@ fun ServersScreen(
                             c = c, lang = lang, selected = c.key == selectedKey,
                             locked = c.premium && !premiumUser, isBest = best?.key == c.key,
                             fav = c.key in favorites,
+                            realPing = realPings[c.key],
                             onToggleFav = onToggleFav,
                             onClick = { if (c.premium && !premiumUser) onPremiumTap() else onSelect(c.key) },
                         )
@@ -378,6 +401,7 @@ fun ServersScreen(
                         c = c, lang = lang, selected = c.key == selectedKey,
                         locked = c.premium && !premiumUser, isBest = best?.key == c.key,
                         fav = c.key in favorites,
+                        realPing = realPings[c.key],
                         onToggleFav = onToggleFav,
                         onClick = { if (c.premium && !premiumUser) onPremiumTap() else onSelect(c.key) },
                     )
@@ -399,6 +423,7 @@ private fun ServerRow(
     locked: Boolean,
     isBest: Boolean,
     fav: Boolean = false,
+    realPing: Int? = null,
     onToggleFav: (String) -> Unit = {},
     onClick: () -> Unit,
 ) {
@@ -432,13 +457,26 @@ private fun ServerRow(
             )
         }
         Spacer(Modifier.width(8.dp))
-        Text(
-            "${c.ping} ms",
-            color = pingColor(c.ping, mb),
-            fontSize = 13.sp,
-            modifier = Modifier.width(56.dp),
-            textAlign = androidx.compose.ui.text.style.TextAlign.End,
-        )
+        // ── v2.9.3: اگر تست واقعی انجام شده باشد، عدد واقعی (طلایی) نشان داده می‌شود ──
+        Column(
+            Modifier.width(62.dp),
+            horizontalAlignment = Alignment.End,
+        ) {
+            Text(
+                "${realPing ?: c.ping} ms",
+                color = if (realPing != null) mb.gold else pingColor(c.ping, mb),
+                fontSize = 13.sp,
+                maxLines = 1,
+            )
+            if (realPing != null) {
+                Text(
+                    t.realBadge,
+                    color = mb.gold.copy(alpha = 0.75f),
+                    fontSize = 9.sp,
+                    maxLines = 1,
+                )
+            }
+        }
         if (!locked) {
             Spacer(Modifier.width(4.dp))
             // ── ستارهٔ منتخب‌ها (نسخهٔ ۲) ──

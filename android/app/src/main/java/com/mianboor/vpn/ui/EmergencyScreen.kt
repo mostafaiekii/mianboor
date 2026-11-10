@@ -43,6 +43,7 @@ import androidx.compose.ui.unit.sp
 import com.mianboor.vpn.ConfigItem
 import com.mianboor.vpn.EmergencyGate
 import com.mianboor.vpn.R
+import com.mianboor.vpn.RealPing
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -84,6 +85,24 @@ private class EmgStrings(lang: Lang) {
         "هیچ راهی پیدا نشد — دوباره امتحان کن؛ هر بار دامنه‌های تازه بررسی می‌شوند. وقتی آنلاین شوی، همین صفحه مهمات را برای لحظهٔ قطعی ذخیره می‌کند."
     else
         "No route found — try again; fresh mirrors are checked each time. Whenever you get online, this page stores supplies for the next blackout."
+    // ── v2.9.3: تست واقعی هر کانفیگ (مثل Real Delay ویتوری) ──
+    val realScan = if (rtl)
+        "— تست واقعی هر کانفیگ (هستهٔ موقت + درخواست اینترنتی واقعی)…"
+    else
+        "— real-testing each config (temp core + real request)…"
+    val realScanDone = if (rtl)
+        "✓ تست واقعی تمام شد — %d از %d تونل واقعاً کار می‌کند"
+    else
+        "✓ real test done — %d of %d tunnels really work"
+    val rowTesting = if (rtl) "در حال تست واقعی…" else "Real testing…"
+    val rowOk = if (rtl)
+        "✓ %d ms — تونل واقعاً کار می‌کند (نه فقط TCP باز)"
+    else
+        "✓ %d ms — tunnel really works (not just open TCP)"
+    val rowDead = if (rtl)
+        "✗ TCP باز است ولی تونل واقعی کار نکرد"
+    else
+        "✗ TCP opens but the tunnel really failed"
     val back = "back"
 }
 
@@ -108,6 +127,9 @@ fun EmergencyScreen(
     val pool = remember { mutableStateListOf<EmergencyGate.ELink>() }
     val mirrors = remember { mutableStateListOf<String>() }
     var copiedIdx by remember { mutableStateOf(-1) }
+    // ── v2.9.3: نتیجهٔ تست واقعی هر کانفیگ — هم‌تراز با pool ──
+    var realTesting by remember { mutableStateOf(false) }
+    val realMs = remember { mutableStateListOf<Long?>() }
 
     // callback از ترد IO می‌آید — به‌روزرسانی UI همیشه روی ترد اصلی
     val main = remember { Handler(Looper.getMainLooper()) }
@@ -148,6 +170,8 @@ fun EmergencyScreen(
         searched = true
         pool.clear()
         mirrors.clear()
+        realMs.clear()
+        realTesting = false
         fromCache = false
         scope.launch(Dispatchers.IO) {
             withContext(Dispatchers.Main) { logs.clear() }
@@ -161,6 +185,25 @@ fun EmergencyScreen(
                 cacheWhen = p?.savedAtText ?: ""
                 p?.links?.let { pool.addAll(it) }
                 p?.mirrors?.let { ms -> ms.filter { it.startsWith("http") }.forEach { mirrors.add(it) } }
+            }
+            // ── v2.9.3: فقط فهرست‌کردن کافی نیست — هر کانفیگ با تونل واقعی سنجیده می‌شود ──
+            val links = p?.links?.map { it.link } ?: emptyList()
+            if (links.isNotEmpty()) {
+                withContext(Dispatchers.Main) {
+                    realTesting = true
+                    realMs.clear()
+                    repeat(links.size) { realMs.add(null) }
+                    log(t.realScan)
+                }
+                val res = RealPing.testAll(ctx, links, parallel = 3)
+                withContext(Dispatchers.Main) {
+                    res.forEachIndexed { i, ms -> if (i < realMs.size) realMs[i] = ms }
+                    realTesting = false
+                    val alive = res.count { it != null }
+                    log(t.realScanDone.format(alive, links.size))
+                }
+            }
+            withContext(Dispatchers.Main) {
                 if (p == null) log(if (t.rtl) "— هیچ راهی پیدا نشد" else "— no route found")
                 busy = false
             }
@@ -303,6 +346,25 @@ fun EmergencyScreen(
                                 "${EmergencyGate.protoOf(e.link)} · ${EmergencyGate.hostOf(e.link)}:${EmergencyGate.portOf(e.link)}",
                                 color = mb.dim, fontSize = 11.sp,
                             )
+                            // ── v2.9.3: نتیجهٔ تست واقعی — «واقعاً کار می‌کند» یا «فقط TCP باز» ──
+                            val ms = realMs.getOrNull(i)
+                            if (realTesting || ms != null || realMs.isNotEmpty()) {
+                                Text(
+                                    when {
+                                        realTesting && ms == null -> "⏳ ${t.rowTesting}"
+                                        ms != null -> t.rowOk.format(ms)
+                                        else -> t.rowDead
+                                    },
+                                    color = when {
+                                        realTesting && ms == null -> mb.dim
+                                        ms != null -> mb.glow
+                                        else -> mb.danger
+                                    },
+                                    fontSize = 11.sp,
+                                    lineHeight = 15.sp,
+                                    modifier = Modifier.padding(top = 4.dp),
+                                )
+                            }
                         }
                         Box(
                             Modifier

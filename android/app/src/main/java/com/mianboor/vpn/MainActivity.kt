@@ -277,6 +277,9 @@ private fun MbAppInner(
     var screen by remember { mutableStateOf(Screen.HOME) }
     var configs by remember { mutableStateOf<List<ConfigItem>>(emptyList()) }
     val pings = remember { mutableStateMapOf<String, Int>() }
+    // ── v2.9.3: پینگ واقعی تونل (Real Delay) — فقط با «تست واقعی» پر می‌شود ──
+    val realPings = remember { mutableStateMapOf<String, Int>() }
+    var realTesting by remember { mutableStateOf(false) }
     var selectedKey by remember { mutableStateOf(AppPrefs.selectedKey(context)) }
     var seconds by remember { mutableIntStateOf(0) }
 
@@ -1050,7 +1053,7 @@ private fun MbAppInner(
         }
     }
 
-    val liveConfigs = configs.map { it.copy(ping = pings[it.key] ?: it.ping) }
+    val liveConfigs = configs.map { it.copy(ping = realPings[it.key] ?: pings[it.key] ?: it.ping) }
     val enabledConfigs = liveConfigs.filter { it.enabled }
     val freeEnabled = enabledConfigs.filter { !it.premium }
     val smartPool = if (premium || freeEnabled.isEmpty()) enabledConfigs else freeEnabled
@@ -1112,6 +1115,34 @@ private fun MbAppInner(
                 pings.putAll(results.toMap())
             }
             delay(PING_INTERVAL_MS)
+        }
+    }
+
+    // ── v2.9.3: تست واقعی — مثل Real Delay ویتوری ──
+    //    برای هر سرور یک هستهٔ موقت بالا می‌آید و یک درخواست اینترنتی واقعی از
+    //    داخل تونل فرستاده می‌شود؛ فقط سرورهایی که «واقعاً» کار می‌کنند عدد می‌گیرند.
+    fun runRealTest() {
+        if (realTesting) return
+        val targets = configsForPing.filter { it.enabled }
+        if (targets.isEmpty()) {
+            toast(t.noServers)
+            return
+        }
+        realTesting = true
+        scope.launch(Dispatchers.IO) {
+            val res = RealPing.testAll(context, targets.map { it.link }, parallel = 3)
+            withContext(Dispatchers.Main) {
+                var alive = 0
+                targets.forEachIndexed { i, c ->
+                    val ms = res.getOrNull(i)
+                    if (ms != null) {
+                        realPings[c.key] = ms.toInt()
+                        alive++
+                    }
+                }
+                realTesting = false
+                toast(t.realDone(alive, targets.size))
+            }
         }
     }
 
@@ -1844,6 +1875,9 @@ private fun MbAppInner(
                             sortMode = if (sortMode == "ping") "az" else "ping"
                             AppPrefs.setSortMode(context, sortMode)
                         },
+                        realPings = realPings,
+                        realTesting = realTesting,
+                        onRealTest = { runRealTest() },
                         serverHost = runCatching {
                             android.net.Uri.parse(AppPrefs.serverUrl(context)).host ?: ""
                         }.getOrDefault(""),
