@@ -162,4 +162,17 @@ async function realPingQueue(items, { parallel = 3, onDone, log } = {}) {
   await Promise.all(Array.from({ length: n }, worker));
 }
 
-module.exports = { realPing, realPingQueue, socksConnect, httpsThroughSocks };
+/** اثبات اتصال واقعی از دل تونل اصلی — قرارداد «پینگ اوکی ⇒ وصل اوکی» (مثل اندروید v2.9.6):
+ *  هسته که بالا آمد، قبل از اعلام «متصل» یک درخواست واقعی از دل خودِ تونل می‌زنیم؛
+ *  اگر ترافیک رد شد، اتصال «متصل» اعلام نمی‌شود و خطای صادقانه می‌آید. */
+async function verifyThroughSocks(port, timeoutMs = 6000) {
+  for (const url of TEST_URLS) {
+    try {
+      const code = await httpsThroughSocks(port, url, timeoutMs);
+      if (code >= 200 && code < 400) return true;
+    } catch { /* آدرس بعدی */ }
+  }
+  return false;
+}
+
+module.exports = { realPing, realPingQueue, socksConnect, httpsThroughSocks, verifyThroughSocks };

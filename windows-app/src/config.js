@@ -6,15 +6,16 @@
  *  - بستن QUIC (UDP/443) تا مرورگر روی HTTP/2-TCP بماند
  *  - LAN/localhost → مستقیم (شبکهٔ داخلی از تونل بیرون می‌ماند)
  *  - بقیهٔ ترافیک → پروکسی
+ *  v1.1: سرویس آمار (API) برای شمارش واقعی دانلود/آپلود — مثل کارت‌های مصرف اندروید
  */
 
 const PRIVATE_IPS = [
   '127.0.0.0/8', '::1/128',
-  '10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16', '169.254.0/16',
+  '10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16',
   'fe80::/10', 'fc00::/7',
 ];
 
-function buildMainConfig(parsed, socksPort, httpPort) {
+function buildMainConfig(parsed, socksPort, httpPort, apiPort) {
   const outbound = JSON.parse(JSON.stringify(parsed.outbound));
   outbound.tag = 'proxy';
 
@@ -32,6 +33,11 @@ function buildMainConfig(parsed, socksPort, httpPort) {
     tag: 'http-in', listen: '127.0.0.1', port: httpPort,
     protocol: 'http', settings: {}, sniffing,
   };
+  // inbound مخصوص آمار — فقط لوکال
+  const apiIn = {
+    tag: 'api', listen: '127.0.0.1', port: apiPort,
+    protocol: 'dokodemo-door', settings: { address: '127.0.0.1' },
+  };
 
   const dns = {
     queryStrategy: 'UseIPv4',
@@ -40,6 +46,8 @@ function buildMainConfig(parsed, socksPort, httpPort) {
   };
 
   const rules = [
+    // ترافیک API آمار → هندلر داخلی
+    { type: 'field', inboundTag: ['api'], outboundTag: 'api' },
     // هِج DNS: کوئری‌های UDP/53 از ماژول DNS محلی جواب می‌گیرند
     { type: 'field', inboundTag: ['socks-in'], port: 53, network: 'udp', outboundTag: 'dns-out' },
     // بستن QUIC → مرورگر روی HTTP/2-TCP ادامه می‌دهد
@@ -53,7 +61,13 @@ function buildMainConfig(parsed, socksPort, httpPort) {
   return {
     log: { loglevel: 'warning' },
     dns,
-    inbounds: [socksIn, httpIn],
+    stats: {},
+    api: { tag: 'api', services: ['StatsService'] },
+    policy: {
+      levels: { '0': { statsUserUplink: true, statsUserDownlink: true } },
+      system: { statsInboundUplink: true, statsInboundDownlink: true },
+    },
+    inbounds: [socksIn, httpIn, apiIn],
     outbounds: [
       outbound,
       { tag: 'direct', protocol: 'freedom', settings: {} },

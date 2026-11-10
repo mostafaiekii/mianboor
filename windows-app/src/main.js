@@ -1,8 +1,9 @@
 'use strict';
 /**
  * میانپور — نسخهٔ ویندوز (Electron)
- * اتصال = هستهٔ Xray (پروسهٔ لوکال) + تنظیم خودکار پروکسی سیستم.
- * پینگ = تست واقعی از دل تونل (مثل نسخهٔ اندروید).
+ * اتصال = هستهٔ Xray (پروسهٔ لوکال) + تنظیم خودکار پروکسی سیستم (v2rayN-style).
+ * پینگ = تست واقعی از دل تونل (پورت RealPing.kt اندروید).
+ * v1.1: آمار واقعی ترافیک + بخش اضطراری + پینگ زندهٔ دسته‌ای + تم/زبان.
  */
 
 const { app, BrowserWindow, Tray, Menu, ipcMain, Notification, shell } = require('electron');
@@ -13,20 +14,25 @@ const { Store } = require('./store');
 const { parseLink, parseLinks, cryptoHash } = require('./parse');
 const { buildMainConfig } = require('./config');
 const { findFreePort, XrayRunner, xrayAvailable, xrayBin } = require('./xray');
-const { realPing, realPingQueue } = require('./ping');
+const { realPing, realPingQueue, verifyThroughSocks } = require('./ping');
 const { setSystemProxy, isWindows } = require('./proxy');
+const { queryStats } = require('./stats');
+const { EmergencyGate } = require('./emergency');
 
 // ---------------------------------------------------------------------------
 
 const APP_VERSION = (() => {
-  try { return require('../package.json').version; } catch { return '1.0.0'; }
+  try { return require('../package.json').version; } catch { return '1.1.0'; }
 })();
+const DEV = !!process.env.MB_DEV;
 
 let win = null;
 let tray = null;
 let quitting = false;
 let store = null;
+let emgGate = null;
 let runner = null;          // هستهٔ اتصال اصلی
+let apiPort = 0;            // پورت سرویس آمار
 let pingBusy = false;
 
 const state = {
@@ -53,7 +59,15 @@ function send(type, payload) {
   try { if (win && !win.isDestroyed()) win.webContents.send('mianboor:event', { type, payload }); } catch {}
 }
 
-function broadcast() { send('state', state); }
+function broadcast() { send('state', stateWithUi()); }
+
+function stateWithUi() {
+  return Object.assign({}, state, {
+    configs: store ? store.data.configs : [],
+    pings: store ? store.data.pings : {},
+    settings: store ? store.data.settings : {},
+  });
+}
 
 function setState(patch) {
   Object.assign(state, patch);
@@ -64,12 +78,12 @@ function setState(patch) {
 
 function createWindow() {
   win = new BrowserWindow({
-    width: 440,
-    height: 780,
+    width: 430,
+    height: 800,
     minWidth: 380,
-    minHeight: 560,
-    autoHideMenuBar: true,
-    backgroundColor: '#0e1411',
+    minHeight: 620,
+    frame: false,                     // بدون نوار عنوان ویندوز — تیتربار خود اپ
+    backgroundColor: '#080E23',
     icon: path.join(__dirname, '..', 'assets', 'icon.png'),
     title: 'میانپور',
     webPreferences: {
@@ -79,7 +93,6 @@ function createWindow() {
       spellcheck: false,
     },
   });
-  win.setMenuBarVisibility(false);
   win.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'));
   win.webContents.setWindowOpenHandler(({ url }) => { shell.openExternal(url); return { action: 'deny' }; });
 
@@ -128,6 +141,7 @@ function cleanupConnection() {
     try { runner.stop(); } catch {}
     runner = null;
   }
+  apiPort = 0;
   if (state.sysProxyApplied) {
     try { setSystemProxy(false); } catch {}
     state.sysProxyApplied = false;
@@ -148,7 +162,7 @@ async function connect() {
   }
   const cfgRow = gotSelectedConfig();
   if (!cfgRow) {
-    setState({ phase: 'error', error: 'اول یک سرور از لیست انتخاب کن.' });
+    setState({ phase: 'error', error: 'اول یک کانفیگ از لیست انتخاب کن.' });
     return;
   }
   const parsed = parseLink(cfgRow.link, cfgRow.name);
@@ -162,7 +176,8 @@ async function connect() {
 
   const socksPort = await findFreePort(10808);
   const httpPort = await findFreePort(socksPort + 1);
-  const cfg = buildMainConfig(parsed, socksPort, httpPort);
+  apiPort = await findFreePort(httpPort + 1);
+  const cfg = buildMainConfig(parsed, socksPort, httpPort, apiPort);
   log(`اتصال به «${parsed.name}» (${parsed.protocol} ${parsed.host}:${parsed.port}) — پورت‌ها ${socksPort}/${httpPort}`);
 
   runner = new XrayRunner({ config: cfg, log });
@@ -177,7 +192,6 @@ async function connect() {
     return;
   }
 
-  // مراقب مرگ ناگهانی هسته در همان لحظهٔ اتصال باش
   if (runner.exited) {
     cleanupConnection();
     setState({ phase: 'error', error: 'هستهٔ Xray بسته شد — کانفیگ نامعتبر است.' });
@@ -185,16 +199,23 @@ async function connect() {
   }
 
   runner.proc.on('exit', () => {
-    // مرگ ناگهانی هسته هنگام اتصال برقرار → پاک‌سازی و اطلاع
-    if (!quitting && !runner.userStopped && state.phase === 'connected') {
+    if (!quitting && runner && !runner.userStopped && state.phase === 'connected') {
       cleanupConnection();
       setState({ phase: 'error', error: 'اتصال قطع شد (هستهٔ Xray بسته شد).' });
     }
   });
 
+  // ── قرارداد صادقانهٔ اندروید v2.9.6: قبل از اعلام «متصل»، ترافیک واقعی باید از دل تونل رد شود ──
+  const tunnelOk = await verifyThroughSocks(socksPort, 6000);
+  if (!tunnelOk || runner.exited) {
+    cleanupConnection();
+    setState({ phase: 'error', error: 'هسته بالا آمد ولی تونل واقعی ترافیک رد نکرد — این کانفیگ کار نمی‌کند.' });
+    return;
+  }
+
   if (store.data.settings.sysProxy) {
     const r = setSystemProxy(true, httpPort);
-    state.sysProxyApplied = !!(r && r.ok);
+    state.sysProxyApplied = !!(r && r.ok && !r.noop); // روی غیر-ویندوز noop است — صادقانه گزارش نمی‌شود
     log(`پروکسی سیستم: ${state.sysProxyApplied ? 'روشن شد' : 'تنظیم نشد'}`);
   } else {
     log('پروکسی سیستم: خاموش (تنظیم دستی: SOCKS ' + socksPort + ' / HTTP ' + httpPort + ')');
@@ -211,8 +232,28 @@ function disconnect() {
 }
 
 // ---------------------------------------------------------------------------
-// پینگ
+// پینگ واقعی
 // ---------------------------------------------------------------------------
+
+async function pingBatch(items) {
+  const out = [];
+  const parallel = Math.max(1, Math.min(4, items.length));
+  const byId = {};
+  await realPingQueue(items, {
+    parallel,
+    log: () => {},   // پینگ زندهٔ بی‌صدا — لاگ نمی‌ریزد
+    onDone: (id, res) => { byId[id] = res; },
+  });
+  items.forEach((it) => {
+    const r = byId[it.id];
+    const ms = r && r.ok ? r.ms : 999;
+    store.data.pings[it.id] = { ms, ok: !!(r && r.ok), at: Date.now() };
+    out.push({ id: it.id, ms });
+  });
+  store.save();
+  broadcast();
+  return out;
+}
 
 async function pingAll() {
   if (pingBusy) return { ok: false, error: 'تست قبلی هنوز در جریان است' };
@@ -220,15 +261,7 @@ async function pingAll() {
   send('ping:started', {});
   try {
     const items = store.data.configs.map((c) => ({ id: c.id, link: c.link }));
-    await realPingQueue(items, {
-      parallel: 3,
-      log,
-      onDone: (id, res) => {
-        store.data.pings[id] = Object.assign({}, res, { at: Date.now() });
-        store.save();
-        send('ping:done', { id, res });
-      },
-    });
+    await pingBatch(items);
   } finally {
     pingBusy = false;
     send('ping:finished', {});
@@ -240,12 +273,23 @@ async function pingAll() {
 // افزودن کانفیگ / سابسکریپشن
 // ---------------------------------------------------------------------------
 
-function addParsedList(parsedList, sourceLabel) {
+function guessCountry(host) {
+  // حداقلی: از نام سرور اگر کد کشور داشت؛ وگرنه ir (خنثی)
+  const m = /\b(nl|de|fi|gb|tr|us|fr|ae|se|ch|ca|sg|jp|it|es|ru|in|au)\b/i.exec(String(host || ''));
+  return m ? m[1].toLowerCase() : 'ir';
+}
+
+function addParsedList(parsedList, source, defaultCountry) {
   let added = 0;
   for (const p of parsedList) {
     if (!p.id) p.id = cryptoHash(p.rawLink);
     if (store.data.configs.some((c) => c.id === p.id)) continue;
-    store.data.configs.push({ id: p.id, name: p.name, protocol: p.protocol, host: p.host, port: p.port, link: p.rawLink, addedAt: Date.now() });
+    store.data.configs.push({
+      id: p.id, name: p.name, protocol: p.protocol,
+      host: p.host, port: p.port,
+      country: defaultCountry || guessCountry(p.host + ' ' + p.name),
+      link: p.rawLink, source: source || 'manual', addedAt: Date.now(),
+    });
     added++;
   }
   if (added && !store.data.settings.selectedId) {
@@ -253,14 +297,15 @@ function addParsedList(parsedList, sourceLabel) {
     state.selectedId = store.data.settings.selectedId;
   }
   store.save();
-  log(`${sourceLabel}: ${added} کانفیگ تازه اضافه شد`);
+  log(`${source === 'sub' ? 'سابسکریپشن' : 'ورود دستی'}: ${added} کانفیگ تازه اضافه شد`);
   return added;
 }
 
 async function addLinks(text) {
   const list = parseLinks(text);
   if (!list.length) return { ok: false, error: 'هیچ لینک معتبری پیدا نشد (vmess/vless/trojan/ss)' };
-  const added = addParsedList(list, 'لینک دستی');
+  const added = addParsedList(list, 'manual');
+  broadcast();
   return { ok: true, added };
 }
 
@@ -272,7 +317,6 @@ async function addSubscription(url) {
     if (!resp.ok) return { ok: false, error: `سرور جواب ${resp.status} داد` };
     let text = await resp.text();
     text = text.trim();
-    // اگر متنِ لینک نبود، احتمالاً base64 است
     if (!/^(vmess|vless|trojan|ss):\/\//im.test(text)) {
       try {
         const decoded = Buffer.from(text.replace(/-/g, '+').replace(/_/g, '/').replace(/\s+/g, ''), 'base64').toString('utf8');
@@ -281,7 +325,8 @@ async function addSubscription(url) {
     }
     const list = parseLinks(text);
     if (!list.length) return { ok: false, error: 'محتوای سابسکریپشن هیچ کانفیگ قابل‌خواندی نداشت' };
-    const added = addParsedList(list, 'سابسکریپشن');
+    const added = addParsedList(list, 'sub');
+    broadcast();
     return { ok: true, added, total: list.length };
   } catch (e) {
     return { ok: false, error: 'دریافت سابسکریپشن شکست خورد: ' + e.message };
@@ -289,19 +334,58 @@ async function addSubscription(url) {
 }
 
 // ---------------------------------------------------------------------------
+// اضطراری
+// ---------------------------------------------------------------------------
+
+async function emergencyRescue() {
+  const logs = [];
+  const log = (m) => {
+    logs.push(m);
+    send('emg:log', m);
+  };
+  const res = await emgGate.rescue(log);
+  if (res) {
+    store.data.emergency = { links: res.links, mirrors: res.mirrors, savedAt: Date.now() };
+    store.save();
+  }
+  return {
+    mirrors: res ? res.mirrors : [],
+    links: res ? res.links : [],
+    fromCache: res ? !!res.fromCache : false,
+    savedAt: res ? res.savedAt : '',
+    logs,
+  };
+}
+
+async function emergencyConnect(link) {
+  const parsed = parseLink(link, null);
+  if (!parsed) return { ok: false, error: 'لینک اضطراری قابل خواندن نبود' };
+  const id = cryptoHash(link);
+  if (!store.data.configs.some((c) => c.id === id)) {
+    store.data.configs.push({
+      id, name: parsed.name, protocol: parsed.protocol,
+      host: parsed.host, port: parsed.port,
+      country: guessCountry(parsed.host + ' ' + parsed.name),
+      link, source: 'emergency', addedAt: Date.now(),
+    });
+    store.save();
+  }
+  store.data.settings.selectedId = id;
+  state.selectedId = id;
+  await connect();
+  broadcast();
+  return { ok: true };
+}
+
+// ---------------------------------------------------------------------------
 // IPC
 // ---------------------------------------------------------------------------
 
 function registerIpc() {
-  ipcMain.handle('get-state', () => {
-    return Object.assign({}, state, {
-      configs: store.data.configs,
-      pings: store.data.pings,
-      settings: store.data.settings,
-      logs: logLines.slice(-80),
-      xrayOk: xrayAvailable(),
-    });
-  });
+  ipcMain.handle('get-state', () => Object.assign({}, stateWithUi(), {
+    logs: logLines.slice(-80),
+    xrayOk: xrayAvailable(),
+  }));
 
   ipcMain.handle('add-links', (_e, text) => addLinks(text));
   ipcMain.handle('add-subscription', (_e, url) => addSubscription(url));
@@ -309,6 +393,9 @@ function registerIpc() {
   ipcMain.handle('remove-config', (_e, id) => {
     store.data.configs = store.data.configs.filter((c) => c.id !== id);
     delete store.data.pings[id];
+    if ((store.data.settings.favorites || []).includes(id)) {
+      store.data.settings.favorites = store.data.settings.favorites.filter((x) => x !== id);
+    }
     if (store.data.settings.selectedId === id) store.data.settings.selectedId = null;
     store.save();
     if (state.selectedId === id) state.selectedId = store.data.settings.selectedId;
@@ -325,12 +412,15 @@ function registerIpc() {
 
   ipcMain.handle('connect', () => connect());
   ipcMain.handle('disconnect', () => { disconnect(); return { ok: true }; });
+  ipcMain.handle('ping-batch', (_e, items) => pingBatch(Array.isArray(items) ? items : []));
   ipcMain.handle('ping-all', () => pingAll());
 
-  ipcMain.handle('set-sysproxy', (_e, v) => {
-    store.data.settings.sysProxy = !!v;
+  ipcMain.handle('set-setting', (_e, k, v) => {
+    const keys = ['theme', 'lang', 'livePing', 'sysProxy', 'sortMode', 'favorites'];
+    if (!keys.includes(k)) return { ok: false };
+    store.data.settings[k] = v;
     store.save();
-    if (state.phase === 'connected') {
+    if (k === 'sysProxy' && state.phase === 'connected') {
       if (v) {
         const r = setSystemProxy(true, state.httpPort);
         state.sysProxyApplied = !!(r && r.ok);
@@ -338,10 +428,49 @@ function registerIpc() {
         setSystemProxy(false);
         state.sysProxyApplied = false;
       }
-      broadcast();
     }
+    broadcast();
     return { ok: true };
   });
+
+  ipcMain.handle('get-usage', async () => {
+    if (state.phase !== 'connected' || !apiPort || !runner || runner.exited) return { down: 0, up: 0 };
+    const s = await queryStats(apiPort);
+    return s || { down: 0, up: 0 };
+  });
+
+  ipcMain.handle('emergency:rescue', () => emergencyRescue());
+  ipcMain.handle('emergency:ping', async (_e, link) => {
+    const r = await realPing(link, {});
+    return r && r.ok ? r.ms : null;
+  });
+  ipcMain.handle('emergency:connect', (_e, link) => emergencyConnect(link));
+
+  ipcMain.handle('open-external', (_e, url) => {
+    if (/^https?:\/\//i.test(String(url))) shell.openExternal(url);
+    return { ok: true };
+  });
+
+  ipcMain.handle('win', (_e, action) => {
+    if (!win) return { ok: false };
+    if (action === 'min') win.minimize();
+    else if (action === 'max') { win.isMaximized() ? win.unmaximize() : win.maximize(); }
+    else if (action === 'close') win.hide();
+    return { ok: true };
+  });
+
+  if (DEV) {
+    ipcMain.handle('dev:shot', async (_e, name) => {
+      if (!win) return { ok: false };
+      const img = await win.webContents.capturePage();
+      const dir = process.env.MB_SHOT_DIR || '/tmp/mb-shots';
+      fs.mkdirSync(dir, { recursive: true });
+      const file = path.join(dir, name + '.png');
+      fs.writeFileSync(file, img.toPNG());
+      return { ok: true, file };
+    });
+    ipcMain.handle('dev:quit', () => { setTimeout(() => app.exit(0), 150); return { ok: true }; });
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -355,10 +484,16 @@ if (!gotLock) {
   app.on('second-instance', () => { if (win) { win.show(); win.focus(); } });
 
   app.whenReady().then(() => {
+    if (DEV && process.env.MB_USER_DATA) {
+      // تست E2E — پروفایل جدا تا به دادهٔ واقعی دست نزند
+      try { app.setPath('userData', process.env.MB_USER_DATA); } catch {}
+    }
     app.setAppUserModelId('ir.mianboor.windows');
-    store = new Store(path.join(app.getPath('userData'), 'mianboor-configs.json'));
+    const userData = app.getPath('userData');
+    store = new Store(path.join(userData, 'mianboor-configs.json'));
+    emgGate = new EmergencyGate(path.join(userData, 'emergency-cache.json'));
     state.selectedId = store.data.settings.selectedId;
-    if (!isWindows()) log('هشدار: روی غیر-ویندوز، پروکسی سیستم تنظیم نمی‌شود (فقط برای توسعه).');
+    if (!isWindows()) log('هشدار: روی غیر-ویندوز، پروکسی سیستم تنظیم نمی‌شود (فقط برای توسعه/تست).');
 
     registerIpc();
     createWindow();
@@ -372,7 +507,6 @@ if (!gotLock) {
 
   app.on('before-quit', () => {
     quitting = true;
-    log('خروج — قطع اتصال و پاک‌سازی پروکسی سیستم…');
     try { if (runner) runner.stop(); } catch {}
     if (state.sysProxyApplied) {
       try { setSystemProxy(false); } catch {} // spawnSync — تا قبل از بستن تمام می‌شود
@@ -381,7 +515,6 @@ if (!gotLock) {
   });
 
   app.on('window-all-closed', () => {
-    // با تری زنده می‌مانیم؛ فقط خروج کامل از منوی تری
     if (quitting) app.quit();
   });
 }

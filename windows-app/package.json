@@ -1,8 +1,8 @@
 {
   "name": "mianboor",
   "productName": "Mianboor",
-  "version": "1.0.0",
-  "description": "Mianboor VPN for Windows — Xray core, real ping, one-click connect",
+  "version": "1.1.0",
+  "description": "Mianboor VPN for Windows — same UI & real-tunnel ping as the Android app",
   "main": "src/main.js",
   "author": "mianboor",
   "license": "MIT",
