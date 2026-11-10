@@ -1,0 +1,57 @@
+name: Build Mianboor Windows
+
+# نسخهٔ ویندوز — دستی اجرا می‌شود (workflow_dispatch) و release می‌سازد
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'نسخه (مثلاً 1.0.1)'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: windows-app
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Download Xray core (Windows x64)
+        shell: pwsh
+        run: |
+          Invoke-WebRequest -Uri "https://github.com/XTLS/Xray-core/releases/latest/download/Xray-windows-64.zip" -OutFile xray.zip
+          Expand-Archive -Path xray.zip -DestinationPath xray
+          Get-ChildItem xray
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Package Windows exe
+        run: |
+          npx electron-packager . Mianboor --platform=win32 --arch=x64 --out=build --overwrite --icon=assets/icon.ico --prune=true --ignore="^/build" --ignore="^/test" --ignore="^/xray/xray$"
+
+      - name: Zip portable package
+        shell: pwsh
+        run: |
+          Compress-Archive -Path build/Mianboor-win32-x64/* -DestinationPath Mianboor-Windows-${{ github.event.inputs.version }}.zip
+          Get-Item Mianboor-Windows-${{ github.event.inputs.version }}.zip | Select-Object Name, Length
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: pwsh
+        run: |
+          gh release create "win-v${{ github.event.inputs.version }}" "Mianboor-Windows-${{ github.event.inputs.version }}.zip" `
+            --title "Mianboor Windows v${{ github.event.inputs.version }}" `
+            --notes "نسخهٔ ویندوز میانپور — فایل زیپ را باز کنید و Mianboor.exe را اجرا کنید. (چون امضای دیجیتال ندارد، ویندوز هشدار می‌دهد: More info → Run anyway)"

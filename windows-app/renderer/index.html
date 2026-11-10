@@ -1,0 +1,69 @@
+<!doctype html>
+<html dir="rtl" lang="fa">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; script-src 'self'" />
+  <title>میانپور</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <img src="../assets/icon.png" alt="میانپور" class="logo" />
+      <div class="brand-text">
+        <h1>میانپور</h1>
+        <span class="sub">نسخهٔ ویندوز</span>
+      </div>
+    </div>
+    <div class="chip" id="chip">
+      <span class="dot" id="chipDot"></span>
+      <span id="chipText">قطع</span>
+    </div>
+  </header>
+
+  <main>
+    <section class="card connect-card">
+      <div class="sel-label">سرور انتخابی</div>
+      <div class="sel-name" id="selName">—</div>
+      <button id="btnConnect" class="big-btn">اتصال</button>
+      <div class="err" id="errLine" hidden></div>
+      <label class="sysproxy" title="مرورگرها و اکثر برنامه‌ها از این مسیر وصل می‌شوند">
+        <input type="checkbox" id="sysProxy" checked />
+        <span>تنظیم خودکار پروکسی ویندوز</span>
+      </label>
+      <div class="ports" id="portInfo" hidden>
+        تنظیم دستی برنامه‌های دیگر: <b>SOCKS</b> <span id="socksPortTxt">—</span> · <b>HTTP</b> <span id="httpPortTxt">—</span>
+      </div>
+    </section>
+
+    <section class="toolbar">
+      <button id="btnPing" class="tool">تست پینگ همه</button>
+      <button id="btnAdd" class="tool">افزودن کانفیگ</button>
+    </section>
+
+    <section class="card add" id="addPanel" hidden>
+      <textarea id="addText" rows="5"
+        placeholder="لینک کانفیگ (vmess:// یا vless:// یا trojan:// یا ss://) — هر خط یکی&#10;یا آدرس سابسکریپشن (https://… )"></textarea>
+      <div class="row">
+        <button id="btnAddGo" class="primary">افزودن</button>
+        <button id="btnAddCancel" class="ghost">بستن</button>
+      </div>
+      <div class="addmsg" id="addMsg"></div>
+    </section>
+
+    <ul id="servers" class="servers" aria-label="لیست سرورها"></ul>
+
+    <details class="log">
+      <summary>گزارش فنی</summary>
+      <pre id="logBox"></pre>
+    </details>
+  </main>
+
+  <footer>
+    <span id="footNote">هستهٔ Xray — تست پینگ واقعی از دل تونل</span>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
