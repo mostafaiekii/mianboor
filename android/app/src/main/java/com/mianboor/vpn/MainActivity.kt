@@ -277,9 +277,6 @@ private fun MbAppInner(
     var screen by remember { mutableStateOf(Screen.HOME) }
     var configs by remember { mutableStateOf<List<ConfigItem>>(emptyList()) }
     val pings = remember { mutableStateMapOf<String, Int>() }
-    // ── v2.9.3: پینگ واقعی تونل (Real Delay) — فقط با «تست واقعی» پر می‌شود ──
-    val realPings = remember { mutableStateMapOf<String, Int>() }
-    var realTesting by remember { mutableStateOf(false) }
     var selectedKey by remember { mutableStateOf(AppPrefs.selectedKey(context)) }
     var seconds by remember { mutableIntStateOf(0) }
 
@@ -1053,7 +1050,7 @@ private fun MbAppInner(
         }
     }
 
-    val liveConfigs = configs.map { it.copy(ping = realPings[it.key] ?: pings[it.key] ?: it.ping) }
+    val liveConfigs = configs.map { it.copy(ping = pings[it.key] ?: it.ping) }
     val enabledConfigs = liveConfigs.filter { it.enabled }
     val freeEnabled = enabledConfigs.filter { !it.premium }
     val smartPool = if (premium || freeEnabled.isEmpty()) enabledConfigs else freeEnabled
@@ -1097,52 +1094,31 @@ private fun MbAppInner(
         launch(Dispatchers.IO) { refreshRemote() }
     }
 
-    // ── live ping engine: re-measure every 3s, one socket pool, no interference ──
+    // ── live ping engine: v2.9.5 — پینگ واقعی (Real Delay) به‌جای TCP ──
+    //    عدد پینگ فقط از تونل واقعی می‌آید: هستهٔ موقت + درخواست اینترنتی واقعی.
+    //    یعنی اگر پینگ عدد داد، همان کانفیگ واقعاً ترافیک رد کرده — مثل ویتوری.
+    //    هر تیک چند سرور بعدی (چرخشی) سنجیده می‌شود تا گوشی زیر فشار نرود.
     val configsForPing by rememberUpdatedState(configs)
     LaunchedEffect(pingLive) {
         if (!pingLive) return@LaunchedEffect
+        var cursor = 0
+        var firstSweep = true
         while (true) {
             val targets = configsForPing.filter { it.enabled }
             if (targets.isNotEmpty()) {
-                val results = coroutineScope {
-                    targets.map { c ->
-                        async(Dispatchers.IO) {
-                            val ms = ServerTester.ping(c.host, c.port)
-                            c.key to (ms?.toInt() ?: 999)
-                        }
-                    }.awaitAll()
+                // اسکن اول کمی بزرگ‌تر (۴ همزمان)، بعد از آن ۲ در هر تیک
+                val batchN = if (firstSweep) minOf(4, targets.size) else minOf(2, targets.size)
+                firstSweep = false
+                val batch = List(batchN) { targets[(cursor + it) % targets.size] }
+                cursor = (cursor + batchN) % targets.size
+                val res = withContext(Dispatchers.IO) {
+                    RealPing.testAll(context, batch.map { it.link }, parallel = batchN)
                 }
-                pings.putAll(results.toMap())
+                pings.putAll(
+                    batch.mapIndexed { i, c -> c.key to (res.getOrNull(i)?.toInt() ?: 999) }.toMap(),
+                )
             }
-            delay(PING_INTERVAL_MS)
-        }
-    }
-
-    // ── v2.9.3: تست واقعی — مثل Real Delay ویتوری ──
-    //    برای هر سرور یک هستهٔ موقت بالا می‌آید و یک درخواست اینترنتی واقعی از
-    //    داخل تونل فرستاده می‌شود؛ فقط سرورهایی که «واقعاً» کار می‌کنند عدد می‌گیرند.
-    fun runRealTest() {
-        if (realTesting) return
-        val targets = configsForPing.filter { it.enabled }
-        if (targets.isEmpty()) {
-            toast(t.noServers)
-            return
-        }
-        realTesting = true
-        scope.launch(Dispatchers.IO) {
-            val res = RealPing.testAll(context, targets.map { it.link }, parallel = 3)
-            withContext(Dispatchers.Main) {
-                var alive = 0
-                targets.forEachIndexed { i, c ->
-                    val ms = res.getOrNull(i)
-                    if (ms != null) {
-                        realPings[c.key] = ms.toInt()
-                        alive++
-                    }
-                }
-                realTesting = false
-                toast(t.realDone(alive, targets.size))
-            }
+            delay(PING_INTERVAL_MS * 2)
         }
     }
 
@@ -1875,9 +1851,6 @@ private fun MbAppInner(
                             sortMode = if (sortMode == "ping") "az" else "ping"
                             AppPrefs.setSortMode(context, sortMode)
                         },
-                        realPings = realPings,
-                        realTesting = realTesting,
-                        onRealTest = { runRealTest() },
                         serverHost = runCatching {
                             android.net.Uri.parse(AppPrefs.serverUrl(context)).host ?: ""
                         }.getOrDefault(""),

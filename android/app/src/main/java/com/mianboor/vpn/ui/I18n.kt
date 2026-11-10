@@ -402,10 +402,6 @@ interface Strings {
     val sortTip: String
     val sortPing: String
     val sortAz: String
-    val realTest: String
-    val realTesting: String
-    val realBadge: String
-    val realDone: (alive: Int, total: Int) -> String
     val versionRow: String
     val verUpToDate: String
     val verReady: String
@@ -870,10 +866,6 @@ object EnStrings : Strings {
     override val sortTip = "Sort"
     override val sortPing = "By lowest ping"
     override val sortAz = "A-Z"
-    override val realTest = "Real test"
-    override val realTesting = "Real testing…"
-    override val realBadge = "real"
-    override val realDone = { alive: Int, total: Int -> "Real test done: $alive of $total tunnels really work" }
     override val versionRow = "Version"
     override val verUpToDate = "Perfect! Mianboor is up to date"
     override val verReady = "You are ready for a fast and stable connection!"
@@ -1336,10 +1328,6 @@ object FaStrings : Strings {
     override val sortTip = "مرتب‌سازی"
     override val sortPing = "بر پایه کمترین پینگ"
     override val sortAz = "A-Z بر پایه"
-    override val realTest = "تست واقعی"
-    override val realTesting = "تست واقعی…"
-    override val realBadge = "واقعی"
-    override val realDone = { alive: Int, total: Int -> "تست واقعی تمام شد: $alive از $total تونل واقعاً کار می‌کند" }
     override val versionRow = "نسخه"
     override val verUpToDate = "عالی! میانبر شما به‌روز است"
     override val verReady = "آمادهٔ اتصال سریع و پایدار هستید!"
