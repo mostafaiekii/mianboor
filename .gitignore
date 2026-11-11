@@ -47,6 +47,8 @@ local-*
 dev.log
 dev.out.log
 test
+!windows-app/test/
+!windows-app/test/**
 prompt
 
 server.log
