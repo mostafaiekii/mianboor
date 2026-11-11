@@ -1,0 +1,243 @@
+<!doctype html>
+<html dir="rtl" lang="fa" data-theme="midnight">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; script-src 'self'" />
+  <title>میانپور</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- نوار عنوان — پنجرهٔ بی‌فریم -->
+  <div class="titlebar">
+    <div class="tb-btns">
+      <button class="tb-btn" id="winMin" title="کمینه">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 12h14"/></svg>
+      </button>
+      <button class="tb-btn" id="winMax" title="بیشینه">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="5" y="5" width="14" height="14" rx="2"/></svg>
+      </button>
+      <button class="tb-btn close" id="winClose" title="بستن">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+      </button>
+    </div>
+    <div class="tb-brand">
+      <img src="./assets/icon.png" alt="" />
+      <span>میانپور</span>
+    </div>
+  </div>
+
+  <div id="app">
+    <!-- ═══ خانه ═══ -->
+    <section class="screen active" id="scr-home">
+      <div class="home-wrap">
+        <div class="header">
+          <div class="brand">
+            <img src="./assets/icon.png" alt="میانپور" />
+            <div class="bx">
+              <div class="t1" id="brandTitle">میانبر</div>
+              <div class="t2" id="brandSub">Mianboor</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="ring-area" id="ringArea">
+          <div class="ring-breathe"></div>
+          <div class="ring-pulse"></div>
+          <button class="power-ring" id="powerRing" aria-label="اتصال"></button>
+        </div>
+
+        <div class="status-line" id="statusLine">
+          <div class="s1" id="statusMain">وصل نیستی</div>
+          <div class="s2" id="statusSub">برای امن شدن اتصالت لمس کن</div>
+        </div>
+        <div style="text-align:center" id="chipZone"></div>
+
+        <div class="panel-card server-card" id="serverCard">
+          <div class="row">
+            <span id="srvFlag"></span>
+            <div class="info">
+              <div class="nm" id="srvName">—</div>
+              <div class="sub" id="srvSub"></div>
+            </div>
+            <svg class="ic chev flip-x" id="srvChev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+          </div>
+        </div>
+
+        <div class="fav-strip" id="favStrip" hidden>
+          <div class="ft"><span id="favTitle">اضافه‌شده</span><small id="favCount"></small></div>
+          <div class="frow" id="favRow"></div>
+        </div>
+
+        <div class="usage-row">
+          <div class="panel-card usage-card"><div class="pad">
+            <div class="lbl" id="dlLbl"></div>
+            <div class="val" id="dlVal">0 B</div>
+          </div></div>
+          <div class="panel-card usage-card"><div class="pad">
+            <div class="lbl" id="ulLbl"></div>
+            <div class="val" id="ulVal">0 B</div>
+          </div></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══ سرورها ═══ -->
+    <section class="screen" id="scr-servers">
+      <div class="servers-wrap">
+        <div class="srv-title-row">
+          <h1 id="srvTitle">انتخاب سرور</h1>
+          <button class="sq-btn" id="btnImport" title="ورود کانفیگ"></button>
+          <button class="sq-btn" id="btnReping" title="تازه‌سازی پینگ"></button>
+        </div>
+
+        <div class="search-box">
+          <span id="searchIc"></span>
+          <input id="searchIn" type="text" />
+        </div>
+
+        <div class="tabs3" id="tabs3"></div>
+
+        <button class="smart-btn" id="smartBtn">
+          <span class="zsq" id="smartZsq"></span>
+          <span class="st">
+            <span class="a" id="smartA">اتصال هوشمند</span><br />
+            <span class="b" id="smartB"></span>
+          </span>
+          <svg class="ic chev flip-x" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+        </button>
+
+        <div class="meta-row">
+          <span id="metaCount">سرور · 0</span>
+          <span class="ping-dot"></span>
+          <span style="margin-inline-start:6px" id="metaLive">پینگ زنده</span>
+          <span class="sort-pill" id="sortPill"></span>
+        </div>
+
+        <div class="srv-list" id="srvList"></div>
+      </div>
+    </section>
+
+    <!-- ═══ اضطراری ═══ -->
+    <section class="screen" id="scr-emergency">
+      <div class="emg-wrap">
+        <div class="srv-title-row" style="padding-top:8px">
+          <h1 id="emgH1" style="font-size:24px;font-weight:700">وضعیت اضطراری</h1>
+        </div>
+        <p style="color:var(--dim);font-size:13px;line-height:2" id="emgSub"></p>
+        <button class="emg-btn" id="emgBtn"></button>
+        <div class="emg-note" id="emgNote" hidden></div>
+
+        <div class="panel-card log-card" id="emgLogCard" hidden>
+          <div class="lt" id="emgLogT">گزارش</div>
+          <pre id="emgLog"></pre>
+        </div>
+
+        <div id="emgMirrorsZone" hidden>
+          <div class="emg-pool-title" id="emgMirrorT"></div>
+          <div id="emgMirrorList"></div>
+        </div>
+
+        <div id="emgPoolZone" hidden>
+          <div class="emg-pool-title" id="emgPoolT"></div>
+          <div id="emgPoolList"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══ تنظیمات ═══ -->
+    <section class="screen" id="scr-settings">
+      <div class="settings-wrap">
+        <div class="srv-title-row" style="padding-top:8px">
+          <h1 id="setH1" style="font-size:24px;font-weight:700">تنظیمات</h1>
+        </div>
+
+        <div class="panel-card set-card">
+          <div class="pad16">
+            <div style="font-size:14px;font-weight:600" id="langT">زبان</div>
+            <div class="lang-seg">
+              <button class="lang-btn" data-lang="en">English</button>
+              <button class="lang-btn" data-lang="fa">فارسی</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel-card set-card">
+          <div class="pad16">
+            <div style="display:flex;align-items:center">
+              <span id="themeIc"></span>
+              <span style="font-size:14px;font-weight:600;margin-inline-start:8px" id="themeT">تم</span>
+            </div>
+            <div style="font-size:13px;color:var(--dim);margin-top:4px" id="themeD"></div>
+            <div class="theme-row" id="themeRow"></div>
+          </div>
+        </div>
+
+        <div class="panel-card set-card">
+          <div class="set-row">
+            <span id="sysProxyIc"></span>
+            <div class="info">
+              <div class="t" id="sysProxyT"></div>
+              <div class="d" id="sysProxyD"></div>
+            </div>
+            <div class="mb-switch" id="swSysProxy"><span class="knob"></span></div>
+          </div>
+          <div class="set-row">
+            <span id="livePingIc"></span>
+            <div class="info">
+              <div class="t" id="livePingT"></div>
+              <div class="d" id="livePingD"></div>
+            </div>
+            <div class="mb-switch" id="swLivePing"><span class="knob"></span></div>
+          </div>
+          <div class="set-row">
+            <span id="portsIc"></span>
+            <div class="info">
+              <div class="t" id="portsT"></div>
+              <div class="d" id="portsD"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel-card set-card">
+          <div class="set-row">
+            <span id="infoIc"></span>
+            <div class="info">
+              <div class="t" id="verT"></div>
+              <div class="d" id="verD"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══ نوار پایین ═══ -->
+    <nav class="bottom-nav" id="bottomNav"></nav>
+  </div>
+
+  <!-- شیت ورود کانفیگ -->
+  <div class="scrim" id="importScrim">
+    <div class="sheet">
+      <h3 id="impTitle">ورود کانفیگ</h3>
+      <div class="imp-tabs">
+        <button class="imp-tab active" data-imp="link" id="impTabLink">لینک کانفیگ</button>
+        <button class="imp-tab" data-imp="sub" id="impTabSub">لینک اشتراک</button>
+      </div>
+      <textarea id="impText" spellcheck="false"></textarea>
+      <input class="in" id="impName" type="text" style="display:none" />
+      <button class="btn-glow" id="impGo">افزودن سرور</button>
+      <div class="imp-msg" id="impMsg"></div>
+    </div>
+  </div>
+
+  <!-- توست -->
+  <div class="toast" id="toast"><div class="pill" id="toastPill"></div></div>
+
+  <script src="flags.js"></script>
+  <script src="icons.js"></script>
+  <script src="i18n.js"></script>
+  <script src="demo-bridge.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
