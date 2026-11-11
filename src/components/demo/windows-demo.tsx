@@ -1,95 +1,128 @@
 "use client";
 
 /**
- * ── دموی زندهٔ نسخهٔ ویندوز میانپور ──
+ * ── دموی زندهٔ نسخهٔ ویندوز میانپور — صفحهٔ متمرکز ──
  *
- * همین UI ای است که exe ویندوز اجرا می‌کند (windows-app/renderer) —
- * اینجا در یک iframe با «پل شبیه‌سازی‌شده» (demo-bridge.js) زنده شده است:
- *   • ظاهر/تم/چیدمان: واقعی و عین exe
- *   • اعداد پینگ/اتصال/مصرف: شبیه‌سازی — صادقانه برچسب خورده
- * رفتار واقعی و اثبات‌شده = اسکرین‌شات‌های تست E2E که زیر همین دمو هستند.
+ * نکتهٔ کلیدی: پنجرهٔ واقعی اپ در exe اندازهٔ ۴۳۰×۸۰۰ است (main.js).
+ * پس iframe دقیقاً با همان اندازهٔ منطقی رندر می‌شود و با transform
+ * scale در هر عرضی «یک‌تکه» کوچک/بزرگ می‌شود — هیچ عنصری از جایش
+ * تکان نمی‌خورد؛ دقیقاً همان چیزی که کاربر ویندوز می‌بیند.
+ *
+ * صداقت: ظاهر/تم/چیدمان واقعی کد exe است؛ اعداد پینگ/اتصال در این
+ * پیش‌نمایش مرورگری شبیه‌سازی می‌شوند (پل demo-bridge.js) و اثبات
+ * رفتار واقعی، اسکرین‌شات‌های تست E2E زیر همین پنجره است.
  */
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+
+/** اندازهٔ منطقی پنجرهٔ اپ — عین main.js (width: 430, height: 800) */
+const APP_W = 430;
+const APP_H = 800;
 
 const SHOTS: { file: string; title: string }[] = [
   { file: "01-home-off.png", title: "خانه — قبل از اتصال" },
-  { file: "05-home-connected.png", title: "خانه — متصل با تایمر و مصرف زنده" },
-  { file: "03-servers-live-ping.png", title: "سرورها — پینگ واقعی زنده" },
-  { file: "02-import-sheet.png", title: "ورود کانفیگ (لینک یا سابسکریپشن)" },
-  { file: "04-home-selected.png", title: "سرور انتخاب‌شده" },
-  { file: "07-servers-best.png", title: "اتصال هوشمند — کمترین پینگ واقعی" },
-  { file: "08-home-error.png", title: "خطای صادقانه — نه پیام دروغین" },
-  { file: "09-settings-midnight.png", title: "تنظیمات — تم نیمه‌شب" },
-  { file: "10-settings-forest.png", title: "تنظیمات — تم جنگل" },
+  { file: "05-home-connected.png", title: "متصل — تایمر و مصرف زنده" },
+  { file: "03-servers-live-ping.png", title: "پینگ واقعی زنده" },
+  { file: "02-import-sheet.png", title: "ورود کانفیگ" },
+  { file: "08-home-error.png", title: "خطای صادقانه" },
+  { file: "09-settings-midnight.png", title: "تم نیمه‌شب" },
+  { file: "10-settings-forest.png", title: "تم جنگل" },
   { file: "11-settings-english.png", title: "انگلیسی + LTR" },
-  { file: "12-emergency.png", title: "بخش اضطراری — تست واقعی هر کانفیگ" },
-  { file: "06-home-usage.png", title: "مصرف زنده از StatsService هسته" },
+  { file: "12-emergency.png", title: "اضطراری — تست واقعی" },
+  { file: "06-home-usage.png", title: "مصرف از StatsService" },
+  { file: "04-home-selected.png", title: "سرور انتخاب‌شده" },
+  { file: "07-servers-best.png", title: "اتصال هوشمند" },
 ];
 
 export default function WindowsDemo() {
+  const stageRef = useRef<HTMLDivElement | null>(null);
+  const [scale, setScale] = useState(1);
   const [shot, setShot] = useState<string | null>(null);
 
+  useEffect(() => {
+    const el = stageRef.current;
+    if (!el) return;
+    const calc = () => {
+      const cw = el.clientWidth;
+      // کل پنجره همیشه دیده شود: بر اساس عرض + محدودیت ارتفاع دید
+      const hLimit = Math.max(560, window.innerHeight - 210);
+      const s = Math.min(cw / (APP_W + 24), hLimit / APP_H, 1);
+      setScale(Math.max(0.42, s));
+    };
+    calc();
+    const ro = new ResizeObserver(calc);
+    ro.observe(el);
+    window.addEventListener("resize", calc);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", calc);
+    };
+  }, []);
+
   return (
-    <div dir="rtl" className="flex flex-col gap-6">
-      {/* بنر صداقت */}
-      <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-sm leading-6 text-emerald-200">
-        <p className="font-bold">این دموی زندهٔ رابط نسخهٔ ویندوز است — همان UI که فایل exe اجرا می‌کند.</p>
-        <p className="mt-1 text-emerald-200/80">
-          ظاهر، تم‌ها و چیدمان واقعی است (عین کد داخل exe). اما اعداد پینگ و اتصال در
-          این پیش‌نمایشِ مرورگری شبیه‌سازی می‌شوند؛ در exe واقعی همهٔ اعداد از هستهٔ
-          Xray واقعی می‌آیند — اثباتش اسکرین‌شات‌های تست واقعی زیر همین دمو است.
-        </p>
+    <div dir="rtl" className="flex flex-col gap-4">
+      {/* ── صحنه: پس‌زمینهٔ دسکتاپ + پنجرهٔ اپ ── */}
+      <div
+        ref={stageRef}
+        className="relative overflow-hidden rounded-2xl border border-white/10"
+        style={{
+          height: APP_H * scale + 28,
+          background:
+            "radial-gradient(1200px 500px at 50% -10%, rgba(73,233,184,0.10), transparent 60%), linear-gradient(160deg, #16181d 0%, #0c0e12 55%, #101318 100%)",
+        }}
+      >
+        <div
+          className="absolute left-1/2 top-1/2"
+          style={{
+            width: APP_W,
+            height: APP_H,
+            transform: `translate(-50%, -50%) scale(${scale})`,
+            transformOrigin: "center center",
+          }}
+        >
+          {/* پنجرهٔ اپ — دقیقاً مثل exe ویندوز */}
+          <div
+            className="overflow-hidden rounded-xl border border-white/15 bg-[#080E23]"
+            style={{ boxShadow: "0 30px 80px rgba(0,0,0,0.65), 0 4px 18px rgba(0,0,0,0.5)" }}
+          >
+            <iframe
+              key="mbwin"
+              src="/win-demo/index.html"
+              title="دموی میانپور ویندوز"
+              className="block border-0 bg-[#080E23]"
+              style={{ width: APP_W, height: APP_H }}
+              allow="clipboard-write"
+            />
+          </div>
+        </div>
       </div>
 
-      {/* پنجرهٔ ویندوز — iframe زنده */}
-      <div className="overflow-hidden rounded-2xl border border-white/10 bg-[#0b0f14] shadow-2xl">
-        <div className="flex items-center gap-2 border-b border-white/10 bg-white/5 px-4 py-2">
-          <span className="h-3 w-3 rounded-full bg-red-400/80" />
-          <span className="h-3 w-3 rounded-full bg-yellow-400/80" />
-          <span className="h-3 w-3 rounded-full bg-green-400/80" />
-          <span className="mx-auto text-xs text-white/50" dir="ltr">
-            Mianboor for Windows — v1.1.0 (live preview)
-          </span>
-        </div>
-        <div className="relative w-full" style={{ aspectRatio: "1280 / 800", minHeight: 480 }}>
-          <iframe
-            src="/win-demo/index.html"
-            title="دموی میانپور ویندوز"
-            className="absolute inset-0 h-full w-full border-0 bg-[#080e23]"
-            allow="clipboard-write"
-          />
-        </div>
-      </div>
-      <p className="-mt-2 text-xs text-zinc-400">
-        با دمو واقعاً کار کن: دکمهٔ پاور، تب سرورها با پینگ زنده، ورود لینک vmess/vless،
-        تم‌ها و بخش اضطراری — همه فعال‌اند.
+      {/* خط صداقت — کوتاه */}
+      <p className="text-center text-xs leading-5 text-zinc-400">
+        ظاهر و چیدمان = کد واقعی exe (پنجرهٔ ۴۳۰×۸۰۰ همان main.js) — با دکمه‌ها واقعاً کار کن:
+        پاور، سرورها با پینگ زنده، ورود کانفیگ، تم‌ها، اضطراری.
+        <span className="text-zinc-500"> اعداد در این پیش‌نمایش مرورگری شبیه‌سازی‌شده؛ اثبات رفتار واقعی = اسکرین‌شات‌های E2E پایین.</span>
       </p>
 
-      {/* اسکرین‌شات‌های واقعی E2E */}
+      {/* ── اسکرین‌شات‌های واقعی E2E ── */}
       <section>
-        <h3 className="mb-1 text-lg font-extrabold text-white">
-          اسکرین‌شات‌های تست واقعی (E2E با هستهٔ Xray واقعی)
+        <h3 className="mb-3 text-base font-extrabold text-white">
+          اسکرین‌شات‌های تست واقعی (اجرای واقعی با هستهٔ Xray)
         </h3>
-        <p className="mb-4 text-sm text-zinc-400">
-          این‌ها از اجرای واقعی اپ زیر تست خودکار گرفته شده‌اند — همان چیزی که exe
-          روی ویندوز نشان می‌دهد.
-        </p>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
           {SHOTS.map((s) => (
             <button
               key={s.file}
               onClick={() => setShot(s.file)}
               className="group overflow-hidden rounded-xl border border-white/10 bg-white/5 text-right transition hover:border-emerald-400/40"
             >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={`/win-demo-shots/${s.file}`}
                 alt={s.title}
-                className="aspect-[4/3] w-full object-cover object-top transition group-hover:scale-[1.02]"
+                className="aspect-[430/800] w-full object-cover object-top transition group-hover:scale-[1.02]"
                 loading="lazy"
               />
-              <div className="px-3 py-2 text-xs text-zinc-300">{s.title}</div>
+              <div className="px-2.5 py-2 text-[11px] text-zinc-300">{s.title}</div>
             </button>
           ))}
         </div>
@@ -104,12 +137,16 @@ export default function WindowsDemo() {
           aria-modal="true"
           aria-label="نمایش اسکرین‌شات"
         >
-          <div className="max-h-[90vh] max-w-[95vw] overflow-hidden rounded-xl" onClick={(e) => e.stopPropagation()}>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={`/win-demo-shots/${shot}`} alt="اسکرین‌شات نسخهٔ ویندوز" className="max-h-[82vh] w-auto max-w-full" />
-            <div className="bg-white/5 py-2 text-center text-sm text-zinc-300">
-              برای بستن کلیک کن
-            </div>
+          <div
+            className="max-h-[92vh] overflow-hidden rounded-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <img
+              src={`/win-demo-shots/${shot}`}
+              alt="اسکرین‌شات نسخهٔ ویندوز"
+              className="max-h-[84vh] w-auto max-w-full"
+            />
+            <div className="bg-white/5 py-2 text-center text-sm text-zinc-300">برای بستن کلیک کن</div>
           </div>
         </div>
       )}
