@@ -132,9 +132,54 @@ object AppPrefs {
     }
     fun setGuardian(c: Context, v: Set<String>) { setStringSet(c, "guardian_cats", v) }
 
-    /** مسدود کردن اتصالات .ir حین اتصال — دامنه‌های ایرانی بیرون تونل می‌مانند. */
+    /** مسدود کردن اتصالات .ir حین اتصال — دامنه‌ها و IPهای ایرانی بیرون تونل می‌مانند (v2.9.7: با رنج‌های واقعی IP). */
     fun blockIr(c: Context): Boolean = p(c).getBoolean("block_ir", false)
     fun setBlockIr(c: Context, v: Boolean) { ed(c).putBoolean("block_ir", v).apply() }
+
+    // ── v2.9.7: fragment / قفل بیومتریک / اشتراک ─────────────────────────
+
+    /** Fragment — تیکه‌تیکه‌کردن TLS ClientHello برای رد شدن از فیلترینگ سنگین (مستقل از حالت سخت‌گیر). */
+    fun fragment(c: Context): Boolean = p(c).getBoolean("fragment", false)
+    fun setFragment(c: Context, v: Boolean) { ed(c).putBoolean("fragment", v).apply() }
+
+    /** قفل اپ — موقع باز شدن، اثر انگشت یا گذرواژهٔ قفل خواسته می‌شود. */
+    fun bioLock(c: Context): Boolean = p(c).getBoolean("bio_lock", false)
+    fun setBioLock(c: Context, v: Boolean) { ed(c).putBoolean("bio_lock", v).apply() }
+
+    /** لینک اشتراک ذخیره‌شده — خالی یعنی اشتراکی وصل نیست. */
+    fun subUrl(c: Context): String = p(c).getString("sub_url", "") ?: ""
+    fun setSubUrl(c: Context, v: String) { ed(c).putString("sub_url", v.trim()).apply() }
+
+    /** آپدیت خودکار اشتراک (وقتی اپ باز است). */
+    fun subAuto(c: Context): Boolean = p(c).getBoolean("sub_auto", true)
+    fun setSubAuto(c: Context, v: Boolean) { ed(c).putBoolean("sub_auto", v).apply() }
+
+    /** آخرین بار که اشتراک با موفقیت تازه شد. */
+    fun subLastAt(c: Context): Long = p(c).getLong("sub_last_at", 0L)
+    fun setSubLastAt(c: Context, v: Long) { ed(c).putLong("sub_last_at", v).apply() }
+
+    /** کانفیگ‌های آمده از اشتراک — جدا از ورود دستی تا آپدیت، دستی‌ها را خراب نکند. */
+    fun subConfigs(c: Context): List<LocalConfig> {
+        val a = JSONArray(p(c).getString("sub_links", "[]") ?: "[]")
+        return (0 until a.length()).map { i ->
+            val o = a.getJSONObject(i)
+            LocalConfig(
+                id = o.optString("id"), name = o.optString("name"),
+                country = o.optString("country"), link = o.optString("link"),
+                premium = o.optBoolean("premium", false), enabled = o.optBoolean("enabled", true),
+            )
+        }
+    }
+
+    fun setSubConfigs(c: Context, list: List<LocalConfig>) {
+        val a = JSONArray()
+        list.forEach { l ->
+            a.put(JSONObject()
+                .put("id", l.id).put("name", l.name).put("country", l.country)
+                .put("link", l.link).put("premium", l.premium).put("enabled", l.enabled))
+        }
+        ed(c).putString("sub_links", a.toString()).apply()
+    }
 
     // ── v2.8: گذرواژهٔ قفل اپ + حذف حساب (پنل حساب) ───────────────────
 

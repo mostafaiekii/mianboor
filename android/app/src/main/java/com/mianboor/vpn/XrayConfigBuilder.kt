@@ -86,10 +86,11 @@ object XrayConfigBuilder {
             "host" to j.optString("host", ""),
             "path" to j.optString("path", ""),
             "alpn" to j.optString("alpn", ""),
-            "fp" to j.optString("fp", "")
+            "fp" to j.optString("fp", ""),
+            "allowInsecure" to j.optString("allowInsecure", "")
         )
 
-        val stream = buildStreamSettings(j.optString("net", "tcp"), j.optString("tls", ""), query)
+        val stream = buildStreamSettings(j.optString("net", "tcp"), j.optString("tls", ""), query, host)
         val outbound = JSONObject()
             .put("protocol", "vmess")
             .put("settings", settings)
@@ -161,7 +162,7 @@ object XrayConfigBuilder {
             )
         }
 
-        val stream = buildStreamSettings(network, security, query)
+        val stream = buildStreamSettings(network, security, query, host)
         val outbound = JSONObject()
             .put("protocol", protocol)
             .put("settings", settings)
@@ -247,15 +248,16 @@ object XrayConfigBuilder {
     // Stream settings builder
     // ------------------------------------------------------------------
 
-    private fun buildStreamSettings(network: String, security: String, q: Map<String, String>): JSONObject? {
+    private fun buildStreamSettings(network: String, security: String, q: Map<String, String>, serverHost: String = ""): JSONObject? {
         val stream = JSONObject()
         val sec = security.lowercase()
 
         when (sec) {
             "tls" -> {
                 val tls = JSONObject()
-                    .put("serverName", q["sni"]?.takeIf { it.isNotBlank() } ?: q["host"]?.takeIf { it.isNotBlank() } ?: "")
-                    .put("allowInsecure", q["allowInsecure"] == "1")
+                    // v2.9.7: fallback کامل — sni ← host لینک ← آدرس خود سرور
+                    .put("serverName", q["sni"]?.takeIf { it.isNotBlank() } ?: q["host"]?.takeIf { it.isNotBlank() } ?: serverHost)
+                    .put("allowInsecure", q["allowInsecure"] == "1" || q["allowInsecure"] == "true")
                 q["alpn"]?.takeIf { it.isNotBlank() }?.let {
                     tls.put("alpn", JSONArray(it.split(',').map { a -> a.trim() }.filter { a -> a.isNotEmpty() }))
                 }
@@ -264,17 +266,24 @@ object XrayConfigBuilder {
             }
             "reality" -> {
                 val reality = JSONObject()
-                    .put("serverName", q["sni"]?.takeIf { it.isNotBlank() } ?: "")
+                    // v2.9.7: fallback کامل — sni ← host لینک ← آدرس خود سرور
+                    .put("serverName", q["sni"]?.takeIf { it.isNotBlank() } ?: q["host"]?.takeIf { it.isNotBlank() } ?: serverHost)
                     .put("fingerprint", q["fp"]?.takeIf { it.isNotBlank() } ?: "chrome")
                     .put("publicKey", q["pbk"] ?: "")
                     .put("shortId", q["sid"] ?: "")
-                    .put("spiderX", q["spx"] ?: "")
+                    .put("spiderX", q["spx"]?.takeIf { it.isNotBlank() } ?: "/")
                 stream.put("security", "reality").put("realitySettings", reality)
             }
-            "xtls" -> { // legacy; treat as tls
+            "xtls" -> {
+                // v2.9.7: لینک‌های قدیمی security=xtls — مثل tls کامل پردازش می‌شوند
+                // (قبلاً alpn/fp/allowInsecure دور ریخته می‌شد و کانفیگ ناقص می‌ساخت)
                 val tls = JSONObject()
-                    .put("serverName", q["sni"]?.takeIf { it.isNotBlank() } ?: "")
-                    .put("allowInsecure", false)
+                    .put("serverName", q["sni"]?.takeIf { it.isNotBlank() } ?: q["host"]?.takeIf { it.isNotBlank() } ?: serverHost)
+                    .put("allowInsecure", q["allowInsecure"] == "1" || q["allowInsecure"] == "true")
+                q["alpn"]?.takeIf { it.isNotBlank() }?.let {
+                    tls.put("alpn", JSONArray(it.split(',').map { a -> a.trim() }.filter { a -> a.isNotEmpty() }))
+                }
+                q["fp"]?.takeIf { it.isNotBlank() }?.let { tls.put("fingerprint", it) }
                 stream.put("security", "tls").put("tlsSettings", tls)
             }
             else -> stream.put("security", "none")
@@ -282,9 +291,17 @@ object XrayConfigBuilder {
 
         when (network) {
             "ws" -> {
-                val ws = JSONObject().put("path", q["path"]?.takeIf { it.isNotBlank() } ?: "/")
+                // v2.9.7: نرمال‌سازی مسیر (بدون «/» اول) + پشتیبانی early-data («ed»)
+                val rawPath = q["path"]?.takeIf { it.isNotBlank() } ?: "/"
+                val ws = JSONObject().put("path", if (rawPath.startsWith("/")) rawPath else "/$rawPath")
                 q["host"]?.takeIf { it.isNotBlank() }?.let {
                     ws.put("headers", JSONObject().put("Host", it))
+                }
+                // early-data: «ed=2048» در لینک = maxEarlyData + هدر استاندارد
+                val ed = q["ed"]?.trim()?.toIntOrNull()
+                if (ed != null && ed > 0) {
+                    ws.put("maxEarlyData", ed)
+                    ws.put("earlyDataHeaderName", q["earlyDataHeaderName"]?.takeIf { it.isNotBlank() } ?: "Sec-WebSocket-Protocol")
                 }
                 stream.put("network", "ws").put("wsSettings", ws)
             }
@@ -293,6 +310,8 @@ object XrayConfigBuilder {
                     "serviceName",
                     q["serviceName"]?.takeIf { it.isNotBlank() } ?: q["path"]?.takeIf { it.isNotBlank() } ?: ""
                 )
+                // v2.9.7: multiMode (لینک‌های mode=multi)
+                if (q["mode"] == "multi") grpc.put("multiMode", true)
                 stream.put("network", "grpc").put("grpcSettings", grpc)
             }
             "h2", "http" -> {
@@ -310,6 +329,8 @@ object XrayConfigBuilder {
             "xhttp", "splithttp" -> {
                 val xh = JSONObject().put("path", q["path"]?.takeIf { it.isNotBlank() } ?: "/")
                 q["host"]?.takeIf { it.isNotBlank() }?.let { xh.put("host", it) }
+                // v2.9.7: mode لینک (auto/packet-up/stream-up/stream-one) پاس داده می‌شود
+                q["mode"]?.takeIf { it.isNotBlank() }?.let { xh.put("mode", it) }
                 stream.put("network", "xhttp").put("xhttpSettings", xh)
             }
             "tcp", "" -> {
@@ -362,6 +383,7 @@ object XrayConfigBuilder {
         server: ParsedServer,
         blockQuic: Boolean = true,
         stealth: String = "normal",
+        fragment: Boolean = false,
         dnsMode: String = "auto",
         dnsCustom: String = "",
         tgSocks: SocksUpstream? = null,
@@ -380,6 +402,7 @@ object XrayConfigBuilder {
         val effStealth = if (minimal) "normal" else stealth
         val effMux = if (minimal) false else mux
         val effGuardian = if (minimal) emptySet() else guardian
+        val effFragment = if (minimal) false else fragment
         val listenAddr = if (listenAll) "0.0.0.0" else "127.0.0.1"
         val socksIn = JSONObject()
             .put("tag", "socks-in")
@@ -407,36 +430,53 @@ object XrayConfigBuilder {
         // حالت عادی: outbound سرور؛ حالت پروکسی تلگرام: outbound socks خام
         val proxy = if (tgSocks != null) socksUpstreamOutbound(tgSocks).put("tag", "proxy")
                     else server.outbound.put("tag", "proxy")
+        // v2.9.7 — Fragment واقعی: در نسخه‌های قبل کلید «fragment» داخل streamSettings
+        // گذاشته می‌شد که Xray آن را نادیده می‌گرفت (fragment صوری). مکانیزم درست
+        // (همان الگوی v2rayNG): یک outbound آزاد freedom با settings.fragment و
+        // sockopt.dialerProxy روی outbound اصلی.
+        val wantFragment = !minimal && tgSocks == null &&
+            (effFragment || effStealth == "strict")
+        var fragmentOutbound: JSONObject? = null
         if (tgSocks == null) {
             // بهینه‌سازی سرعت: حذف Nagle (tcpNoDelay) و TCP Fast Open در صورت پشتیبانی سرور —
             // دست‌دادن (handshake) سریع‌تر و تأخیر کمتر برای وب‌سوکت/CDN
             val stream = proxy.optJSONObject("streamSettings") ?: JSONObject()
-            if (!minimal) {
-                stream.put(
-                    "sockopt",
-                    JSONObject().put("tcpFastOpen", true).put("tcpNoDelay", true)
-                )
-            }
-            // حالت سخت‌گیر ضد-فیلترینگ: تیکه‌تیکه‌کردن TLS ClientHello
-            if (effStealth == "strict") {
-                val sec = stream.optString("security")
-                if (sec == "tls" || sec == "reality") {
-                    stream.put(
-                        "fragment",
+            // sockopt همیشه از نو ساخته می‌شود چون ParsedServer.outbound در جا
+            // بازاستفاده می‌شود و بقایای dialerProxy ساخت قبلی باید پاک شوند
+            val sock = JSONObject()
+                .put("tcpFastOpen", true)
+                .put("tcpNoDelay", true)
+            val sec = stream.optString("security")
+            if (wantFragment && (sec == "tls" || sec == "reality")) {
+                // توجه: mux با dialerProxy سازگار نیست — وقتی fragment فعال است mux بی‌اثر می‌شود
+                sock.put("dialerProxy", "fragment-out")
+                fragmentOutbound = JSONObject()
+                    .put("tag", "fragment-out")
+                    .put("protocol", "freedom")
+                    .put(
+                        "settings",
                         JSONObject()
-                            .put("packets", "tlshello")
-                            .put("length", "100-200")
-                            .put("interval", "10-20")
+                            .put("domainStrategy", "AsIs")
+                            .put(
+                                "fragment",
+                                JSONObject()
+                                    .put("packets", "tlshello")
+                                    .put("length", "100-200")
+                                    .put("interval", "10-20")
+                            )
                     )
-                }
             }
+            stream.put("sockopt", sock)
+            stream.remove("fragment") // کلید صوری نسخه‌های قدیمی — Xray آن را نمی‌فهمید
             proxy.put("streamSettings", stream)
             // v2.7: Multiplexer — چند استریم روی یک اتصال، بار handshake کمتر
-            if (effMux) {
+            if (effMux && fragmentOutbound == null) {
                 proxy.put(
                     "mux",
                     JSONObject().put("enabled", true).put("concurrency", 8)
                 )
+            } else {
+                proxy.remove("mux") // بقایای ساخت قبلی هم پاک شود
             }
         }
 
@@ -495,11 +535,20 @@ object XrayConfigBuilder {
             )
         }
         if (blockIr && !tgOnly && !minimal) {
-            // v2.9: فقط دامنه‌های ایرانی از تونل خارج می‌مانند — قانون geoip:ir
-            // حذف شد چون geoip.dat روی اندروید موجود نیست و xray را CRASH می‌کرد.
+            // v2.9.7 — «سایت‌های ایران، مستقیم»: دامنه‌های ایرانی + رنج‌های واقعی IP ایران
+            // (دادهٔ RIPE) همگی INLINE — بدون هیچ geoip.dat که قبلاً هسته را CRASH می‌کرد.
+            val irDomains = mutableListOf(
+                "domain:ir", "domain:xn--mgba3a4f16a.ir", "domain:xn--mgba3a4fra.ir",
+            )
+            irDomains.addAll(IranRules.DOMAINS.map { "domain:$it" })
             rules.put(
                 JSONObject().put("type", "field")
-                    .put("domain", JSONArray(listOf("domain:ir", "domain:xn--mgba3a4f16a.ir", "domain:xn--mgba3a4fra.ir")))
+                    .put("domain", JSONArray(irDomains))
+                    .put("outboundTag", "direct")
+            )
+            rules.put(
+                JSONObject().put("type", "field")
+                    .put("ip", JSONArray(IranRules.CIDRS))
                     .put("outboundTag", "direct")
             )
         }
@@ -532,11 +581,15 @@ object XrayConfigBuilder {
         val inbounds = JSONArray().put(socksIn)
         if (withHttpInbound) inbounds.put(httpIn)
 
+        val outbounds = JSONArray().put(proxy)
+        fragmentOutbound?.let { outbounds.put(it) }
+        outbounds.put(direct).put(block).put(dnsOut)
+
         val root = JSONObject()
             .put("log", JSONObject().put("loglevel", "warning"))
             .put("dns", dns)
             .put("inbounds", inbounds)
-            .put("outbounds", JSONArray().put(proxy).put(direct).put(block).put(dnsOut))
+            .put("outbounds", outbounds)
             .put("routing", JSONObject().put("domainStrategy", "AsIs").put("rules", rules))
 
         return root.toString()

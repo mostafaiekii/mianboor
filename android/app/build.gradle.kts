@@ -39,8 +39,8 @@ android {
         applicationId = "com.mianboor.vpn"
         minSdk = 26
         targetSdk = 34
-        versionCode = 35
-        versionName = "2.9.6"
+        versionCode = 36
+        versionName = "2.9.7"
 
         ndk {
             abiFilters += "arm64-v8a"
@@ -124,4 +124,7 @@ dependencies {
     // v2: اسکن QR کانفیگ — دوربین + مجوز درون کتابخانه مدیریت می‌شود
     implementation("androidx.appcompat:appcompat:1.6.1")
     implementation("com.journeyapps:zxing-android-embedded:4.3.0")
+
+    // v2.9.7: قفل اپ با اثر انگشت (BiometricPrompt — FragmentActivity لازم دارد)
+    implementation("androidx.biometric:biometric:1.1.0")
 }

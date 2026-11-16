@@ -72,6 +72,9 @@ fun ServersScreen(
     groupCountry: Boolean = false,
     sortMode: String = "ping",
     onToggleSort: () -> Unit = {},
+    // ── v2.9.7: تست واقعی تک‌سرور (لمس روی عدد پینگ) ──
+    testing: Set<String> = emptySet(),
+    onTestRow: (String) -> Unit = {},
 ) {
     val t = stringsOf(lang)
     val mb = LocalMb.current
@@ -368,6 +371,8 @@ fun ServersScreen(
                             locked = c.premium && !premiumUser, isBest = best?.key == c.key,
                             fav = c.key in favorites,
                             onToggleFav = onToggleFav,
+                            testingThis = c.key in testing,
+                            onTest = { onTestRow(c.key) },
                             onClick = { if (c.premium && !premiumUser) onPremiumTap() else onSelect(c.key) },
                         )
                     }
@@ -379,6 +384,8 @@ fun ServersScreen(
                         locked = c.premium && !premiumUser, isBest = best?.key == c.key,
                         fav = c.key in favorites,
                         onToggleFav = onToggleFav,
+                        testingThis = c.key in testing,
+                        onTest = { onTestRow(c.key) },
                         onClick = { if (c.premium && !premiumUser) onPremiumTap() else onSelect(c.key) },
                     )
                 }
@@ -400,6 +407,8 @@ private fun ServerRow(
     isBest: Boolean,
     fav: Boolean = false,
     onToggleFav: (String) -> Unit = {},
+    testingThis: Boolean = false,
+    onTest: () -> Unit = {},
     onClick: () -> Unit,
 ) {
     val t = stringsOf(lang)
@@ -432,13 +441,26 @@ private fun ServerRow(
             )
         }
         Spacer(Modifier.width(8.dp))
-        Text(
-            "${c.ping} ms",
-            color = pingColor(c.ping, mb),
-            fontSize = 13.sp,
-            modifier = Modifier.width(56.dp),
-            textAlign = androidx.compose.ui.text.style.TextAlign.End,
-        )
+        // v2.9.7: عدد پینگ قابل‌لمس است — لمس = تست واقعی همان کانفیگ (RealPing)
+        Box(
+            Modifier
+                .width(56.dp)
+                .clip(RoundedCornerShape(8.dp))
+                .clickable(enabled = !testingThis && !locked) { onTest() }
+                .padding(vertical = 2.dp),
+            contentAlignment = Alignment.CenterEnd,
+        ) {
+            if (testingThis) {
+                SyncSpinner(Modifier.size(16.dp))
+            } else {
+                Text(
+                    "${c.ping} ms",
+                    color = pingColor(c.ping, mb),
+                    fontSize = 13.sp,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.End,
+                )
+            }
+        }
         if (!locked) {
             Spacer(Modifier.width(4.dp))
             // ── ستارهٔ منتخب‌ها (نسخهٔ ۲) ──

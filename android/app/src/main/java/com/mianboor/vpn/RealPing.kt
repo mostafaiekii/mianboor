@@ -65,6 +65,7 @@ object RealPing {
                     parsed,
                     blockQuic = false,
                     stealth = "normal",
+                    fragment = AppPrefs.fragment(ctx), // v2.9.7: تست واقعی با همان تنظیمات اتصال اصلی
                     dnsMode = "auto",
                     tgSocks = null,
                     tgOnly = false,

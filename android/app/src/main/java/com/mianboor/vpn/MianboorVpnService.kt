@@ -272,6 +272,7 @@ class MianboorVpnService : VpnService() {
                     server,
                     AppPrefs.blockQuic(this),
                     stealthOverride ?: AppPrefs.stealth(this),
+                    fragment = AppPrefs.fragment(this), // v2.9.7
                     AppPrefs.dnsMode(this),
                     AppPrefs.dnsCustom(this),
                     tgSocks,

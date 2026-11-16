@@ -420,6 +420,25 @@ interface Strings {
     val blockIr: String
     val blockIrSub: String
     val applyNextConn: String
+    // ── v2.9.7: fragment / قفل اپ / اشتراک ──
+    val fragment: String
+    val fragmentSub: String
+    val bioLock: String
+    val bioLockSub: String
+    val bioPromptTitle: String
+    val bioPromptSub: String
+    val bioNeedPass: String
+    val bioWrongPass: String
+    val passClear: String
+    val unlockBtn: String
+    val usePassBtn: String
+    val subAuto: String
+    val subAutoSub: String
+    fun subStatusLine(count: Int): String
+    fun subUpdatedAgo(mins: String): String
+    val subRefreshNow: String
+    val subRemove: String
+    val subRemoved: String
 
     // ── TgTunnel — وبگردی کامل (v2.2) ──
     val ttTitle: String
@@ -464,14 +483,14 @@ object EnStrings : Strings {
     override val tabFree = "Free"
     override val tabPremium = "Premium"
     override val verified = "Verified"
-    override val setPass = "Set password"
-    override val passPlaceholder = "New password (4+ characters)"
+    override val setPass = "App lock password"
+    override val passPlaceholder = "New lock password (4+ digits)"
     override val passSaved = "Password saved"
-    override val deleteAcc = "Delete account"
-    override val deleteAccAsk = "Delete account?"
-    override val deleteAccWarn = "Your plan and data will be wiped from this device. This cannot be undone."
-    override val deleteAccYes = "Yes, delete"
-    override val deleteAccDone = "Account data wiped from this device"
+    override val deleteAcc = "Wipe app data"
+    override val deleteAccAsk = "Wipe app data?"
+    override val deleteAccWarn = "All Mianboor data on this phone is wiped (servers, settings, token). Your plan on the server is not touched. This cannot be undone."
+    override val deleteAccYes = "Yes, wipe"
+    override val deleteAccDone = "App data wiped from this device"
     override val svCurrent = "Current server"
     override val allServices = "Show all services"
     override val moreOptions = "More options"
@@ -881,9 +900,28 @@ object EnStrings : Strings {
     override val verStaleRe = "The downloaded file was outdated — downloading the new version again…"
     override val verInAppNote = "Checking, downloading and installing updates all happen inside Mianboor — no browser, no GitHub."
     override val favSection = "Added"
-    override val blockIr = "Block .ir connections"
-    override val blockIrSub = "While on VPN, Iranian domains stay out of the tunnel"
+    override val blockIr = "Iran sites go direct"
+    override val blockIrSub = "Iranian domains and IPs stay out of the tunnel — faster and quota-free"
     override val applyNextConn = "Applied on the next connection"
+    // ── v2.9.7 ──
+    override val fragment = "TLS fragmentation (fragment)"
+    override val fragmentSub = "Splits the TLS hello into small pieces to slip through heavy DPI filtering"
+    override val bioLock = "App lock (fingerprint)"
+    override val bioLockSub = "Ask for fingerprint or the lock password when opening the app"
+    override val bioPromptTitle = "Unlock Mianboor"
+    override val bioPromptSub = "Verify it’s you"
+    override val bioNeedPass = "No fingerprint on this phone — set the lock password first"
+    override val bioWrongPass = "Wrong password"
+    override val passClear = "Remove password"
+    override val unlockBtn = "Unlock"
+    override val usePassBtn = "Use password"
+    override val subAuto = "Auto-update subscription"
+    override val subAutoSub = "Subscription servers refresh every 6 hours while the app is open"
+    override fun subStatusLine(count: Int) = "Subscription active · $count servers"
+    override fun subUpdatedAgo(mins: String) = "Updated $mins min ago"
+    override val subRefreshNow = "Update now"
+    override val subRemove = "Remove subscription"
+    override val subRemoved = "Subscription removed"
 
     // ── TgTunnel — Full browsing (v2.2) ──
     override val ttTitle = "Full browsing"
@@ -928,14 +966,14 @@ object FaStrings : Strings {
     override val tabFree = "رایگان"
     override val tabPremium = "پرمیوم"
     override val verified = "تایید شده"
-    override val setPass = "تعیین گذرواژه"
-    override val passPlaceholder = "گذرواژهٔ جدید (۴+ نویسه)"
+    override val setPass = "گذرواژهٔ قفل اپ"
+    override val passPlaceholder = "گذرواژهٔ جدید قفل اپ (۴+ رقم)"
     override val passSaved = "گذرواژه ذخیره شد"
-    override val deleteAcc = "حذف حساب کاربری"
-    override val deleteAccAsk = "حذف حساب کاربری؟"
-    override val deleteAccWarn = "پلن و داده‌های شما از این دستگاه پاک می‌شه؛ این کار برگشت‌پذیر نیست."
-    override val deleteAccYes = "بله، حذف کن"
-    override val deleteAccDone = "داده‌های حساب از این دستگاه پاک شد"
+    override val deleteAcc = "پاک‌کردن اطلاعات اپ"
+    override val deleteAccAsk = "اطلاعات اپ پاک بشه؟"
+    override val deleteAccWarn = "همهٔ داده‌های میانپور روی این گوشی پاک می‌شه (سرورها، تنظیمات، توکن). پلن روی سرور دست‌نخورده می‌مونه. این کار برگشت‌پذیر نیست."
+    override val deleteAccYes = "بله، پاک کن"
+    override val deleteAccDone = "داده‌های اپ از این گوشی پاک شد"
     override val svCurrent = "سرور فعلی"
     override val allServices = "نمایش همه سرویس‌ها"
     override val moreOptions = "گزینه‌های بیشتر"
@@ -1343,9 +1381,28 @@ object FaStrings : Strings {
     override val verStaleRe = "فایل دانلودشده قدیمی بود — نسخهٔ جدید دوباره دانلود می‌شود…"
     override val verInAppNote = "بررسی، دانلود و نصب آپدیت همه داخل خود میانبر انجام می‌شه — بدون مرورگر و بدون گیت‌هاب."
     override val favSection = "اضافه‌شده"
-    override val blockIr = "مسدود کردن اتصالات .ir"
-    override val blockIrSub = "حین اتصال، دامنه‌های ایرانی از تونل خارج می‌مونن"
+    override val blockIr = "سایت‌های ایران، مستقیم"
+    override val blockIrSub = "دامنه‌ها و IPهای ایرانی از تونل خارج می‌مونن — سریع‌تر و بدون مصرف حجم"
     override val applyNextConn = "در اتصال بعدی اعمال می‌شود"
+    // ── v2.9.7 ──
+    override val fragment = "شکستن TLS (fragment)"
+    override val fragmentSub = "تیکه‌تیکه‌کردن ClientHello برای رد شدن از فیلترینگ سنگین"
+    override val bioLock = "قفل اپ (اثر انگشت)"
+    override val bioLockSub = "موقع باز شدن اپ، اثر انگشت یا گذرواژهٔ قفل خواسته می‌شه"
+    override val bioPromptTitle = "باز کردن میانپور"
+    override val bioPromptSub = "تایید هویت"
+    override val bioNeedPass = "اثر انگشت روی این گوشی ثبت نشده — اول گذرواژهٔ قفل رو تعیین کن"
+    override val bioWrongPass = "گذرواژه اشتباهه"
+    override val passClear = "حذف گذرواژه"
+    override val unlockBtn = "باز کردن قفل"
+    override val usePassBtn = "استفاده از گذرواژه"
+    override val subAuto = "آپدیت خودکار اشتراک"
+    override val subAutoSub = "هر ۶ ساعت، وقتی اپ بازه، کانفیگ‌های اشتراک تازه می‌شن"
+    override fun subStatusLine(count: Int) = "اشتراک فعال · $count کانفیگ"
+    override fun subUpdatedAgo(mins: String) = "آخرین آپدیت: $mins دقیقه پیش"
+    override val subRefreshNow = "به‌روزرسانی همین حالا"
+    override val subRemove = "حذف اشتراک"
+    override val subRemoved = "اشتراک حذف شد"
 
     // ── TgTunnel — وبگردی کامل (v2.2) ──
     override val ttTitle = "وبگردی کامل"

@@ -83,6 +83,11 @@ fun SettingsScreen(
     onToggleTether: (Boolean) -> Unit = {},
     blockIr: Boolean = false,
     setBlockIr: (Boolean) -> Unit = {},
+    // ── v2.9.7: fragment + آپدیت خودکار اشتراک ──
+    fragment: Boolean = false,
+    setFragment: (Boolean) -> Unit = {},
+    subAuto: Boolean = true,
+    setSubAuto: (Boolean) -> Unit = {},
     // ── v2.9.2: بخش اضطراری (مستقل — حذفش بی‌خطر است) ──
     onEmergency: () -> Unit = {},
 ) {
@@ -229,6 +234,9 @@ fun SettingsScreen(
                     t.stealthNote, color = mb.dim, fontSize = 12.sp, lineHeight = 16.sp,
                     modifier = Modifier.padding(top = 8.dp),
                 )
+                // v2.9.7: fragment واقعی — مستقل از حالت سخت‌گیر هم قابل روشن‌شدن است
+                Spacer(Modifier.height(10.dp))
+                SettingSwitchRow(t.fragment, t.fragmentSub, fragment) { setFragment(it) }
             }
         }
 
@@ -353,6 +361,8 @@ fun SettingsScreen(
                 Spacer(Modifier.height(12.dp))
                 SettingSwitchRow(t.proxyMode, t.proxyModeSub, proxyMode) { setProxyMode(it) }
                 SettingSwitchRow(t.mux, t.muxSub, mux) { setMux(it) }
+                // v2.9.7: آپدیت خودکار اشتراک
+                SettingSwitchRow(t.subAuto, t.subAutoSub, subAuto) { setSubAuto(it) }
                 // تترینگ — ردیف ورود به شیت
                 Row(
                     Modifier

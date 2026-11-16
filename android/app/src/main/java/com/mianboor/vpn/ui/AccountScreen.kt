@@ -94,6 +94,9 @@ fun AccountScreen(
     vpnOn: Boolean = false,
     onOpenServers: () -> Unit = {},
     onDeleteAcc: () -> Unit = {},
+    // ── v2.9.7: قفل اپ با اثر انگشت ──
+    bioLock: Boolean = false,
+    onBioLock: (Boolean) -> Unit = {},
     giftDays: Int,
     toast: (String) -> Unit,
 ) {
@@ -382,6 +385,9 @@ fun AccountScreen(
                     SwitchRow(R.drawable.ic_shield_alert, t.failover, t.failoverSub, failover, onFailover,
                         Modifier.padding(top = 12.dp))
                     SwitchRow(R.drawable.ic_wifi, t.autoReconnect, t.autoReconnectSub, autoReconnect, onAutoReconnect,
+                        Modifier.padding(top = 12.dp))
+                    // v2.9.7: قفل اپ با اثر انگشت — گذرواژهٔ قفل هم به‌عنوان جایگزین عمل می‌کند
+                    SwitchRow(R.drawable.ic_fingerprint, t.bioLock, t.bioLockSub, bioLock, onBioLock,
                         Modifier.padding(top = 12.dp))
 
                     // ── صندوق پیام‌ها ──
@@ -677,7 +683,7 @@ fun AccountScreen(
                                         .padding(vertical = 12.dp),
                                     contentAlignment = Alignment.Center,
                                 ) {
-                                    Text(t.deleteAcc, color = mb.danger, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                    Text(t.passClear, color = mb.danger, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                                 }
                             }
                             Box(

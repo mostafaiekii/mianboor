@@ -69,8 +69,9 @@ object SpeedTester {
      * اندازه‌گیری واقعی پهنای‌باند: دانلود ۱۲MB و آپلود ۳MB به speed.cloudflare.com
      * از مسیر SOCKS تونل (اگر تونل روشن باشد اندازه‌گیری «از داخل تونل» است).
      */
-    suspend fun measure(onProgress: (Progress) -> Unit) {
-        val proxy = Proxy(Proxy.Type.SOCKS, InetSocketAddress("127.0.0.1", XrayConfigBuilder.SOCKS_PORT))
+    suspend fun measure(onProgress: (Progress) -> Unit, socksPort: Int = XrayConfigBuilder.SOCKS_PORT) {
+        // v2.9.7: پورت واقعی کاربر (نه ثابت 10809) — اسپیدتست با پورت دلخواه هم کار می‌کند
+        val proxy = Proxy(Proxy.Type.SOCKS, InetSocketAddress("127.0.0.1", socksPort))
         val down = withContext(Dispatchers.IO) { runCatching { downloadMbps(proxy, onProgress) }.getOrDefault(0.0) }
         onProgress(Progress("up", down, 0.0))
         val up = withContext(Dispatchers.IO) { runCatching { uploadMbps(proxy) }.getOrDefault(0.0) }
@@ -179,7 +180,7 @@ fun SheetScaffold(
 // ─────────────────────────────────────────────────────────────────
 
 @Composable
-fun SpeedTestSheet(lang: Lang, server: ConfigItem?, onClose: () -> Unit) {
+fun SpeedTestSheet(lang: Lang, server: ConfigItem?, socksPort: Int = XrayConfigBuilder.SOCKS_PORT, onClose: () -> Unit) {
     val t = stringsOf(lang)
     val mb = LocalMb.current
     var phase by remember { mutableStateOf("idle") }
@@ -189,12 +190,12 @@ fun SpeedTestSheet(lang: Lang, server: ConfigItem?, onClose: () -> Unit) {
 
     LaunchedEffect(Unit) {
         phase = "down"
-        SpeedTester.measure { p ->
+        SpeedTester.measure({ p ->
             phase = p.phase
             down = p.downMbps
             up = p.upMbps
             if (p.phase == "down") hist = (hist + listOf(p.downMbps)).takeLast(34)
-        }
+        }, socksPort)
     }
 
     SheetScaffold(title = t.speedTest, icon = R.drawable.ic_activity, onClose = onClose) {
@@ -314,6 +315,11 @@ fun ImportSheet(
     onFetchSub: (url: String) -> Unit,
     onScanQr: () -> Unit,
     toast: (String) -> Unit,
+    // ── v2.9.7: وضعیت اشتراک ذخیره‌شده ──
+    subInfo: String? = null,
+    subUpdated: String? = null,
+    onSubRefresh: () -> Unit = {},
+    onSubRemove: () -> Unit = {},
 ) {
     val t = stringsOf(lang)
     val mb = LocalMb.current
@@ -377,6 +383,49 @@ fun ImportSheet(
                     color = if (busy || url.isBlank()) mb.dim else mb.onGlow,
                     fontSize = 14.sp, fontWeight = FontWeight.Bold,
                 )
+            }
+            // v2.9.7: اشتراک ذخیره‌شده — وضعیت + آپدیت دستی + حذف
+            if (subInfo != null) {
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(top = 10.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(mb.night)
+                        .border(1.dp, mb.glow.copy(alpha = 0.35f), RoundedCornerShape(12.dp))
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                ) {
+                    Text(subInfo, color = mb.glow, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                    if (!subUpdated.isNullOrBlank()) {
+                        Text(subUpdated, color = mb.dim, fontSize = 11.sp, modifier = Modifier.padding(top = 2.dp))
+                    }
+                    Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Box(
+                            Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(mb.panel)
+                                .border(1.dp, mb.panelEdge, RoundedCornerShape(10.dp))
+                                .clickable(enabled = !busy) { onSubRefresh() }
+                                .padding(vertical = 9.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text(t.subRefreshNow, color = mb.ink, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                        }
+                        Box(
+                            Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(mb.danger.copy(alpha = 0.1f))
+                                .border(1.dp, mb.danger.copy(alpha = 0.3f), RoundedCornerShape(10.dp))
+                                .clickable { onSubRemove() }
+                                .padding(vertical = 9.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text(t.subRemove, color = mb.danger, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                        }
+                    }
+                }
             }
         }
 

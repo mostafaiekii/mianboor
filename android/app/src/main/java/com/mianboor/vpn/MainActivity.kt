@@ -84,6 +84,9 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import androidx.biometric.BiometricManager
+import androidx.biometric.BiometricPrompt
+import androidx.fragment.app.FragmentActivity
 import com.mianboor.vpn.ui.AccountScreen
 import com.mianboor.vpn.ui.AdminLogin
 import com.mianboor.vpn.ui.AdminPanel
@@ -132,8 +135,11 @@ data class Entitlement(val plan: String, val expiresAt: Long)
 
 private const val HOLD_MS = 5000L
 private const val PING_INTERVAL_MS = 3000L
+/** v2.9.7: اشتراک کهنه‌تر از این = آپدیت خودکار در اولین فرصت */
+private const val SUB_REFRESH_INTERVAL_MS = 6L * 3600_000L
 
-class MainActivity : ComponentActivity() {
+// v2.9.7: FragmentActivity — برای BiometricPrompt (قفل اپ)
+class MainActivity : FragmentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -333,13 +339,32 @@ private fun MbAppInner(
     }
     var favorites by remember { mutableStateOf(AppPrefs.favorites(context)) }
 
+    // ── v2.9.7: fragment / قفل اپ / اشتراک / تست تک‌سرور ──
+    var fragmentOn by remember { mutableStateOf(AppPrefs.fragment(context)) }
+    var subAutoOn by remember { mutableStateOf(AppPrefs.subAuto(context)) }
+    var bioLockOn by remember { mutableStateOf(AppPrefs.bioLock(context)) }
+    var locked by remember { mutableStateOf(AppPrefs.bioLock(context)) }
+    var showPassUnlock by remember { mutableStateOf(false) }
+    var wentBg by remember { mutableStateOf(false) }
+    var rowTesting by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var subInfo by remember { mutableStateOf<String?>(null) }
+    var subUpdated by remember { mutableStateOf<String?>(null) }
+
     // v2.7: وضعیت باتری بعد از برگشت از صفحهٔ سیستم تازه شود
     // v2.8.1: وضعیت صفحهٔ نسخه هم بعد از برگشت از «اجازهٔ نصب» تازه شود —
     // بدون این، کاربر اجازه می‌دهد ولی دکمه «اجازهٔ نصب» می‌ماند تا خروج/ورود کامل.
     val lifecycleOwner = androidx.compose.ui.platform.LocalLifecycleOwner.current
     androidx.compose.runtime.DisposableEffect(lifecycleOwner) {
         val obs = androidx.lifecycle.LifecycleEventObserver { _, e ->
+            // v2.9.7: قفل اپ — برگشت از پس‌زمینه دوباره قفل می‌کند
+            if (e == androidx.lifecycle.Lifecycle.Event.ON_STOP) {
+                wentBg = true
+            }
             if (e == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                if (bioLockOn && wentBg) {
+                    wentBg = false
+                    locked = true
+                }
                 batteryOff = runCatching {
                     val pm = context.getSystemService(android.os.PowerManager::class.java)
                     pm != null && pm.isIgnoringBatteryOptimizations(context.packageName)
@@ -553,7 +578,8 @@ private fun MbAppInner(
     // ── config merging ──
     fun rebuildConfigs() {
         val cached = AppPrefs.serverCache(context)
-        val locals = AppPrefs.localConfigs(context)
+        // v2.9.7: کانفیگ‌های اشتراک هم با پیشوند loc: می‌آیند (idهای S<index> پایدارند)
+        val locals = AppPrefs.localConfigs(context) + AppPrefs.subConfigs(context)
         val list = buildList {
             cached.forEach { cc ->
                 val parsed = XrayConfigBuilder.parseLink(cc.link, cc.name, cc.country) ?: return@forEach
@@ -832,38 +858,95 @@ private fun MbAppInner(
         toast(t.importAdded)
     }
 
+    // ── v2.9.7: اشتراک — ذخیرهٔ URL + آپدیت خودکار/دستی ──
+    // کانفیگ‌های اشتراک جدا از ورود دستی ذخیره می‌شوند تا آپدیت، دستی‌ها را خراب نکند.
+    fun parseSubLinks(text: String?): List<String> {
+        if (text.isNullOrBlank()) return emptyList()
+        val raw = text.trim()
+        val decoded = try {
+            String(android.util.Base64.decode(raw, android.util.Base64.DEFAULT), Charsets.UTF_8)
+        } catch (t: Throwable) { raw }
+        return decoded.lines()
+            .map { it.trim() }
+            .filter { it.startsWith("vmess://") || it.startsWith("vless://") || it.startsWith("trojan://") || it.startsWith("ss://") }
+            .distinct()
+            .take(40)
+    }
+
+    fun applySubscription(links: List<String>, url: String, auto: Boolean, closeSheet: Boolean) {
+        val subs = buildList {
+            links.forEachIndexed { i, link ->
+                val parsed = XrayConfigBuilder.parseLink(link, t.importDefaultName, "de")
+                if (parsed != null) {
+                    add(
+                        AppPrefs.LocalConfig(
+                            id = "S$i", name = parsed.name,
+                            country = parsed.country.ifBlank { "de" },
+                            link = link, premium = false, enabled = true,
+                        )
+                    )
+                }
+            }
+        }
+        AppPrefs.setSubConfigs(context, subs)
+        AppPrefs.setSubUrl(context, url)
+        AppPrefs.setSubLastAt(context, System.currentTimeMillis())
+        rebuildConfigs()
+        updateSubInfo()
+        if (closeSheet) importOpen = false
+        if (!auto) toast(t.importSubOk)
+    }
+
     fun fetchSubscription(url: String) {
         importBusy = true
         scope.launch(Dispatchers.IO) {
-            val text = runCatching { MianboorApi.fetchText(url) }.getOrNull()
-            val links = runCatching {
-                if (text.isNullOrBlank()) throw IllegalStateException("empty")
-                val raw = text.trim()
-                val decoded = try {
-                    String(android.util.Base64.decode(raw, android.util.Base64.DEFAULT), Charsets.UTF_8)
-                } catch (t: Throwable) { raw }
-                decoded.lines()
-                    .map { it.trim() }
-                    .filter { it.startsWith("vmess://") || it.startsWith("vless://") || it.startsWith("trojan://") || it.startsWith("ss://") }
-                    .distinct()
-                    .take(20)
-            }.getOrDefault(emptyList())
+            val links = runCatching { parseSubLinks(MianboorApi.fetchText(url)) }.getOrDefault(emptyList())
             withContext(Dispatchers.Main) {
                 importBusy = false
                 if (links.isEmpty()) {
                     toast(t.importSubFail)
                 } else {
-                    links.forEach { link ->
-                        val parsed = XrayConfigBuilder.parseLink(link, t.importDefaultName, "de")
-                        if (parsed != null) {
-                            AppPrefs.addLocalConfig(context, parsed.name, parsed.country.ifBlank { "de" }, link, false)
-                        }
-                    }
-                    rebuildConfigs()
-                    importOpen = false
-                    toast(t.importSubOk)
+                    applySubscription(links, url, auto = false, closeSheet = true)
                 }
             }
+        }
+    }
+
+    /** آپدیت اشتراک ذخیره‌شده — auto: بی‌صدا، فقط در صورت موفقیت لیست عوض می‌شود. */
+    fun refreshSubscription(auto: Boolean) {
+        val url = AppPrefs.subUrl(context)
+        if (url.isBlank()) return
+        scope.launch(Dispatchers.IO) {
+            val links = runCatching { parseSubLinks(MianboorApi.fetchText(url)) }.getOrDefault(emptyList())
+            withContext(Dispatchers.Main) {
+                if (links.isNotEmpty()) {
+                    applySubscription(links, url, auto = auto, closeSheet = false)
+                } else if (!auto) {
+                    toast(t.importSubFail)
+                }
+            }
+        }
+    }
+
+    fun removeSubscription() {
+        AppPrefs.setSubConfigs(context, emptyList())
+        AppPrefs.setSubUrl(context, "")
+        AppPrefs.setSubLastAt(context, 0L)
+        rebuildConfigs()
+        updateSubInfo()
+        toast(t.subRemoved)
+    }
+
+    fun updateSubInfo() {
+        val url = AppPrefs.subUrl(context)
+        if (url.isBlank()) {
+            subInfo = null
+            subUpdated = null
+        } else {
+            subInfo = t.subStatusLine(AppPrefs.subConfigs(context).size)
+            val mins = ((System.currentTimeMillis() - AppPrefs.subLastAt(context)) / 60_000L).coerceAtLeast(0L)
+            subUpdated = if (mins < 1) t.subUpdatedAgo(if (lang == Lang.FA) "<۱" else "<1")
+            else t.subUpdatedAgo(mins.toString())
         }
     }
 
@@ -1065,6 +1148,71 @@ private fun MbAppInner(
         }
     }
 
+    // ── v2.9.7: تست واقعی تک‌سرور — لمس روی عدد پینگ در لیست سرورها ──
+    fun testRow(key: String) {
+        if (key in rowTesting) return
+        val c = liveConfigs.firstOrNull { it.key == key } ?: return
+        rowTesting = rowTesting + key
+        scope.launch(Dispatchers.IO) {
+            val ms = runCatching { RealPing.test(context, c.link) }.getOrNull()
+            withContext(Dispatchers.Main) {
+                pings[key] = ms?.toInt() ?: 999
+                rowTesting = rowTesting - key
+            }
+        }
+    }
+
+    // ── v2.9.7: قفل اپ — بیومتریک یا گذرواژهٔ قفل ──
+    fun bioHasBiometric(): Boolean = runCatching {
+        BiometricManager.from(context)
+            .canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_WEAK) ==
+            BiometricManager.BIOMETRIC_SUCCESS
+    }.getOrDefault(false)
+
+    fun runBioUnlock() {
+        if (!locked) return
+        if (!bioHasBiometric()) {
+            if (AppPrefs.appPass(context).isNotBlank()) showPassUnlock = true
+            else locked = false // هیچ روش احرازی در دسترس نیست — قفل کور نمی‌شود
+            return
+        }
+        val act = context as? FragmentActivity ?: run { locked = false; return }
+        val prompt = BiometricPrompt(
+            act,
+            ContextCompat.getMainExecutor(context),
+            object : BiometricPrompt.AuthenticationCallback() {
+                override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
+                    locked = false
+                }
+
+                override fun onAuthenticationError(code: Int, errString: CharSequence) {
+                    // لغو/دکمهٔ منفی → گذرواژهٔ جایگزین اگر تعیین شده باشد
+                    if (AppPrefs.appPass(context).isNotBlank()) showPassUnlock = true
+                }
+            },
+        )
+        val info = BiometricPrompt.PromptInfo.Builder()
+            .setTitle(t.bioPromptTitle)
+            .setSubtitle(t.bioPromptSub)
+            .setNegativeButtonText(if (AppPrefs.appPass(context).isNotBlank()) t.usePassBtn else t.cancel)
+            .setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_WEAK)
+            .build()
+        prompt.authenticate(info)
+    }
+
+    LaunchedEffect(locked, showPassUnlock) {
+        if (locked && !showPassUnlock) runBioUnlock()
+    }
+
+    // محافظ ضدقفل‌شدگی: قفل روشن ولی نه بیومتریک نه گذرواژه → خودکار باز شود
+    LaunchedEffect(Unit) {
+        if (bioLockOn && !bioHasBiometric() && AppPrefs.appPass(context).isBlank()) {
+            bioLockOn = false
+            AppPrefs.setBioLock(context, false)
+            locked = false
+        }
+    }
+
     // ── init: device id, cached configs, fresh fetch, installed apps ──
     LaunchedEffect(Unit) {
         if (deviceId.isBlank()) {
@@ -1092,6 +1240,13 @@ private fun MbAppInner(
             installedApps = apps
         }
         launch(Dispatchers.IO) { refreshRemote() }
+        // v2.9.7: وضعیت اشتراک + اگر کهنه‌تر از ۶ ساعت بود، آپدیت خودکار همین اول کار
+        updateSubInfo()
+        if (AppPrefs.subAuto(context) && AppPrefs.subUrl(context).isNotBlank() &&
+            System.currentTimeMillis() - AppPrefs.subLastAt(context) > SUB_REFRESH_INTERVAL_MS
+        ) {
+            refreshSubscription(auto = true)
+        }
     }
 
     // ── live ping engine: v2.9.5 — پینگ واقعی (Real Delay) به‌جای TCP ──
@@ -1128,6 +1283,19 @@ private fun MbAppInner(
         while (true) {
             delay(60_000)
             refreshNotices()
+        }
+    }
+
+    // ── v2.9.7: آپدیت خودکار اشتراک — هر ۳۰ دقیقه چک می‌شود؛ فقط وقتی کهنه شده (۶ ساعت) تازه می‌شود ──
+    LaunchedEffect(subAutoOn) {
+        if (!subAutoOn) return@LaunchedEffect
+        while (true) {
+            delay(30 * 60_000L)
+            if (AppPrefs.subAuto(context) && AppPrefs.subUrl(context).isNotBlank() &&
+                System.currentTimeMillis() - AppPrefs.subLastAt(context) > SUB_REFRESH_INTERVAL_MS
+            ) {
+                refreshSubscription(auto = true)
+            }
         }
     }
 
@@ -1855,6 +2023,9 @@ private fun MbAppInner(
                             android.net.Uri.parse(AppPrefs.serverUrl(context)).host ?: ""
                         }.getOrDefault(""),
                         syncError = AppPrefs.lastSyncError(context),
+                        // ── v2.9.7: تست واقعی تک‌سرور ──
+                        testing = rowTesting,
+                        onTestRow = { key -> testRow(key) },
                     )
                     Screen.ACCOUNT -> AccountScreen(
                         lang = lang,
@@ -1896,6 +2067,17 @@ private fun MbAppInner(
                                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK),
                             )
                             (context as? android.app.Activity)?.finish()
+                        },
+                        // ── v2.9.7: قفل اپ با اثر انگشت ──
+                        bioLock = bioLockOn,
+                        onBioLock = { v ->
+                            val biometricOk = bioHasBiometric()
+                            if (v && !biometricOk && AppPrefs.appPass(context).isBlank()) {
+                                toast(t.bioNeedPass)
+                            } else {
+                                bioLockOn = v
+                                AppPrefs.setBioLock(context, v)
+                            }
                         },
                         giftDays = refInfo?.giftDays ?: 0,
                         toast = { toast(it) },
@@ -2034,6 +2216,18 @@ private fun MbAppInner(
                             blockIr = v
                             AppPrefs.setBlockIr(context, v)
                             reconnectWithPrefs(t.applyNextConn)
+                        },
+                        // ── v2.9.7: fragment + آپدیت خودکار اشتراک ──
+                        fragment = fragmentOn,
+                        setFragment = { v ->
+                            fragmentOn = v
+                            AppPrefs.setFragment(context, v)
+                            reconnectWithPrefs(t.applyNextConn)
+                        },
+                        subAuto = subAutoOn,
+                        setSubAuto = { v ->
+                            subAutoOn = v
+                            AppPrefs.setSubAuto(context, v)
                         },
                         onOpenVersion = { screen = Screen.VERSION },
                         onEmergency = { screen = Screen.EMERGENCY },
@@ -2194,7 +2388,7 @@ private fun MbAppInner(
         // ── plans sheet ──
         // ── v2 sheets: اسپیدتست، ورود کانفیگ ──
         if (speedOpen) {
-            SpeedTestSheet(lang = lang, server = selectedConfig, onClose = { speedOpen = false })
+            SpeedTestSheet(lang = lang, server = selectedConfig, socksPort = socksPort, onClose = { speedOpen = false })
         }
         if (importOpen) {
             ImportSheet(
@@ -2205,6 +2399,11 @@ private fun MbAppInner(
                 onFetchSub = { fetchSubscription(it) },
                 onScanQr = { scanQr() },
                 toast = { toast(it) },
+                // ── v2.9.7: وضعیت اشتراک ذخیره‌شده ──
+                subInfo = subInfo,
+                subUpdated = subUpdated,
+                onSubRefresh = { refreshSubscription(auto = false) },
+                onSubRemove = { removeSubscription() },
             )
         }
 
@@ -2303,7 +2502,164 @@ private fun MbAppInner(
                 .statusBarsPadding()
                 .padding(top = 52.dp, start = 24.dp, end = 24.dp),
         )
+
+        // ── v2.9.7: قفل اپ — روی همهٔ چیزها (آخرین فرزند Box) ──
+        if (locked) {
+            LockOverlay(
+                lang = lang,
+                hasPass = AppPrefs.appPass(context).isNotBlank(),
+                onUnlock = { runBioUnlock() },
+                onUsePass = { showPassUnlock = true },
+            )
+        }
+        if (locked && showPassUnlock) {
+            PassUnlockDialog(
+                lang = lang,
+                onDismiss = { showPassUnlock = false },
+                onSuccess = {
+                    showPassUnlock = false
+                    locked = false
+                },
+                toast = { toast(it) },
+            )
+        }
     }
+}
+
+// ---------------------------------------------------------------------------
+// v2.9.7 — قفل اپ: اورلی + دیالوگ گذرواژهٔ جایگزین
+// ---------------------------------------------------------------------------
+
+@Composable
+private fun LockOverlay(
+    lang: Lang,
+    hasPass: Boolean,
+    onUnlock: () -> Unit,
+    onUsePass: () -> Unit,
+) {
+    val mb = LocalMb.current
+    val rtl = lang == Lang.FA
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(mb.night),
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Box(
+                Modifier
+                    .size(72.dp)
+                    .clip(CircleShape)
+                    .background(mb.ink.copy(alpha = 0.08f))
+                    .border(1.dp, mb.panelEdge, CircleShape),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    com.mianboor.vpn.ui.ic(com.mianboor.vpn.R.drawable.ic_fingerprint), null,
+                    tint = mb.glow, modifier = Modifier.size(34.dp),
+                )
+            }
+            Text(
+                if (rtl) "میانپور" else "Mianboor",
+                color = mb.ink, fontSize = 18.sp, fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(top = 14.dp),
+            )
+            Text(
+                stringsOf(lang).bioPromptSub,
+                color = mb.dim, fontSize = 13.sp,
+                modifier = Modifier.padding(top = 4.dp),
+            )
+            Box(
+                Modifier
+                    .padding(top = 22.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(mb.glow)
+                    .clickable { onUnlock() }
+                    .padding(horizontal = 28.dp, vertical = 13.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    stringsOf(lang).unlockBtn,
+                    color = mb.onGlow, fontSize = 14.sp, fontWeight = FontWeight.Bold,
+                )
+            }
+            if (hasPass) {
+                Text(
+                    stringsOf(lang).usePassBtn,
+                    color = mb.dim, fontSize = 13.sp,
+                    modifier = Modifier
+                        .padding(top = 14.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .clickable { onUsePass() }
+                        .padding(horizontal = 14.dp, vertical = 6.dp),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun PassUnlockDialog(
+    lang: Lang,
+    onDismiss: () -> Unit,
+    onSuccess: () -> Unit,
+    toast: (String) -> Unit,
+) {
+    val context = LocalContext.current
+    val t = stringsOf(lang)
+    val mb = LocalMb.current
+    var pass by remember { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = mb.panel,
+        title = { Text(t.bioPromptTitle, color = mb.ink, fontWeight = FontWeight.Bold, fontSize = 17.sp) },
+        text = {
+            Column {
+                Text(t.passPlaceholder, color = mb.dim, fontSize = 13.sp)
+                BasicTextField(
+                    value = pass,
+                    onValueChange = { pass = it },
+                    singleLine = true,
+                    textStyle = TextStyle(color = mb.ink, fontSize = 15.sp),
+                    visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                        keyboardType = androidx.compose.ui.text.input.KeyboardType.NumberPassword,
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 10.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(mb.night)
+                        .border(1.dp, mb.panelEdge, RoundedCornerShape(12.dp))
+                        .padding(horizontal = 14.dp, vertical = 12.dp),
+                )
+            }
+        },
+        confirmButton = {
+            Text(
+                t.unlockBtn,
+                color = mb.glow, fontWeight = FontWeight.Bold, fontSize = 14.sp,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(10.dp))
+                    .clickable {
+                        val saved = AppPrefs.appPass(context)
+                        if (saved.isNotBlank() && pass.trim() == saved) onSuccess()
+                        else toast(t.bioWrongPass)
+                    }
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
+            )
+        },
+        dismissButton = {
+            Text(
+                t.cancel,
+                color = mb.dim, fontSize = 14.sp,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(10.dp))
+                    .clickable { onDismiss() }
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
+            )
+        },
+    )
 }
 
 // ---------------------------------------------------------------------------
