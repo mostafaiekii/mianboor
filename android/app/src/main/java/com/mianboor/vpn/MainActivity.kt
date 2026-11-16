@@ -873,6 +873,19 @@ private fun MbAppInner(
             .take(40)
     }
 
+    fun updateSubInfo() {
+        val url = AppPrefs.subUrl(context)
+        if (url.isBlank()) {
+            subInfo = null
+            subUpdated = null
+        } else {
+            subInfo = t.subStatusLine(AppPrefs.subConfigs(context).size)
+            val mins = ((System.currentTimeMillis() - AppPrefs.subLastAt(context)) / 60_000L).coerceAtLeast(0L)
+            subUpdated = if (mins < 1) t.subUpdatedAgo(if (lang == Lang.FA) "<۱" else "<1")
+            else t.subUpdatedAgo(mins.toString())
+        }
+    }
+
     fun applySubscription(links: List<String>, url: String, auto: Boolean, closeSheet: Boolean) {
         val subs = buildList {
             links.forEachIndexed { i, link ->
@@ -935,19 +948,6 @@ private fun MbAppInner(
         rebuildConfigs()
         updateSubInfo()
         toast(t.subRemoved)
-    }
-
-    fun updateSubInfo() {
-        val url = AppPrefs.subUrl(context)
-        if (url.isBlank()) {
-            subInfo = null
-            subUpdated = null
-        } else {
-            subInfo = t.subStatusLine(AppPrefs.subConfigs(context).size)
-            val mins = ((System.currentTimeMillis() - AppPrefs.subLastAt(context)) / 60_000L).coerceAtLeast(0L)
-            subUpdated = if (mins < 1) t.subUpdatedAgo(if (lang == Lang.FA) "<۱" else "<1")
-            else t.subUpdatedAgo(mins.toString())
-        }
     }
 
     val qrLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { res ->
